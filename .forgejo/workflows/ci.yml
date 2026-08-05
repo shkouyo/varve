@@ -1,0 +1,178 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# Full-duty CI pipeline (PURPOSAL 16, DESIGN 13).
+# Triggered on push to main (publish tag: latest) and on tags
+# (publish tag: SemVer). Runs on a github-runner (Ubuntu host-mode
+# runner, same environment as GitHub Actions).
+
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+
+jobs:
+  # Stage 1: Go tests and builds.
+  test:
+    name: Go test and build
+    runs-on: github-runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go 1.26 toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race detector)
+        run: go test -race ./...
+
+      # Version must match the //go:generate directive in internal/web;
+      # bump both together when the web module (M9a) lands.
+      - name: Install tailwindcss CLI
+        run: npm install -g tailwindcss@4.3.3
+
+      # Pre-compiles internal/web/static/app.css (embed.FS). Produces no
+      # output until internal/web is merged into main; that is expected.
+      - name: Generate embedded assets
+        run: go generate ./...
+
+      - name: Build binaries
+        run: go build ./cmd/varve ./cmd/varve-worker
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: varve-binaries
+          path: |
+            varve
+            varve-worker
+
+  # Stage 2: Web standards compliance (only once internal/web/ exists).
+  # Templates are Go html/template files ({{...}} actions); if the web
+  # module needs validators to run against rendered pages instead of raw
+  # templates, refine this job there.
+  web-quality:
+    name: Web standards compliance
+    needs: test
+    runs-on: github-runner
+    if: hashFiles('internal/web/**') != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install checkers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-jre-headless chromium
+          npm install -g html-validate @axe-core/cli
+          pip3 install --break-system-packages html5validator
+
+      - name: html-validate
+        run: html-validate "internal/web/templates/**/*.html"
+
+      - name: W3C Nu HTML Checker
+        run: html5validator --root internal/web --skip-non-html
+
+      - name: axe-core audit (headless browser)
+        run: |
+          for page in internal/web/templates/*.html; do
+            npx @axe-core/cli "file://$PWD/$page" \
+              --chrome-path /usr/bin/chromium --exit || exit 1
+          done
+
+  # Stage 3: build both container images from the stage 1 binaries.
+  # Requires a container runtime on the runner (docker; use podman
+  # instead if the runner is configured with podman).
+  build-images:
+    name: Build container images
+    needs: test
+    runs-on: github-runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: varve-binaries
+          path: .
+
+      - name: Build controller image
+        run: docker build -f Containerfile.controller -t varve-controller:ci .
+
+      - name: Build worker image
+        run: docker build -f Containerfile.worker -t varve-worker:ci .
+
+  # Stage 4: publish images to Forgejo Packages (container registry).
+  # main -> latest; tag -> SemVer tag (e.g. 0.1.0).
+  # Image names varve-controller / varve-worker (final form follows the
+  # Forgejo Packages naming convention for this instance).
+  # Credentials: configure FORGEJO_PACKAGES_TOKEN (package write
+  # permission) and FORGEJO_REGISTRY (e.g. git.0x0f.dev) in the Forgejo
+  # Secrets of this repository.
+  publish:
+    name: Publish to Forgejo Packages
+    needs: build-images
+    runs-on: github-runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: varve-binaries
+          path: .
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to registry
+        run: |
+          echo "${{ secrets.FORGEJO_PACKAGES_TOKEN }}" \
+            | docker login "${{ secrets.FORGEJO_REGISTRY }}" \
+              -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push controller image
+        run: |
+          image="${{ secrets.FORGEJO_REGISTRY }}/varve-controller:${{ steps.tag.outputs.tag }}"
+          docker build -f Containerfile.controller -t "$image" .
+          docker push "$image"
+
+      - name: Build and push worker image
+        run: |
+          image="${{ secrets.FORGEJO_REGISTRY }}/varve-worker:${{ steps.tag.outputs.tag }}"
+          docker build -f Containerfile.worker -t "$image" .
+          docker push "$image"
