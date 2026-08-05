@@ -74,10 +74,10 @@
             <tr class="border-b border-stone-100 last:border-0">
               <td class="px-4 py-3 font-mono text-xs text-stone-700">{{.ID}}</td>
               <td class="px-4 py-3">
-                {{if .Pkgbase}}<a class="font-medium text-blue-800 underline-offset-2 hover:underline" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
+                {{if .Pkgbase}}<a class="font-medium text-blue-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
               </td>
               <td class="px-4 py-3">{{buildBadge .State}}</td>
-              <td class="px-4 py-3 text-stone-600">{{if .Worker}}{{.Worker}}{{else}}<span class="text-stone-400">not assigned</span>{{end}}</td>
+              <td class="px-4 py-3 text-stone-600">{{if .Worker}}{{.Worker}}{{else}}<span class="text-stone-500">not assigned</span>{{end}}</td>
               <td class="px-4 py-3 text-stone-600">{{.CreatedAt}}</td>
               <td class="px-4 py-3">
                 <form method="post" action="{{.CancelURL}}">
@@ -114,13 +114,13 @@
             {{range .Recent}}
             <tr class="border-b border-stone-100 last:border-0">
               <td class="px-4 py-3">
-                <a class="font-medium text-blue-800 underline-offset-2 hover:underline" href="/builds/{{.ID}}">#{{.ID}}</a>
+                <a class="font-medium text-blue-800 underline underline-offset-2" href="/builds/{{.ID}}">#{{.ID}}</a>
               </td>
               <td class="px-4 py-3">
-                {{if .Pkgbase}}<a class="text-stone-800 underline-offset-2 hover:underline" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
+                {{if .Pkgbase}}<a class="text-stone-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
               </td>
               <td class="px-4 py-3">{{buildBadge .Status}}</td>
-              <td class="px-4 py-3 text-stone-600">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-stone-400">not assigned</span>{{end}}</td>
+              <td class="px-4 py-3 text-stone-600">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-stone-500">not assigned</span>{{end}}</td>
               <td class="px-4 py-3 text-stone-600">{{.StartedAt}}</td>
               <td class="px-4 py-3">
                 {{if .Pkgbase}}
@@ -199,7 +199,7 @@
   </main>
 
   <footer class="border-t border-stone-200 py-6">
-    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-500">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
   </footer>
 </body>
 </html>

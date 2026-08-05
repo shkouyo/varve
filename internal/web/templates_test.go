@@ -166,3 +166,74 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// TestA11yContrastAndKeyboard pins the WCAG 2.2 AA fixes from the V7
+// axe-core audit (will-not-commit/verify/V7) to the rendered HTML:
+//
+//   - no sub-threshold secondary text (stone-400, 2.59:1 on white) and
+//     footer text uses stone-600 instead of stone-500 (4.39:1 on the
+//     stone-100 page background), WCAG 1.4.3;
+//   - every in-text link is always underlined rather than only on hover,
+//     so links are distinguishable without relying on color (WCAG 1.4.1
+//     link-in-text-block);
+//   - the scrollable log regions are keyboard-focusable via tabindex="0"
+//     (WCAG 2.1.1 scrollable-region-focusable);
+//   - the 404 status numeral keeps 3:1 on white for 60px bold text.
+func TestA11yContrastAndKeyboard(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	seedBuild(t, store, pkg, "failed", nil, nil) // failed row for /admin/builds
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{
+		ByStatus:     map[string]int{"succeeded": 1, "failed": 1},
+		RecentBuilds: []db.Build{{ID: build.ID, PackageID: pkg.ID, Status: "succeeded"}},
+	}}, store, newFakeLogReader("==> done\n"))
+
+	pages := []struct {
+		name  string
+		path  string
+		auth  bool
+		links bool // page renders at least one in-text link
+	}{
+		{"dashboard", "/", false, true},
+		{"packages", "/packages", false, true},
+		{"package", "/packages/demo-pkg", false, true},
+		{"build", "/builds/" + itoa(build.ID), false, true},
+		{"log", "/builds/" + itoa(build.ID) + "/log", false, true},
+		{"admin", "/admin", true, true},
+		{"adminBuilds", "/admin/builds?failed=1", true, true},
+		{"notfound", "/packages/nope", false, false},
+	}
+	for _, pg := range pages {
+		var rec *httptest.ResponseRecorder
+		if pg.auth {
+			rec = getAuth(t, s, http.MethodGet, pg.path, "admin", "s3cret")
+		} else {
+			rec = get(t, s, http.MethodGet, pg.path, nil)
+		}
+		body := rec.Body.String()
+		if strings.Contains(body, `class="text-stone-400"`) {
+			t.Errorf("%s: sub-threshold text-stone-400 still rendered", pg.name)
+		}
+		mustContain(t, body, `text-stone-600">varve`) // footer contrast
+		if pg.links {
+			mustContain(t, body, "underline underline-offset-2")
+			if strings.Contains(body, "underline-offset-2 hover:underline") {
+				t.Errorf("%s: link still only underlines on hover", pg.name)
+			}
+		}
+	}
+
+	// Scrollable log regions must be keyboard-focusable (WCAG 2.1.1).
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log", nil)
+	mustContain(t, rec.Body.String(), `id="log" tabindex="0"`)
+	rec = get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
+	mustContain(t, rec.Body.String(), `<pre tabindex="0"`)
+
+	// 404 big status numeral: stone-500 on white (4.79:1 >= 3:1 large text).
+	rec = get(t, s, http.MethodGet, "/packages/nope", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("404 page = %d, want 404", rec.Code)
+	}
+	mustContain(t, rec.Body.String(), `text-6xl font-bold tracking-tight text-stone-500`)
+}

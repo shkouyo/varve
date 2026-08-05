@@ -40,7 +40,7 @@
 
     {{if .Query}}
     <p class="mb-4 text-sm text-stone-600">Showing matches for “{{.Query}}”
-      <a class="font-medium text-blue-800 underline-offset-2 hover:underline" href="/packages">clear search</a>
+      <a class="font-medium text-blue-800 underline underline-offset-2" href="/packages">clear search</a>
     </p>
     {{end}}
 
@@ -62,7 +62,7 @@
           {{range .Packages}}
           <tr class="border-b border-stone-100 last:border-0">
             <td class="px-4 py-3">
-              <a class="font-medium text-blue-800 underline-offset-2 hover:underline" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+              <a class="font-medium text-blue-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
             </td>
             <td class="px-4 py-3 text-stone-700">{{.CurrentVersion}}</td>
             <td class="px-4 py-3 text-stone-600">{{.Pkgdesc}}</td>
@@ -95,7 +95,7 @@
   </main>
 
   <footer class="border-t border-stone-200 py-6">
-    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-500">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
   </footer>
 </body>
 </html>

@@ -28,8 +28,8 @@
   <main id="main" class="mx-auto max-w-6xl px-4 py-8">
     <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <nav class="mb-1 text-sm text-stone-500" aria-label="Breadcrumb">
-          <a class="text-blue-800 underline-offset-2 hover:underline" href="/packages">Packages</a>
+        <nav class="mb-1 text-sm text-stone-600" aria-label="Breadcrumb">
+          <a class="text-blue-800 underline underline-offset-2" href="/packages">Packages</a>
           <span aria-hidden="true"> / </span>
           <span class="text-stone-700">{{.Pkg.Pkgbase}}</span>
         </nav>
@@ -104,13 +104,13 @@
             {{range .Builds}}
             <tr class="border-b border-stone-100 last:border-0">
               <td class="px-4 py-3">
-                <a class="font-medium text-blue-800 underline-offset-2 hover:underline" href="/builds/{{.ID}}">#{{.ID}}</a>
+                <a class="font-medium text-blue-800 underline underline-offset-2" href="/builds/{{.ID}}">#{{.ID}}</a>
               </td>
               <td class="px-4 py-3">{{buildBadge .Status}}</td>
               <td class="px-4 py-3 text-stone-600">{{if .StartedAt}}{{.StartedAt}}{{else}}—{{end}}</td>
               <td class="px-4 py-3 text-stone-600">{{if .FinishedAt}}{{.FinishedAt}}{{else}}—{{end}}</td>
               <td class="px-4 py-3">
-                <a class="text-blue-800 underline-offset-2 hover:underline" href="/builds/{{.ID}}/log">View log</a>
+                <a class="text-blue-800 underline underline-offset-2" href="/builds/{{.ID}}/log">View log</a>
               </td>
             </tr>
             {{end}}
@@ -124,7 +124,7 @@
   </main>
 
   <footer class="border-t border-stone-200 py-6">
-    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-500">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
   </footer>
 </body>
 </html>

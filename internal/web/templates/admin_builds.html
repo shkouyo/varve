@@ -26,8 +26,8 @@
   </header>
 
   <main id="main" class="mx-auto max-w-6xl px-4 py-8">
-    <nav class="mb-1 text-sm text-stone-500" aria-label="Breadcrumb">
-      <a class="text-blue-800 underline-offset-2 hover:underline" href="/admin">Admin</a>
+    <nav class="mb-1 text-sm text-stone-600" aria-label="Breadcrumb">
+      <a class="text-blue-800 underline underline-offset-2" href="/admin">Admin</a>
       <span aria-hidden="true"> / </span>
       <span class="text-stone-700">Failed builds</span>
     </nav>
@@ -56,15 +56,15 @@
           {{range .Builds}}
           <tr class="border-b border-stone-100 last:border-0">
             <td class="px-4 py-3">
-              <a class="font-medium text-blue-800 underline-offset-2 hover:underline" href="{{.BuildURL}}">#{{.ID}}</a>
+              <a class="font-medium text-blue-800 underline underline-offset-2" href="{{.BuildURL}}">#{{.ID}}</a>
             </td>
             <td class="px-4 py-3">
-              {{if .Pkgbase}}<a class="text-stone-800 underline-offset-2 hover:underline" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
+              {{if .Pkgbase}}<a class="text-stone-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
             </td>
             <td class="px-4 py-3 text-stone-700">{{.Error}}</td>
             <td class="px-4 py-3 text-stone-600">{{.StartedAt}}</td>
             <td class="px-4 py-3">
-              <a class="text-blue-800 underline-offset-2 hover:underline" href="{{.LogURL}}">Log</a>
+              <a class="text-blue-800 underline underline-offset-2" href="{{.LogURL}}">Log</a>
             </td>
           </tr>
           {{end}}
@@ -93,7 +93,7 @@
   </main>
 
   <footer class="border-t border-stone-200 py-6">
-    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-500">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
   </footer>
 </body>
 </html>
