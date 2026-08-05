@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
 /*
- * SPDX-License-Identifier: AGPL-3.0-or-later
- *
- * Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
- *
  * Tailwind input for the web UI (DESIGN §6.2, decision A14). The compiled
  * stylesheet lands in static/app.css, is embedded into the binary via
  * //go:embed and is gitignored; this input file is committed so `go
