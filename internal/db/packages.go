@@ -81,6 +81,57 @@ func (s *Store) ListPackages(ctx context.Context, q string, page, perPage int) (
 	return out, total, nil
 }
 
+// GetPackageByID returns one package by its primary key with maintainers
+// decoded. ErrNotFound when the package does not exist. Added by the M4
+// dispatch module: task detail assembly and failure notifications resolve
+// the package row through task.package_id (DETAIL §2.2 had no by-id
+// accessor).
+func (s *Store) GetPackageByID(ctx context.Context, id int64) (*Package, error) {
+	p, err := scanPackage(s.read.QueryRowContext(ctx,
+		`SELECT `+packageColumns+` FROM packages WHERE id = ?`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("db: get package %d: %w", id, err)
+	}
+	return p, nil
+}
+
+// UpsertPackage inserts a new package row for an unknown pkgbase, or
+// refreshes the mutable detection metadata (branch, vcs_kind, arch,
+// maintainers) of an existing row. It never touches the build-derived
+// records (current_version, pkgdesc, hashes, last_build_id), which are
+// updated only after a successful build (decision A16). Fills p.ID. Added
+// by the M4 dispatch module: enqueueing a change whose pkgbase appears in
+// the source for the first time needs a creation path (DETAIL §2.2 had
+// none); the maintainers snapshot is refreshed here at enqueue time.
+func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
+	if p == nil || p.Pkgbase == "" {
+		return errors.New("db: UpsertPackage requires a package with a pkgbase")
+	}
+	maintainers, err := encodeJSON(p.Maintainers)
+	if err != nil {
+		return fmt.Errorf("db: encode maintainers for package %q: %w", p.Pkgbase, err)
+	}
+	var id int64
+	err = s.write.QueryRowContext(ctx, `INSERT INTO packages
+		(pkgbase, branch, vcs_kind, arch, enabled, maintainers)
+		VALUES (?, ?, ?, ?, 1, ?)
+		ON CONFLICT(pkgbase) DO UPDATE SET
+			branch = excluded.branch,
+			vcs_kind = excluded.vcs_kind,
+			arch = excluded.arch,
+			maintainers = excluded.maintainers
+		RETURNING id`,
+		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers).Scan(&id)
+	if err != nil {
+		return fmt.Errorf("db: upsert package %q: %w", p.Pkgbase, err)
+	}
+	p.ID = id
+	return nil
+}
+
 // UpdatePackageAfterBuild records the outcome of a successful build on the
 // package row. It is only valid inside WithTx. ErrNotFound when pkgbase is
 // unknown.

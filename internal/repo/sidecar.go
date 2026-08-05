@@ -33,14 +33,18 @@ import (
 //
 // Kind is one of "package" | "signature" | "srcinfo". Pkgname, Version and
 // Arch are required when Kind == "package".
+//
+// The json tags mirror the toml keys so the worker wire protocol serializes
+// the manifest with the DESIGN §5.3 snake_case field names (added on behalf
+// of the M4 dispatch module; the sidecar encoding is unaffected).
 type Artifact struct {
-	File    string `toml:"file"`
-	Kind    string `toml:"kind"`
-	Pkgname string `toml:"pkgname"`
-	Version string `toml:"version"`
-	Arch    string `toml:"arch"`
-	Size    int64  `toml:"size"`
-	SHA256  string `toml:"sha256"`
+	File    string `toml:"file" json:"file"`
+	Kind    string `toml:"kind" json:"kind"`
+	Pkgname string `toml:"pkgname" json:"pkgname"`
+	Version string `toml:"version" json:"version"`
+	Arch    string `toml:"arch" json:"arch"`
+	Size    int64  `toml:"size" json:"size"`
+	SHA256  string `toml:"sha256" json:"sha256"`
 }
 
 // BuildInfo mirrors the [build] section of the side file (DESIGN §3.2).

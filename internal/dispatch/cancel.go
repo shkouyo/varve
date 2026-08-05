@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+package dispatch
+
+import (
+	"context"
+	"errors"
+	"log"
+
+	"git.0x0f.dev/varve/internal/db"
+)
+
+// CancelTask cancels a task (admin, decision A3 / D4): a queued task is
+// finalized as cancelled immediately; an assigned or running task gets the
+// durable cancel_requested flag persisted, which the heartbeat/poll
+// responses (channel 1) and the log acknowledgements (channel 2) deliver to
+// the executing worker. Terminal tasks are a no-op. The signals are always
+// read from the database, so a controller restart never loses them.
+// Concurrently safe.
+func (o *OrchestratorImpl) CancelTask(ctx context.Context, taskID string) error {
+	task, err := o.store.GetTask(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if isTerminal(task.State) {
+		return nil // no-op
+	}
+	if task.State == "queued" {
+		if err := o.finalizeTask(ctx, taskID, "cancelled", "", nil, nil); err != nil {
+			return err
+		}
+		o.cleanupStaging(ctx, taskID, o.stagedFiles(nil))
+		o.clearSigner(taskID)
+		return nil
+	}
+	if err := o.store.RequestTaskCancel(ctx, taskID); err != nil {
+		return err
+	}
+	log.Printf("dispatch: cancel requested for task %s", taskID)
+	return nil
+}

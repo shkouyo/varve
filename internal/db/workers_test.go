@@ -18,8 +18,6 @@
 package db
 
 import (
-	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -161,18 +159,4 @@ func TestDeleteWorker(t *testing.T) {
 	if err := s.DeleteWorker(testCtx, "gone"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("DeleteWorker(missing) = %v, want ErrNotFound", err)
 	}
-}
-
-// GetWorkerByName is a small test-only read helper for asserting worker
-// rows; it reuses the production scan.
-func (s *Store) GetWorkerByName(ctx context.Context, name string) (*Worker, error) {
-	w, err := scanWorker(s.read.QueryRowContext(ctx,
-		`SELECT `+workerColumns+` FROM workers WHERE name = ?`, name))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return w, nil
 }

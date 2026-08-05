@@ -102,6 +102,80 @@ func (s *Store) GetTask(ctx context.Context, id string) (*Task, error) {
 	return t, nil
 }
 
+// RequeueTask returns a stalled assigned/running task to the queue head
+// (decision A17, DETAIL §4.4): state=queued, the worker and claim token
+// are released, attempts is incremented and created_at is preserved so the
+// task keeps its FIFO position. The mirrored build row is set back to
+// queued with started_at cleared. ErrConflict when the task is not in
+// assigned/running (it may have just been finalized), ErrNotFound when it
+// does not exist. Added by the M4 dispatch module: the stall recovery
+// scan had no requeue primitive (DETAIL §2.2).
+func (s *Store) RequeueTask(ctx context.Context, id string) error {
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE tasks SET
+			state = 'queued', worker_id = NULL, assigned_at = NULL, claim_token = '', attempts = attempts + 1
+			WHERE id = ? AND state IN ('assigned', 'running')`, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			var state string
+			if err := tx.QueryRowContext(ctx,
+				`SELECT state FROM tasks WHERE id = ?`, id).Scan(&state); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrNotFound
+				}
+				return err
+			}
+			return ErrConflict
+		}
+		_, err = tx.ExecContext(ctx,
+			`UPDATE builds SET status = 'queued', started_at = NULL WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
+			id)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
+			return err
+		}
+		return fmt.Errorf("db: requeue task %s: %w", id, err)
+	}
+	return nil
+}
+
+// RequestTaskCancel persists the durable cancellation flag (decision A3:
+// the signal survives a controller restart). It is a no-op when the task
+// already reached a terminal state. ErrNotFound when the task does not
+// exist. Added by the M4 dispatch module: CancelTask needs to persist
+// cancel_requested outside the terminal-state transitions (DETAIL §2.2).
+func (s *Store) RequestTaskCancel(ctx context.Context, id string) error {
+	res, err := s.write.ExecContext(ctx, `UPDATE tasks SET cancel_requested = 1
+		WHERE id = ? AND state NOT IN ('succeeded', 'failed', 'cancelled')`, id)
+	if err != nil {
+		return fmt.Errorf("db: request cancel for task %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		var one int
+		if err := s.read.QueryRowContext(ctx,
+			`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("db: request cancel for task %s: %w", id, err)
+		}
+		return nil // already terminal: cancellation is a no-op
+	}
+	return nil
+}
+
 // MarkRunning transitions an assigned task to running and mirrors the
 // build row (status + started_at). ErrConflict when the task is not in
 // state assigned, ErrNotFound when it does not exist.

@@ -79,6 +79,36 @@ func (s *Store) SetWorkerStatus(ctx context.Context, name, status string) error 
 	return requireAffected(res, fmt.Sprintf("set worker %q status", name))
 }
 
+// GetWorkerByName returns one worker by its stable name (decision A21).
+// ErrNotFound when the worker is not registered. Added by the M4 dispatch
+// module: register/poll/heartbeat/deregister paths resolve the row by name.
+func (s *Store) GetWorkerByName(ctx context.Context, name string) (*Worker, error) {
+	w, err := scanWorker(s.read.QueryRowContext(ctx,
+		`SELECT `+workerColumns+` FROM workers WHERE name = ?`, name))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("db: get worker %q: %w", name, err)
+	}
+	return w, nil
+}
+
+// GetWorkerByID returns one worker by its primary key. ErrNotFound when
+// the worker does not exist. Added by the M4 dispatch module: the ingest
+// path resolves the executing node's display name from task.worker_id.
+func (s *Store) GetWorkerByID(ctx context.Context, id int64) (*Worker, error) {
+	w, err := scanWorker(s.read.QueryRowContext(ctx,
+		`SELECT `+workerColumns+` FROM workers WHERE id = ?`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("db: get worker %d: %w", id, err)
+	}
+	return w, nil
+}
+
 // ListWorkers returns all workers ordered by name.
 func (s *Store) ListWorkers(ctx context.Context) ([]Worker, error) {
 	rows, err := s.read.QueryContext(ctx,
@@ -102,7 +132,9 @@ func (s *Store) ListWorkers(ctx context.Context) ([]Worker, error) {
 }
 
 // DeleteWorker removes a worker by name without cascading. ErrNotFound
-// when the worker is not registered.
+// when the worker is not registered. A worker referenced by builds or
+// tasks rows fails with a foreign-key error (dispatch pre-checks active
+// tasks and tolerates history references during the offline sweep).
 func (s *Store) DeleteWorker(ctx context.Context, name string) error {
 	res, err := s.write.ExecContext(ctx,
 		`DELETE FROM workers WHERE name = ?`, name)

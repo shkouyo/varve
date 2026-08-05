@@ -55,6 +55,18 @@ func (s *Store) ListTasksByWorker(ctx context.Context, workerID int64) ([]Task, 
 		`SELECT `+taskColumns+` FROM tasks WHERE worker_id = ? ORDER BY created_at`, workerID)
 }
 
+// ListTimedOutTasks returns assigned/running tasks whose assigned_at is
+// older than before (deadline = assigned_at + build_timeout, DETAIL §4.4),
+// oldest first. Added by the M4 dispatch module: the timeout scan is a
+// distinct predicate from last_progress_at (a task can be actively
+// progressing and still past its deadline).
+func (s *Store) ListTimedOutTasks(ctx context.Context, before time.Time) ([]Task, error) {
+	return queryTasks(ctx, s.read,
+		`SELECT `+taskColumns+` FROM tasks
+		 WHERE state IN ('assigned', 'running') AND assigned_at IS NOT NULL AND assigned_at < ?
+		 ORDER BY assigned_at`, formatTime(before))
+}
+
 // placeholders renders "?,?,?,..." for n arguments.
 func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
