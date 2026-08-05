@@ -18,9 +18,10 @@
 # Generated Tailwind CSS (built by `go generate ./...`, embedded at build time).
 internal/web/static/app.css
 
-# Compiled binaries.
-varve
-varve-worker
+# Compiled binaries (root level only; the unanchored names would also
+# match the cmd/varve and cmd/varve-worker source directories).
+/varve
+/varve-worker
 
 # Local data directory (controller container volume).
 /data/
