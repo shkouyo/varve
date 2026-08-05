@@ -236,7 +236,9 @@ func (o *OrchestratorImpl) archiveSource(ctx context.Context, taskID, commit str
 }
 
 // clearSigner drops the one-shot key material of a finished task; it is
-// safe when no signer is configured.
+// safe when no signer is configured (NewOrchestrator normalizes an
+// interface-wrapped typed nil pointer to a true nil, so this interface
+// nil check is sound — bug fix M4).
 func (o *OrchestratorImpl) clearSigner(taskID string) {
 	if o.signer != nil {
 		o.signer.ClearTask(taskID)

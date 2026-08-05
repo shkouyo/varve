@@ -37,6 +37,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -182,13 +183,38 @@ type OrchestratorImpl struct {
 	hourlyInterval time.Duration // default 1h; injectable for tests
 }
 
+// signerUsable reports whether a signer dependency is present and
+// dereferenceable. A plain interface == nil comparison is defeated by a
+// typed nil stored inside the interface — e.g. a nil *sign.Signer passed
+// by a caller with repo.sign="off": the interface itself is non-nil and
+// the first method call would panic with a nil pointer dereference (bug
+// fix M4, V2 acceptance). Every nilable kind is handled so any future
+// concrete implementation type stays safe.
+func signerUsable(s signVerifier) bool {
+	if s == nil {
+		return false
+	}
+	v := reflect.ValueOf(s)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return !v.IsNil()
+	}
+	return true
+}
+
 // NewOrchestrator builds the orchestration core. The scheduler goroutine
 // starts immediately; call Stop for a graceful shutdown. All dependencies
-// except the config may be nil in tests that do not exercise them.
+// except the config may be nil in tests that do not exercise them. The
+// signer is normalized: an interface wrapping a typed nil pointer (the
+// shape a caller produces with repo.sign="off") is stored as a true nil
+// so every later nil check is sound (bug fix M4).
 func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
 	signer signVerifier, updater repo.Updater, notifier mail.Notifier, logs *Logs) *OrchestratorImpl {
 	if cfg == nil {
 		cfg = &config.ControllerConfig{}
+	}
+	if !signerUsable(signer) {
+		signer = nil // typed nil pointer in the interface == no signer
 	}
 	o := &OrchestratorImpl{
 		cfg:            cfg,

@@ -241,7 +241,7 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 	rec := newRecorder()
 	fakeOrch := &fakeOrchestrator{rec: rec}
 	replaceVar(t, &newOrchestrator, func(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
-		signer *sign.Signer, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
+		signer signerSurface, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
 		rec.record("orch.New")
 		return fakeOrch
 	})
@@ -292,6 +292,52 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "repo")); err != nil {
 		t.Errorf("storage root was not created: %v", err)
 	}
+}
+
+// TestRunServeSignerWiring pins the bug fix M4 wiring contract: with
+// repo.sign="off" the orchestrator injectable must receive a true nil
+// signer, and with signing enabled a non-nil one. The pre-fix shape — a
+// typed nil *sign.Signer inside the interface — defeats dispatch's nil
+// checks and crashes when a task reaches a terminal state (V2
+// acceptance, signer-typed-nil panic).
+func TestRunServeSignerWiring(t *testing.T) {
+	run := func(t *testing.T, sign, gpgKey string) signerSurface {
+		t.Helper()
+		dir := t.TempDir()
+		cfgPath := writeControllerConfig(t, dir, sign, gpgKey)
+		got := make(chan signerSurface, 1)
+		rec := newRecorder()
+		replaceVar(t, &newOrchestrator, func(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
+			signer signerSurface, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
+			got <- signer
+			return &fakeOrchestrator{rec: rec}
+		})
+		replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink) (detector, error) {
+			return &fakeDetector{rec: rec}, nil
+		})
+		replaceVar(t, &startServer, func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {
+			return &fakeServer{rec: rec, name: addr}, nil
+		})
+		replaceVar(t, &waitSignal, func() error { return nil })
+		if err := runServe([]string{"--config", cfgPath}); err != nil {
+			t.Fatalf("runServe: %v", err)
+		}
+		return <-got
+	}
+
+	t.Run("sign off delivers true nil", func(t *testing.T) {
+		if s := run(t, "off", ""); s != nil {
+			t.Fatalf("orchestrator signer = %#v, want true nil (a typed nil *sign.Signer would panic dispatch finalization)", s)
+		}
+	})
+	t.Run("sign packages delivers the signer", func(t *testing.T) {
+		replaceVar(t, &newSigner, func(*config.GPGConfig) (*sign.Signer, error) {
+			return &sign.Signer{}, nil
+		})
+		if s := run(t, "packages", "DEADBEEF"); s == nil {
+			t.Fatal("orchestrator signer = nil, want the configured signer")
+		}
+	})
 }
 
 // TestRunDispatch covers the DESIGN §2.12 command-line dispatch: the

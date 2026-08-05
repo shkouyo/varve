@@ -63,6 +63,21 @@ type httpServer interface {
 	Close() error
 }
 
+// signerSurface is the signing surface the serve path threads into the
+// repo updater (GnuPGEnv) and the orchestrator (the dispatch
+// signVerifier methods); *sign.Signer satisfies it. The variable is
+// declared with this interface type so a disabled signer
+// (repo.sign="off") stays a true nil: a nil *sign.Signer stored inside
+// an interface would be a non-nil interface wrapping a nil pointer, which
+// defeats dispatch's nil checks and crashes task finalization (bug fix
+// M4, V2 acceptance).
+type signerSurface interface {
+	VerifyDetached(sigPath, pkgPath string) error
+	ExportForTask(taskID string) (*sign.KeyMaterial, error)
+	ClearTask(taskID string)
+	GnuPGEnv() []string
+}
+
 // Injectables for the serve tests (DETAIL §13.4), following the pattern of
 // cmd/varve-worker's runner constructors: runServe calls these package
 // variables instead of the module constructors directly, so tests can
@@ -73,9 +88,11 @@ var (
 	newSigner = sign.NewSigner
 
 	// newOrchestrator builds the orchestration core (step 6); its
-	// scheduler goroutine starts immediately and Stop halts it.
+	// scheduler goroutine starts immediately and Stop halts it. The
+	// signer travels as the signerSurface interface so a disabled
+	// signer reaches dispatch as a true nil (bug fix M4).
 	newOrchestrator = func(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
-		signer *sign.Signer, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
+		signer signerSurface, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
 		return dispatch.NewOrchestrator(cfg, store, backend, signer, updater, notifier, logs)
 	}
 
@@ -144,9 +161,12 @@ func runServe(args []string) error {
 		return err
 	}
 
-	// 4. GPG signer (step 4): "off" passes nil — dispatch and repo branch
-	// on cfg.Repo.Sign and never touch the signer then.
-	var signer *sign.Signer
+	// 4. GPG signer (step 4): "off" leaves the signerSurface nil —
+	// dispatch and repo branch on cfg.Repo.Sign and never touch the
+	// signer then. The interface type keeps the nil a true nil: a typed
+	// nil *sign.Signer in the interface would defeat dispatch's checks
+	// and crash task finalization (bug fix M4).
+	var signer signerSurface
 	if cfg.Repo.Sign != "off" {
 		signer, err = newSigner(&cfg.GPG)
 		if err != nil {

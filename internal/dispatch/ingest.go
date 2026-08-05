@@ -250,6 +250,12 @@ func (o *OrchestratorImpl) signatureEntry(manifest []repo.Artifact, file string)
 // a temp directory and delegates to signer.VerifyDetached (gpg needs real
 // local files; the storage backend may be remote).
 func (o *OrchestratorImpl) verifySignature(ctx context.Context, taskID string, pkg, sig *repo.Artifact) error {
+	// Defensive: signing is requested by the config but no signer is
+	// wired (a caller passed nil with repo.sign != "off"). Fail the
+	// verify cleanly instead of dereferencing a nil signer (bug fix M4).
+	if o.signer == nil {
+		return errors.New("signing enabled but no signer configured")
+	}
 	dir, err := os.MkdirTemp("", "varve-verify-*")
 	if err != nil {
 		return fmt.Errorf("verify %q: %w", pkg.File, err)
