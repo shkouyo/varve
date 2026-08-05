@@ -115,8 +115,12 @@ jobs:
           done
 
   # Stage 3: build both container images from the stage 1 binaries.
-  # Requires a container runtime on the runner (docker; use podman
-  # instead if the runner is configured with podman).
+  # The runner executes jobs inside a job container that has no docker
+  # daemon socket (/var/run/docker.sock), so `docker build` cannot work.
+  # Build with buildah instead: it needs no daemon, and combined with the
+  # vfs storage driver plus chroot isolation it does not even require a
+  # privileged container (verified: default oci isolation needs mount
+  # permissions that unprivileged job containers do not have).
   build-images:
     name: Build container images
     needs: test
@@ -131,11 +135,25 @@ jobs:
           name: varve-binaries
           path: .
 
+      # buildah on Ubuntu ships no unqualified-search registries, and the
+      # Containerfiles pull `archlinux/archlinux` by short name; point
+      # buildah at docker.io or the first build step fails to resolve it.
+      - name: Install buildah
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y buildah ca-certificates
+          printf 'unqualified-search-registries = ["docker.io"]\n' \
+            | sudo tee /etc/containers/registries.conf >/dev/null
+
       - name: Build controller image
-        run: docker build -f Containerfile.controller -t varve-controller:ci .
+        run: >-
+          buildah --storage-driver=vfs bud --isolation=chroot
+          -f Containerfile.controller -t varve-controller:ci .
 
       - name: Build worker image
-        run: docker build -f Containerfile.worker -t varve-worker:ci .
+        run: >-
+          buildah --storage-driver=vfs bud --isolation=chroot
+          -f Containerfile.worker -t varve-worker:ci .
 
   # Stage 4: publish images to Forgejo Packages (container registry).
   # main -> latest; tag -> SemVer tag (e.g. 0.1.0).
@@ -144,6 +162,10 @@ jobs:
   # Credentials: configure FORGEJO_PACKAGES_TOKEN (package write
   # permission) and FORGEJO_REGISTRY (e.g. git.0x0f.dev) in the Forgejo
   # Secrets of this repository.
+  # Like Stage 3, this job runs in a job container without a docker
+  # daemon, so it uses buildah (vfs storage + chroot isolation) for the
+  # build and push steps; the token is fed to `buildah login` via
+  # --password-stdin so it never appears on a command line or in logs.
   publish:
     name: Publish to Forgejo Packages
     needs: build-images
@@ -167,20 +189,32 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      # buildah on Ubuntu ships no unqualified-search registries, and the
+      # Containerfiles pull `archlinux/archlinux` by short name; point
+      # buildah at docker.io or the build steps fail to resolve it.
+      - name: Install buildah
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y buildah ca-certificates
+          printf 'unqualified-search-registries = ["docker.io"]\n' \
+            | sudo tee /etc/containers/registries.conf >/dev/null
+
       - name: Login to registry
         run: |
           echo "${{ secrets.FORGEJO_PACKAGES_TOKEN }}" \
-            | docker login "${{ secrets.FORGEJO_REGISTRY }}" \
-              -u "${{ github.actor }}" --password-stdin
+            | buildah login -u "${{ github.actor }}" \
+              --password-stdin "${{ secrets.FORGEJO_REGISTRY }}"
 
       - name: Build and push controller image
         run: |
           image="${{ secrets.FORGEJO_REGISTRY }}/varve-controller:${{ steps.tag.outputs.tag }}"
-          docker build -f Containerfile.controller -t "$image" .
-          docker push "$image"
+          buildah --storage-driver=vfs bud --isolation=chroot \
+            -f Containerfile.controller -t "$image" .
+          buildah --storage-driver=vfs push "$image"
 
       - name: Build and push worker image
         run: |
           image="${{ secrets.FORGEJO_REGISTRY }}/varve-worker:${{ steps.tag.outputs.tag }}"
-          docker build -f Containerfile.worker -t "$image" .
-          docker push "$image"
+          buildah --storage-driver=vfs bud --isolation=chroot \
+            -f Containerfile.worker -t "$image" .
+          buildah --storage-driver=vfs push "$image"
