@@ -1,0 +1,9 @@
+{
+  "extends": ["html-validate:recommended"],
+  "transform": {
+    "^(.*/)?internal/web/templates/.*\\.html$": "./.htmlvalidate-transform.cjs"
+  },
+  "rules": {
+    "meta-refresh": "warn"
+  }
+}
