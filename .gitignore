@@ -1,6 +1,10 @@
 # Generated Tailwind CSS (built by `go generate ./...`, embedded at build time).
 internal/web/static/app.css
 
+# npm dependencies (installed by the CI pipeline to provide the tailwindcss
+# CLI; no package.json exists, npm install --no-save creates only this dir).
+node_modules/
+
 # Compiled binaries (root level only; the unanchored names would also
 # match the cmd/varve and cmd/varve-worker source directories).
 /varve

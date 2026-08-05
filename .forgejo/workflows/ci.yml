@@ -28,18 +28,22 @@ jobs:
           go-version: "1.26"
 
       # Version must match the //go:generate directive in internal/web;
-      # bump both together. Persist npm's global bin dir on the runner
-      # PATH so go generate can resolve the CLI in later steps.
+      # bump both together. tailwindcss 4.x ships its CLI as the separate
+      # @tailwindcss/cli package: installing `tailwindcss` alone creates no
+      # executable, so install both into the checkout's node_modules.
       - name: Install tailwindcss CLI
-        run: |
-          npm install -g tailwindcss@4.3.3
-          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+        run: npm install --no-save tailwindcss@4.3.3 @tailwindcss/cli@4.3.3
 
       # Pre-compiles internal/web/static/app.css (embed.FS); must run
       # before any step that compiles Go, because the file is gitignored
-      # and absent from the checkout.
+      # and absent from the checkout. node_modules/.bin is not on the
+      # runner PATH and GITHUB_PATH persistence is unreliable across
+      # runner versions and modes, so prepend it here in this step's own
+      # shell: the export reaches go generate in the same process.
       - name: Generate embedded assets
-        run: go generate ./...
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          go generate ./...
 
       - name: Check formatting
         run: |
