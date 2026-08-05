@@ -55,7 +55,7 @@ type LogReader interface {
 // (tailwindcss 4.3.3 on this machine). app.css is a build artifact and is
 // gitignored (decision A14); it must exist before the package compiles,
 // which `go generate ./...` guarantees in CI.
-//go:generate /usr/sbin/tailwindcss -i static/input.css -o static/app.css --minify
+//go:generate tailwindcss -i static/input.css -o static/app.css --minify
 
 //go:embed templates
 var templatesFS embed.FS
