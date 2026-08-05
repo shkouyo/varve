@@ -20,12 +20,23 @@ jobs:
     name: Go test and build
     runs-on: github-runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Go 1.26 toolchain
         uses: actions/setup-go@v5
         with:
           go-version: "1.26"
+
+      # Version must match the //go:generate directive in internal/web;
+      # bump both together.
+      - name: Install tailwindcss CLI
+        run: npm install -g tailwindcss@4.3.3
+
+      # Pre-compiles internal/web/static/app.css (embed.FS); must run
+      # before any step that compiles Go, because the file is gitignored
+      # and absent from the checkout.
+      - name: Generate embedded assets
+        run: go generate ./...
 
       - name: Check formatting
         run: |
@@ -41,15 +52,6 @@ jobs:
 
       - name: Test (race detector)
         run: go test -race ./...
-
-      # Version must match the //go:generate directive in internal/web;
-      # bump both together.
-      - name: Install tailwindcss CLI
-        run: npm install -g tailwindcss@4.3.3
-
-      # Pre-compiles internal/web/static/app.css (embed.FS).
-      - name: Generate embedded assets
-        run: go generate ./...
 
       - name: Build binaries
         run: go build ./cmd/varve ./cmd/varve-worker
@@ -71,7 +73,7 @@ jobs:
     needs: test
     runs-on: github-runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install checkers
         run: |
@@ -101,7 +103,7 @@ jobs:
     needs: test
     runs-on: github-runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v4
         with:
@@ -126,7 +128,7 @@ jobs:
     needs: build-images
     runs-on: github-runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v4
         with:
