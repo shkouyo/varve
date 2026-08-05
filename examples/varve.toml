@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# /data/varve.toml
+# 管控机完整示例配置 (提案 §6.1 逐字段一致), 平铺风格 (无缩进), 便于修改。
+# 密码/口令类字段直接写在此文件中, 文件权限须为 0600 (提案 §6.1)。
+# 全部字段可用同名 VARVE_* 环境变量覆盖的部分: api.token、storage.s3 密钥、source.fetch_key。
+
+[server]
+api_listen = ":31759" # worker API 监听地址 (默认 ":31759"; 仅 worker 通信)
+web_listen = ":31760" # Web UI 监听地址 (默认 ":31760"; 公开 + /admin)
+web_url = "https://varve.example.org" # Web UI 公开地址, 仅用于邮件中的构建日志链接; 与下载直链 (download_base_uri) 相互独立
+
+[api]
+token = "change-me" # 共享 Bearer Token; 可用 VARVE_API_TOKEN 覆盖 (必填, 空则校验报错)
+token_file = "" # 可选: 从文件读取 token (容器 secret 挂载); 优先级 token_file > TOML, 低于环境变量
+
+[database]
+path = "/data/varve.db" # SQLite 数据库路径 (默认 "/data/varve.db")
+
+[storage]
+backend = "local" # 文件接口后端 (默认 "local"; local | s3)
+
+[storage.local]
+root = "/data/repo" # 本地后端仓库根目录 (默认 "/data/repo"; 平铺仓库文件 + staging/ 上传暂存区)
+
+[storage.s3]
+endpoint = "https://s3.example.org" # S3 兼容端点地址
+bucket = "varve-repo" # 桶根平铺仓库文件; staging/ 前缀为上传暂存区
+region = "us-east-1" # S3 区域
+access_key = "" # 访问密钥; 可用 VARVE_S3_ACCESS_KEY 覆盖
+secret_key = "" # 秘密密钥; 可用 VARVE_S3_SECRET_KEY 覆盖
+path_style = true # 使用 path-style 寻址 (MinIO 等通常需要; 默认 true)
+
+[repo]
+name = "varve" # 仓库名 (默认 "varve"); 生成 <name>.db.tar.gz / <name>.files.tar.gz
+work_dir = "/data/work" # repo-add 工作目录 (默认 "/data/work"; 仅 S3 后端时使用, 管控机本地)
+sign = "off" # 签名模式 (默认 "off"; off | packages | packages+db)
+keep_versions = 1 # 仓库内每包保留版本数 (默认 1; 当前仅支持 1 = 仅最新)
+
+[gpg]
+key_id = "" # 签名密钥 ID (sign != off 时必填, 与 key_file 至少其一)
+key_file = "" # 可选: armored 私钥文件 (长期存放于管控机)
+passphrase = "" # 私钥口令; 直接写在配置中, 配置文件权限须为 0600
+
+[source]
+url = "git@git.example.org:pkgbuilds.git" # 源仓库地址 (必填; 每个分支 = 一个软件包)
+fetch_key = "" # 可选: SSH 私钥路径或 token (用于私有源仓库); 可用 VARVE_SOURCE_FETCH_KEY 覆盖
+poll_interval = "5m" # 更新检测轮询间隔 (默认 "5m")
+exclude_branches = ["main", "wip/*"] # glob 排除的分支 (默认排除 main)
+
+[worker]
+heartbeat_timeout = "90s" # 连续 N 秒未心跳判离线 (默认 "90s")
+stall_timeout = "10m" # 任务 N 秒无进度视为卡死, 回收重派 (默认 "10m")
+build_timeout = "30m" # 单任务超时上限 (默认 "30m")
+cpu_limit = 0 # 容器 CPU 限额 (默认 0 = 不限制; 如 4)
+memory_limit = 0 # 容器内存限额 (默认 0 = 不限制; 如 "8GiB")
+
+[mail]
+enabled = false # 失败通知开关 (默认 false; 仅构建失败时发送)
+host = "" # SMTP 服务器地址
+port = 587 # SMTP 端口 (默认 587)
+username = "" # SMTP 用户名
+password = "" # SMTP 密码; 直接写在配置中, 配置文件权限须为 0600
+from = "varve@example.org" # 发件人地址 (默认 "varve@example.org")
+tls = "starttls" # TLS 模式 (默认 "starttls"; none | starttls | implicit)
+
+[web]
+download_enabled = true # 下载按钮显示开关 (默认 true; 开启但未配置 download_base_uri 时配置校验报错)
+download_base_uri = "" # 直链 URI 前缀 (如 CDN/公开桶地址; download_enabled 开启时必填)
+admin_user = "admin" # /admin Basic Auth 用户名 (默认 "admin")
+admin_password = "change-me" # /admin Basic Auth 密码 (必填, 空则校验报错); 直接写在配置中, 配置文件权限须为 0600
+
+[logs]
+dir = "/data/logs" # 构建日志目录 (默认 "/data/logs")
+retention = "90d" # 成功构建日志保留时长 (默认 "90d"; 滚动)
+max_builds = 1000 # 成功日志保留条数上限 (默认 1000; 滚动)
+# 失败日志永久保留, 不受上述限制
