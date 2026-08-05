@@ -1,7 +1,8 @@
-# Full-duty CI pipeline (PURPOSAL 16, DESIGN 13).
-# Triggered on push to main (publish tag: latest) and on tags
-# (publish tag: SemVer). Runs on a github-runner (Ubuntu host-mode
-# runner, same environment as GitHub Actions).
+# Full-duty CI pipeline.
+# Triggered on push to main (publish tag: latest), on tags
+# (publish tag: SemVer), and manually via workflow_dispatch. Runs on
+# a github-runner (Ubuntu host-mode runner, same environment as
+# GitHub Actions).
 
 name: ci
 
@@ -11,6 +12,7 @@ on:
       - main
     tags:
       - "*"
+  workflow_dispatch: {}
 
 jobs:
   # Stage 1: Go tests and builds.
@@ -41,12 +43,11 @@ jobs:
         run: go test -race ./...
 
       # Version must match the //go:generate directive in internal/web;
-      # bump both together when the web module (M9a) lands.
+      # bump both together.
       - name: Install tailwindcss CLI
         run: npm install -g tailwindcss@4.3.3
 
-      # Pre-compiles internal/web/static/app.css (embed.FS). Produces no
-      # output until internal/web is merged into main; that is expected.
+      # Pre-compiles internal/web/static/app.css (embed.FS).
       - name: Generate embedded assets
         run: go generate ./...
 
@@ -61,7 +62,7 @@ jobs:
             varve
             varve-worker
 
-  # Stage 2: Web standards compliance (only once internal/web/ exists).
+  # Stage 2: Web standards compliance.
   # Templates are Go html/template files ({{...}} actions); if the web
   # module needs validators to run against rendered pages instead of raw
   # templates, refine this job there.
@@ -69,7 +70,6 @@ jobs:
     name: Web standards compliance
     needs: test
     runs-on: github-runner
-    if: hashFiles('internal/web/**') != ''
     steps:
       - uses: actions/checkout@v4
 
