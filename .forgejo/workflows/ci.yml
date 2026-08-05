@@ -68,8 +68,15 @@ jobs:
           go build ./cmd/varve
           go build ./cmd/varve-worker
 
+      # upload-artifact/download-artifact v4+ cannot run on Forgejo: their
+      # @actions/artifact v2+ client throws GHESNotSupportedError whenever
+      # GITHUB_SERVER_URL is not github.com, rejecting any non-GitHub.com
+      # server (including Forgejo instances) before a request is made.
+      # v3 speaks the v1 artifact protocol (ACTIONS_RUNTIME_URL) that the
+      # Forgejo server implements, and forgejo-runner still executes node16
+      # actions; keep these pinned to v3, do not bump back to v4+.
       - name: Upload binaries
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v3
         with:
           name: varve-binaries
           path: |
@@ -117,7 +124,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v8
+      # v3, not v4+: v4+ fails on Forgejo with GHESNotSupportedError
+      # (see the Upload binaries step for the rationale).
+      - uses: actions/download-artifact@v3
         with:
           name: varve-binaries
           path: .
@@ -142,7 +151,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v8
+      # v3, not v4+: v4+ fails on Forgejo with GHESNotSupportedError
+      # (see the Upload binaries step for the rationale).
+      - uses: actions/download-artifact@v3
         with:
           name: varve-binaries
           path: .
