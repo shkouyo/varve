@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# Build container image for the varve worker (PURPOSAL 5.4, DESIGN 9.1).
+# Both worker forms (host-launched one-shot containers and Actions pool
+# containers) run this image; the agent binary inside performs builds.
+
+FROM archlinux/archlinux:multilib-devel
+
+# Pin the official default pacman.conf kept in the repository (archiso
+# mode) so the image and repository stay in lockstep; add custom repos
+# by editing container/worker/pacman.conf and rebuilding.
+COPY container/worker/pacman.conf /etc/pacman.conf
+
+# The base image ships no package database: refresh it with the pinned
+# configuration before installing anything.
+RUN pacman -Sy --noconfirm
+
+# VCS tools for -git / -svn package builds; sudo lets makepkg install
+# build dependencies (makepkg -s --syncdeps needs root).
+RUN pacman -S --noconfirm git subversion sudo
+
+# Agent binary. Build it beforehand with `go build ./cmd/varve-worker`.
+COPY varve-worker /usr/bin/varve-worker
+
+# Non-root build user; the agent runs entirely as builder (DESIGN 9.1,
+# decision A11) and makepkg refuses to run as root.
+RUN useradd -m builder \
+    && printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder \
+    && chmod 440 /etc/sudoers.d/builder
+
+# Pre-create the repo-add work directory (default VARVE_DATA_DIR/work),
+# owned by builder.
+RUN install -d -o builder -g builder /var/lib/varve/work
+
+USER builder
+ENTRYPOINT ["varve-worker"]
