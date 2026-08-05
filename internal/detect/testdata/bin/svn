@@ -1,0 +1,47 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# svn PATH shim used by the vcs and detect pipeline tests (DETAIL §3.7 #6).
+# It only accepts "svn info --xml" invocations -- anything else fails, so a
+# passing test implicitly asserts the --xml flag was passed. The emitted
+# last-changed-revision defaults to 41 and can be overridden for pipeline
+# "upstream changed" scenarios via VARVE_TEST_SVN_REV.
+
+if [ "$1" = "info" ] && [ "$2" = "--xml" ]; then
+    rev="${VARVE_TEST_SVN_REV:-41}"
+    cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<info>
+<entry kind="dir" path="." revision="$rev">
+<url>https://example.org/repo</url>
+<repository>
+<root>https://example.org/repo</root>
+<uuid>a1b2c3d4-e5f6-7890-abcd-ef1234567890</uuid>
+</repository>
+<commit revision="$rev">
+<author>alice</author>
+<date>2026-01-01T00:00:00.000000Z</date>
+</commit>
+</entry>
+</info>
+EOF
+    exit 0
+fi
+
+echo "svn shim: unexpected invocation: $*" >&2
+exit 1

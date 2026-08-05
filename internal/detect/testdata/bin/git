@@ -1,0 +1,48 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Copyright (C) 2026 ShinKouyo <i@0x0f.dev>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# Git PATH shim used by the detect pipeline tests (DETAIL §3.7 #8).
+# "git ls-remote" invocations (the only place the vcs subpackage cannot
+# substitute execCommand from outside) are intercepted so tests can return
+# canned upstream HEAD hashes; every other invocation is forwarded to the
+# real git binary. Behavior is driven by environment variables:
+#
+#   VARVE_TEST_GIT_HEAD  canned HEAD hash for ls-remote (empty = no HEAD)
+#   VARVE_TEST_GIT_SLEEP seconds to sleep inside ls-remote (concurrency tests)
+#   VARVE_TEST_GIT_TRACE file to append start/end markers (concurrency tests)
+#   VARVE_REAL_GIT       path of the real git binary (default /usr/bin/git)
+
+REAL_GIT="${VARVE_REAL_GIT:-/usr/bin/git}"
+
+if [ "$1" = "ls-remote" ]; then
+    if [ -n "$VARVE_TEST_GIT_TRACE" ]; then
+        echo "start" >> "$VARVE_TEST_GIT_TRACE"
+    fi
+    if [ -n "$VARVE_TEST_GIT_SLEEP" ]; then
+        sleep "$VARVE_TEST_GIT_SLEEP"
+    fi
+    if [ -n "$VARVE_TEST_GIT_HEAD" ]; then
+        printf '%s\tHEAD\n' "$VARVE_TEST_GIT_HEAD"
+    fi
+    if [ -n "$VARVE_TEST_GIT_TRACE" ]; then
+        echo "end" >> "$VARVE_TEST_GIT_TRACE"
+    fi
+    exit 0
+fi
+
+exec "$REAL_GIT" "$@"
