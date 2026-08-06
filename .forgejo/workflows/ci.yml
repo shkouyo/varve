@@ -1,8 +1,7 @@
 # Full-duty CI pipeline.
 # Triggered on push to main (publish tag: latest), on tags
 # (publish tag: SemVer), and manually via workflow_dispatch. Runs on
-# a github-runner (Ubuntu host-mode runner, same environment as
-# GitHub Actions).
+# a github-runner (container-mode runner, Ubuntu 24.04 job container).
 
 name: ci
 
@@ -97,13 +96,11 @@ jobs:
       - name: Install checkers
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-jre-headless chromium
-          # @axe-core/cli drives Chrome through chromedriver, which must
-          # match the installed chromium build. The Ubuntu package name
-          # changed between releases (chromium-chromedriver ->
-          # chromium-driver); install whichever exists. If neither does,
-          # the axe step falls back to the npm-bundled chromedriver.
-          sudo apt-get install -y chromium-chromedriver || sudo apt-get install -y chromium-driver || true
+          sudo apt-get install -y default-jre-headless
+          # html5validator (W3C Nu) needs a JRE. The apt chromium packages
+          # are snap transition stubs on Ubuntu 24.04 and cannot run inside
+          # the job container, so Chrome is installed separately as Chrome
+          # for Testing (see the Install Chrome for Testing step below).
           npm install -g html-validate @axe-core/cli
           pip3 install --break-system-packages html5validator
 
@@ -295,20 +292,60 @@ jobs:
       - name: W3C Nu HTML Checker
         run: html5validator --root /tmp/varve-web-quality/pages --skip-non-html --ignore-re "CSS:"
 
+      # Ubuntu 24.04 (the job container base) ships chromium as a snap
+      # transition package: the apt packages only install stub scripts that
+      # exec /snap/bin/chromium, which does not exist inside the container,
+      # so Chrome dies on launch ("Server terminated early with status 1").
+      # Chrome for Testing is a standalone build that needs no snap; the
+      # last-known-good endpoint publishes a chromedriver of the exact same
+      # version, so browser and driver always match. The apt packages below
+      # are the shared libraries the CfT Chrome binary links against.
+      - name: Install Chrome for Testing
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libnspr4 libatk1.0-0t64 \
+            libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+            libasound2t64 libatspi2.0-0t64 libcairo2 libpango-1.0-0 \
+            libx11-6 libxcb1 libxext6 libxi6 libxtst6 libxss1 libglib2.0-0 \
+            libdbus-1-3 libgtk-3-0t64 fonts-liberation
+          CFT=/opt/chrome-for-testing
+          rm -rf "$CFT"
+          mkdir -p "$CFT"
+          python3 - <<'PYEOF'
+          import json, os, urllib.request, zipfile
+
+          DATA_URL = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+          DEST = "/opt/chrome-for-testing"
+          data = json.load(urllib.request.urlopen(DATA_URL, timeout=60))
+          stable = data["channels"]["Stable"]
+          for kind in ("chrome", "chromedriver"):
+              url = next(e["url"] for e in stable["downloads"][kind] if e["platform"] == "linux64")
+              archive = os.path.join(DEST, f"{kind}.zip")
+              urllib.request.urlretrieve(url, archive)
+              with zipfile.ZipFile(archive) as z:
+                  z.extractall(DEST)
+              os.remove(archive)
+          PYEOF
+          # The CfT archives do not preserve the exec bit on every helper
+          # binary (e.g. chrome_crashpad_handler), without which Chrome
+          # aborts at launch; make the whole tree executable.
+          chmod -R a+x "$CFT"
+          "$CFT/chrome-linux64/chrome" --version
+
       # Run against the saved pages (no external resources, CSS inline, so
-      # file:// works). Prefer a system chromedriver that matches the apt
-      # chromium; otherwise let @axe-core/cli use its npm-bundled driver.
+      # file:// works). Chrome runs as root in the job container, which
+      # requires the no-sandbox flag, and disable-dev-shm-usage keeps Chrome
+      # away from the container's small /dev/shm.
       - name: axe-core audit (headless browser)
         run: |
-          CHROMEDRIVER="$(command -v chromedriver 2>/dev/null || true)"
+          CHROME=/opt/chrome-for-testing/chrome-linux64/chrome
+          CHROMEDRIVER=/opt/chrome-for-testing/chromedriver-linux64/chromedriver
           for page in /tmp/varve-web-quality/pages/*.html; do
-            if [ -n "$CHROMEDRIVER" ]; then
-              npx @axe-core/cli "file://$page" --chrome-path /usr/bin/chromium \
-                --chromedriver-path "$CHROMEDRIVER" --exit || exit 1
-            else
-              npx @axe-core/cli "file://$page" --chrome-path /usr/bin/chromium \
-                --exit || exit 1
-            fi
+            npx @axe-core/cli "file://$page" --chrome-path "$CHROME" \
+              --chromedriver-path "$CHROMEDRIVER" \
+              --chrome-options "no-sandbox,disable-dev-shm-usage" --exit || exit 1
           done
 
   # Stage 3: build both container images from the stage 1 binaries.
@@ -361,12 +398,19 @@ jobs:
             --no-push
 
   # Stage 4: publish images to Forgejo Packages (container registry).
-  # main -> latest; tag -> SemVer tag (e.g. 0.1.0).
-  # Image names varve-controller / varve-worker (final form follows the
-  # Forgejo Packages naming convention for this instance).
-  # Credentials: configure FORGEJO_PACKAGES_TOKEN (package write
-  # permission) and FORGEJO_REGISTRY (e.g. git.0x0f.dev) in the Forgejo
-  # Secrets of this repository.
+  # main -> latest; tag -> SemVer tag (e.g. 0.1.0). The registry requires
+  # the Forgejo image naming convention {registry}/{owner}/{image}, where
+  # the registry is the instance host (e.g. git.0x0f.dev) and the owner is
+  # the repository owner namespace (github.repository_owner). The registry
+  # host is derived from the instance server URL unless the optional
+  # FORGEJO_REGISTRY secret overrides it (needed only when the registry is
+  # not served on the instance host).
+  # Credentials: the Actions GITHUB_TOKEN cannot push packages: it
+  # authenticates as the special forgejo-actions user, for which package
+  # write access is not implemented, and the workflow `permissions` key is
+  # ignored by Forgejo. Configure the FORGEJO_PACKAGES_TOKEN secret with a
+  # personal access token scoped to write:package, owned by the triggering
+  # user (github.actor).
   # Like Stage 3, this job runs in a job container without a docker
   # daemon, so it uses the kaniko executor (a docker:// action) for the
   # build and push steps; the token is written to a Docker config file in
@@ -402,11 +446,28 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      # Resolve the registry host: an explicit FORGEJO_REGISTRY secret wins,
+      # otherwise derive the instance host from the server URL (stripping
+      # the scheme). GITHUB_SERVER_URL is the instance URL, e.g.
+      # https://git.0x0f.dev -> git.0x0f.dev.
+      - name: Resolve registry
+        id: registry
+        env:
+          FORGEJO_REGISTRY: ${{ secrets.FORGEJO_REGISTRY }}
+        run: |
+          set -euo pipefail
+          registry="${FORGEJO_REGISTRY:-}"
+          if [ -z "$registry" ]; then
+            registry="$(printf '%s' "$GITHUB_SERVER_URL" | sed -E 's#^https?://##; s#/$##')"
+          fi
+          echo "registry=$registry" >> "$GITHUB_OUTPUT"
+
       # kaniko reads registry credentials from a Docker config file
       # (DOCKER_CONFIG). Write it into the shared workspace so the kaniko
       # action containers can see it, and generate a .dockerignore that
       # keeps it out of the build context. The token itself never appears
-      # on a command line or in logs.
+      # on a command line or in logs. The config host must match the push
+      # destination host exactly; both come from the same step output above.
       - name: Configure registry credentials
         run: |
           set -euo pipefail
@@ -416,7 +477,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/.docker"
           chmod 700 "$GITHUB_WORKSPACE/.docker"
           printf '{"auths":{"%s":{"auth":"%s"}}}\n' \
-            "${{ secrets.FORGEJO_REGISTRY }}" "$auth" \
+            "${{ steps.registry.outputs.registry }}" "$auth" \
             > "$GITHUB_WORKSPACE/.docker/config.json"
           chmod 600 "$GITHUB_WORKSPACE/.docker/config.json"
           printf '.docker\n' > "$GITHUB_WORKSPACE/.dockerignore"
@@ -429,7 +490,7 @@ jobs:
           args: |
             --context=${{ github.workspace }}
             --dockerfile=Containerfile.controller
-            --destination=${{ secrets.FORGEJO_REGISTRY }}/varve-controller:${{ steps.tag.outputs.tag }}
+            --destination=${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/varve-controller:${{ steps.tag.outputs.tag }}
 
       - name: Build and push worker image
         uses: docker://gcr.io/kaniko-project/executor:v1.24.0
@@ -439,4 +500,4 @@ jobs:
           args: |
             --context=${{ github.workspace }}
             --dockerfile=Containerfile.worker
-            --destination=${{ secrets.FORGEJO_REGISTRY }}/varve-worker:${{ steps.tag.outputs.tag }}
+            --destination=${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/varve-worker:${{ steps.tag.outputs.tag }}
