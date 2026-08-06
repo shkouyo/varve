@@ -117,6 +117,12 @@ jobs:
           name: varve-binaries
           path: .
 
+      # The v1 artifact protocol spoken by the v3 actions stores files
+      # without their Unix mode bits, so the downloaded binaries arrive
+      # non-executable; restore the exec bit before running them.
+      - name: Restore binary exec bits
+        run: chmod +x varve varve-worker
+
       - name: Render sample pages
         run: |
           set -euo pipefail
@@ -308,10 +314,12 @@ jobs:
   # Stage 3: build both container images from the stage 1 binaries.
   # The runner executes jobs inside a job container that has no docker
   # daemon socket (/var/run/docker.sock), so `docker build` cannot work.
-  # Build with buildah instead: it needs no daemon, and combined with the
-  # vfs storage driver plus chroot isolation it does not even require a
-  # privileged container (verified: default oci isolation needs mount
-  # permissions that unprivileged job containers do not have).
+  # Job containers also run without CAP_SYS_ADMIN, which makes buildah
+  # unusable: it re-execs itself into a new user namespace to gain the
+  # mount privileges its RUN steps need, and the runner's seccomp policy
+  # blocks that (unshare(CLONE_NEWUSER) -> EPERM). The kaniko executor
+  # needs no daemon and no user or mount namespaces at all, so it runs
+  # unmodified in the job container.
   build-images:
     name: Build container images
     needs: test
@@ -326,25 +334,31 @@ jobs:
           name: varve-binaries
           path: .
 
-      # buildah on Ubuntu ships no unqualified-search registries, and the
-      # Containerfiles pull `archlinux/archlinux` by short name; point
-      # buildah at docker.io or the first build step fails to resolve it.
-      - name: Install buildah
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y buildah ca-certificates
-          printf 'unqualified-search-registries = ["docker.io"]\n' \
-            | sudo tee /etc/containers/registries.conf >/dev/null
+      # The v1 artifact protocol spoken by the v3 actions stores files
+      # without their Unix mode bits. The Containerfile COPY steps keep
+      # the source mode, so without this the images would ship
+      # non-executable binaries.
+      - name: Restore binary exec bits
+        run: chmod +x varve varve-worker
 
+      # kaniko resolves the short base-image name (archlinux/archlinux)
+      # to docker.io itself; no registries configuration is needed.
+      # Pin the executor tag: gcr.io/kaniko-project/executor:v1.24.0.
       - name: Build controller image
-        run: >-
-          buildah --storage-driver=vfs bud --isolation=chroot
-          -f Containerfile.controller -t varve-controller:ci .
+        uses: docker://gcr.io/kaniko-project/executor:v1.24.0
+        with:
+          args: |
+            --context=${{ github.workspace }}
+            --dockerfile=Containerfile.controller
+            --no-push
 
       - name: Build worker image
-        run: >-
-          buildah --storage-driver=vfs bud --isolation=chroot
-          -f Containerfile.worker -t varve-worker:ci .
+        uses: docker://gcr.io/kaniko-project/executor:v1.24.0
+        with:
+          args: |
+            --context=${{ github.workspace }}
+            --dockerfile=Containerfile.worker
+            --no-push
 
   # Stage 4: publish images to Forgejo Packages (container registry).
   # main -> latest; tag -> SemVer tag (e.g. 0.1.0).
@@ -354,9 +368,10 @@ jobs:
   # permission) and FORGEJO_REGISTRY (e.g. git.0x0f.dev) in the Forgejo
   # Secrets of this repository.
   # Like Stage 3, this job runs in a job container without a docker
-  # daemon, so it uses buildah (vfs storage + chroot isolation) for the
-  # build and push steps; the token is fed to `buildah login` via
-  # --password-stdin so it never appears on a command line or in logs.
+  # daemon, so it uses the kaniko executor (a docker:// action) for the
+  # build and push steps; the token is written to a Docker config file in
+  # the shared workspace and consumed via DOCKER_CONFIG, so it never
+  # appears on a command line or in logs.
   publish:
     name: Publish to Forgejo Packages
     needs: build-images
@@ -371,6 +386,13 @@ jobs:
           name: varve-binaries
           path: .
 
+      # The v1 artifact protocol spoken by the v3 actions stores files
+      # without their Unix mode bits. The Containerfile COPY steps keep
+      # the source mode, so without this the images would ship
+      # non-executable binaries.
+      - name: Restore binary exec bits
+        run: chmod +x varve varve-worker
+
       - name: Resolve image tag
         id: tag
         run: |
@@ -380,32 +402,41 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
-      # buildah on Ubuntu ships no unqualified-search registries, and the
-      # Containerfiles pull `archlinux/archlinux` by short name; point
-      # buildah at docker.io or the build steps fail to resolve it.
-      - name: Install buildah
+      # kaniko reads registry credentials from a Docker config file
+      # (DOCKER_CONFIG). Write it into the shared workspace so the kaniko
+      # action containers can see it, and generate a .dockerignore that
+      # keeps it out of the build context. The token itself never appears
+      # on a command line or in logs.
+      - name: Configure registry credentials
         run: |
-          sudo apt-get update
-          sudo apt-get install -y buildah ca-certificates
-          printf 'unqualified-search-registries = ["docker.io"]\n' \
-            | sudo tee /etc/containers/registries.conf >/dev/null
-
-      - name: Login to registry
-        run: |
-          echo "${{ secrets.FORGEJO_PACKAGES_TOKEN }}" \
-            | buildah login -u "${{ github.actor }}" \
-              --password-stdin "${{ secrets.FORGEJO_REGISTRY }}"
+          set -euo pipefail
+          auth="$(printf '%s:%s' \
+            "${{ github.actor }}" "${{ secrets.FORGEJO_PACKAGES_TOKEN }}" \
+            | base64 -w0)"
+          mkdir -p "$GITHUB_WORKSPACE/.docker"
+          chmod 700 "$GITHUB_WORKSPACE/.docker"
+          printf '{"auths":{"%s":{"auth":"%s"}}}\n' \
+            "${{ secrets.FORGEJO_REGISTRY }}" "$auth" \
+            > "$GITHUB_WORKSPACE/.docker/config.json"
+          chmod 600 "$GITHUB_WORKSPACE/.docker/config.json"
+          printf '.docker\n' > "$GITHUB_WORKSPACE/.dockerignore"
 
       - name: Build and push controller image
-        run: |
-          image="${{ secrets.FORGEJO_REGISTRY }}/varve-controller:${{ steps.tag.outputs.tag }}"
-          buildah --storage-driver=vfs bud --isolation=chroot \
-            -f Containerfile.controller -t "$image" .
-          buildah --storage-driver=vfs push "$image"
+        uses: docker://gcr.io/kaniko-project/executor:v1.24.0
+        env:
+          DOCKER_CONFIG: ${{ github.workspace }}/.docker
+        with:
+          args: |
+            --context=${{ github.workspace }}
+            --dockerfile=Containerfile.controller
+            --destination=${{ secrets.FORGEJO_REGISTRY }}/varve-controller:${{ steps.tag.outputs.tag }}
 
       - name: Build and push worker image
-        run: |
-          image="${{ secrets.FORGEJO_REGISTRY }}/varve-worker:${{ steps.tag.outputs.tag }}"
-          buildah --storage-driver=vfs bud --isolation=chroot \
-            -f Containerfile.worker -t "$image" .
-          buildah --storage-driver=vfs push "$image"
+        uses: docker://gcr.io/kaniko-project/executor:v1.24.0
+        env:
+          DOCKER_CONFIG: ${{ github.workspace }}/.docker
+        with:
+          args: |
+            --context=${{ github.workspace }}
+            --dockerfile=Containerfile.worker
+            --destination=${{ secrets.FORGEJO_REGISTRY }}/varve-worker:${{ steps.tag.outputs.tag }}
