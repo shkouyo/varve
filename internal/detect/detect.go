@@ -197,18 +197,18 @@ type branchPlan struct {
 	upstreamErr error
 }
 
-// planBranch runs steps 1-3 of the per-branch pipeline: read SRCINFO, hash
+// planBranch runs steps 1-3 of the per-branch pipeline: read .SRCINFO, hash
 // it, parse the dotfile (with extras) and detect the VCS kind. It returns
 // nil when the branch must be skipped with a warning.
 func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
-	data, err := d.showFile(ctx, branch, "SRCINFO")
+	data, err := d.showFile(ctx, branch, ".SRCINFO")
 	if err != nil {
-		d.logger.Warn("detect: branch has no SRCINFO, skipping", "branch", branch, "error", err)
+		d.logger.Warn("detect: branch has no .SRCINFO, skipping", "branch", branch, "error", err)
 		return nil
 	}
 	info, err := srcinfo.Parse(data)
 	if err != nil {
-		d.logger.Warn("detect: invalid SRCINFO, skipping", "branch", branch, "error", err)
+		d.logger.Warn("detect: invalid .SRCINFO, skipping", "branch", branch, "error", err)
 		return nil
 	}
 	dotfile, err := d.parseDotfile(ctx, branch)

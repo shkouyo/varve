@@ -197,10 +197,10 @@ func (o *OrchestratorImpl) branchHead(ctx context.Context, branch string) (strin
 // detect/srcinfo.Hash detect computes at detection time); it is recorded on
 // the build row and compared on the next round.
 func (o *OrchestratorImpl) srcinfoHash(ctx context.Context, branch string) (string, error) {
-	cmd := o.execCommand(ctx, "git", "-C", o.mirrorDir, "show", branch+":SRCINFO")
+	cmd := o.execCommand(ctx, "git", "-C", o.mirrorDir, "show", branch+":.SRCINFO")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("read SRCINFO of branch %s: %w: %s", branch, err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("read .SRCINFO of branch %s: %w: %s", branch, err, strings.TrimSpace(string(out)))
 	}
 	return srcinfo.Hash(out), nil
 }

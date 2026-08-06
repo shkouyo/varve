@@ -85,7 +85,7 @@ func TestNewDetectorMirrorDir(t *testing.T) {
 // not recorded.
 func TestPollOncePlainPackage(t *testing.T) {
 	src := newSourceRepo(t, "foo", map[string]string{
-		"SRCINFO": srcinfoBody("foo", "1.0", "1"),
+		".SRCINFO": srcinfoBody("foo", "1.0", "1"),
 	})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
@@ -112,7 +112,7 @@ func TestPollOncePlainPackage(t *testing.T) {
 	assertChangeCount(t, sink, 1)
 
 	// 3. .SRCINFO change: enqueue (srcinfo).
-	commitFiles(t, src, map[string]string{"SRCINFO": srcinfoBody("foo", "1.0", "2")}, "bump pkgrel")
+	commitFiles(t, src, map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "2")}, "bump pkgrel")
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #3: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestPollOncePlainPackage(t *testing.T) {
 func TestPollOnceVCSGitUpstream(t *testing.T) {
 	withShimPath(t)
 	src := newSourceRepo(t, "foo-git", map[string]string{
-		"SRCINFO": srcinfoWithSource("foo-git", "1.0", "1", "git+https://example.org/upstream.git"),
+		".SRCINFO": srcinfoWithSource("foo-git", "1.0", "1", "git+https://example.org/upstream.git"),
 	})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
@@ -190,7 +190,7 @@ func TestPollOnceVCSGitUpstream(t *testing.T) {
 func TestPollOnceVCSSVNUpstream(t *testing.T) {
 	withShimPath(t)
 	src := newSourceRepo(t, "foo-svn", map[string]string{
-		"SRCINFO": srcinfoWithSource("foo-svn", "1.0", "1", "svn+https://example.org/upstream"),
+		".SRCINFO": srcinfoWithSource("foo-svn", "1.0", "1", "svn+https://example.org/upstream"),
 	})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
@@ -223,7 +223,7 @@ func TestPollOnceVCSSVNUpstream(t *testing.T) {
 // suffix.
 func TestPollOnceDotfileExtras(t *testing.T) {
 	src := newSourceRepo(t, "foo-git", map[string]string{
-		"SRCINFO": srcinfoBody("foo-git", "1.0", "1"),
+		".SRCINFO": srcinfoBody("foo-git", "1.0", "1"),
 		".varve.toml": `maintainers = ["main@example.org"]
 extras = ["meta/signing.toml"]
 `,
@@ -253,13 +253,13 @@ exclude = ["*-debug"]
 }
 
 // TestPollOnceSkips cover the per-branch fault isolation: a branch without
-// SRCINFO, one with an invalid dotfile and one whose sink submit conflicts
+// .SRCINFO, one with an invalid dotfile and one whose sink submit conflicts
 // are all skipped without blocking the other branches.
 func TestPollOnceSkips(t *testing.T) {
-	t.Run("missing SRCINFO", func(t *testing.T) {
+	t.Run("missing .SRCINFO", func(t *testing.T) {
 		src := newMultiBranchRepo(t, []branchSpec{
-			{name: "nosrc", files: map[string]string{"PKGBUILD": "# no SRCINFO here"}},
-			{name: "good", files: map[string]string{"SRCINFO": srcinfoBody("good", "1.0", "1")}},
+			{name: "nosrc", files: map[string]string{"PKGBUILD": "# no .SRCINFO here"}},
+			{name: "good", files: map[string]string{".SRCINFO": srcinfoBody("good", "1.0", "1")}},
 		})
 		store, _ := openStore(t)
 		sink := &fakeSink{}
@@ -277,10 +277,10 @@ func TestPollOnceSkips(t *testing.T) {
 	t.Run("invalid dotfile", func(t *testing.T) {
 		src := newMultiBranchRepo(t, []branchSpec{
 			{name: "bad", files: map[string]string{
-				"SRCINFO":     srcinfoBody("bad", "1.0", "1"),
+				".SRCINFO":    srcinfoBody("bad", "1.0", "1"),
 				".varve.toml": "not toml [[[",
 			}},
-			{name: "good", files: map[string]string{"SRCINFO": srcinfoBody("good", "1.0", "1")}},
+			{name: "good", files: map[string]string{".SRCINFO": srcinfoBody("good", "1.0", "1")}},
 		})
 		store, _ := openStore(t)
 		sink := &fakeSink{}
@@ -297,8 +297,8 @@ func TestPollOnceSkips(t *testing.T) {
 
 	t.Run("sink conflict", func(t *testing.T) {
 		src := newMultiBranchRepo(t, []branchSpec{
-			{name: "aaa", files: map[string]string{"SRCINFO": srcinfoBody("aaa", "1.0", "1")}},
-			{name: "bbb", files: map[string]string{"SRCINFO": srcinfoBody("bbb", "1.0", "1")}},
+			{name: "aaa", files: map[string]string{".SRCINFO": srcinfoBody("aaa", "1.0", "1")}},
+			{name: "bbb", files: map[string]string{".SRCINFO": srcinfoBody("bbb", "1.0", "1")}},
 		})
 		store, _ := openStore(t)
 		sink := &fakeSink{errOnce: true, err: errors.New("db: conflict")}
@@ -321,7 +321,7 @@ func TestPollOnceSkips(t *testing.T) {
 // upstream is still submitted on srcinfo changes with an empty ref.
 func TestPollOnceUpstreamQueryFailureSkips(t *testing.T) {
 	src := newSourceRepo(t, "foo-git", map[string]string{
-		"SRCINFO": srcinfoWithSource("foo-git", "1.0", "1", "https://example.org/foo.tar.gz"),
+		".SRCINFO": srcinfoWithSource("foo-git", "1.0", "1", "https://example.org/foo.tar.gz"),
 	})
 	store, _ := openStore(t)
 	sink := &fakeSink{}
@@ -345,7 +345,7 @@ func TestPollOnceUpstreamConcurrencyBounded(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		name := fmt.Sprintf("vcs%d-git", i)
 		branches = append(branches, branchSpec{name: name, files: map[string]string{
-			"SRCINFO": srcinfoWithSource(name, "1.0", "1", "git+https://example.org/upstream.git"),
+			".SRCINFO": srcinfoWithSource(name, "1.0", "1", "git+https://example.org/upstream.git"),
 		}})
 	}
 	src := newMultiBranchRepo(t, branches)
@@ -401,4 +401,56 @@ func assertChangeCount(t *testing.T, sink *fakeSink, want int) []Change {
 		t.Fatalf("submitted %d changes, want %d: %+v", len(got), want, got)
 	}
 	return got
+}
+
+// TestPlanBranchSrcinfoPath is the regression guard for the leading-dot
+// bug: planBranch must read the dotted ".SRCINFO" from the branch tree
+// (git show <branch>:.SRCINFO), so a branch carrying .SRCINFO is planned
+// with the expected hash while a branch without it — or with only a
+// non-dotted SRCINFO file — is skipped.
+func TestPlanBranchSrcinfoPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    map[string]string
+		wantNil  bool
+		wantHash string
+	}{
+		{
+			name:     "dotted .SRCINFO is read and hashed",
+			files:    map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "1")},
+			wantHash: hashOf(srcinfoBody("foo", "1.0", "1")),
+		},
+		{
+			name:    "missing .SRCINFO is skipped",
+			files:   map[string]string{"PKGBUILD": "# no .SRCINFO here"},
+			wantNil: true,
+		},
+		{
+			name:    "non-dotted SRCINFO alone is not enough",
+			files:   map[string]string{"SRCINFO": srcinfoBody("foo", "1.0", "1")},
+			wantNil: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := newSourceRepo(t, "pkg", tt.files)
+			store, _ := openStore(t)
+			d := newTestDetector(t, "file://"+src, store, &fakeSink{})
+			d.mirrorDir = cloneMirror(t, src)
+
+			p := d.planBranch(context.Background(), "pkg")
+			if tt.wantNil {
+				if p != nil {
+					t.Fatalf("planBranch = %+v, want nil (branch skipped)", p)
+				}
+				return
+			}
+			if p == nil {
+				t.Fatal("planBranch = nil, want a plan for a branch carrying .SRCINFO")
+			}
+			if p.hash != tt.wantHash {
+				t.Errorf("plan.hash = %q, want %q", p.hash, tt.wantHash)
+			}
+		})
+	}
 }

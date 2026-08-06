@@ -40,7 +40,7 @@ if [ "$2" = "clone" ] && [ "$n" -eq 1 ]; then
 fi
 case "$*" in
   *for-each-ref*) printf 'pkg\nmain\n' ;;
-  *:SRCINFO) printf 'pkgbase = pkg\n\tpkgver = 1.0\n\tpkgrel = 1\n\tarch = x86_64\npkgname = pkg\n' ;;
+  *:.SRCINFO) printf 'pkgbase = pkg\n\tpkgver = 1.0\n\tpkgrel = 1\n\tarch = x86_64\npkgname = pkg\n' ;;
 esac
 `, counter, counter, counter, record)
 }

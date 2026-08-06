@@ -360,7 +360,7 @@ func TestHelperProcess(t *testing.T) {
 			_ = ref
 			var content string
 			switch {
-			case file == "SRCINFO":
+			case file == ".SRCINFO":
 				content = state.Srcinfo
 			case strings.HasSuffix(file, ".varve.toml"):
 				content = state.Dotfile

@@ -28,11 +28,11 @@ import (
 // "wip/*" are dropped, everything else is kept.
 func TestListBranches(t *testing.T) {
 	src := newMultiBranchRepo(t, []branchSpec{
-		{name: "foo", files: map[string]string{"SRCINFO": srcinfoBody("foo", "1.0", "1")}},
-		{name: "bar", files: map[string]string{"SRCINFO": srcinfoBody("bar", "1.0", "1")}},
-		{name: "wip/a", files: map[string]string{"SRCINFO": srcinfoBody("wipa", "1.0", "1")}},
-		{name: "wip/b", files: map[string]string{"SRCINFO": srcinfoBody("wipb", "1.0", "1")}},
-		{name: "main", files: map[string]string{"SRCINFO": srcinfoBody("mainpkg", "1.0", "1")}},
+		{name: "foo", files: map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "1")}},
+		{name: "bar", files: map[string]string{".SRCINFO": srcinfoBody("bar", "1.0", "1")}},
+		{name: "wip/a", files: map[string]string{".SRCINFO": srcinfoBody("wipa", "1.0", "1")}},
+		{name: "wip/b", files: map[string]string{".SRCINFO": srcinfoBody("wipb", "1.0", "1")}},
+		{name: "main", files: map[string]string{".SRCINFO": srcinfoBody("mainpkg", "1.0", "1")}},
 	})
 	store, _ := openStore(t)
 	d := newTestDetector(t, "file://"+src, store, &fakeSink{})
@@ -53,8 +53,8 @@ func TestListBranches(t *testing.T) {
 // configuration leaves exclude_branches unset.
 func TestListBranchesDefaultExclude(t *testing.T) {
 	src := newMultiBranchRepo(t, []branchSpec{
-		{name: "foo", files: map[string]string{"SRCINFO": srcinfoBody("foo", "1.0", "1")}},
-		{name: "main", files: map[string]string{"SRCINFO": srcinfoBody("mainpkg", "1.0", "1")}},
+		{name: "foo", files: map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "1")}},
+		{name: "main", files: map[string]string{".SRCINFO": srcinfoBody("mainpkg", "1.0", "1")}},
 	})
 	store, _ := openStore(t)
 	d := newTestDetector(t, "file://"+src, store, &fakeSink{})
@@ -74,7 +74,7 @@ func TestListBranchesDefaultExclude(t *testing.T) {
 // errors for a branch that does not exist.
 func TestBranchSnapshot(t *testing.T) {
 	src := newSourceRepo(t, "foo", map[string]string{
-		"SRCINFO": srcinfoBody("foo", "1.0", "1"),
+		".SRCINFO": srcinfoBody("foo", "1.0", "1"),
 	})
 	store, _ := openStore(t)
 	d := newTestDetector(t, "file://"+src, store, &fakeSink{})
