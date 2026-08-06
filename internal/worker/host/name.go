@@ -28,12 +28,11 @@ import (
 )
 
 // workerNameFile is the node-name persistence file relative to the data
-// directory (DESIGN §2.10: a host keeps its auto-generated name across
-// restarts).
+// directory: a host keeps its auto-generated name across restarts.
 const workerNameFile = "worker-name"
 
 // adjectives and animals are the built-in word lists for auto-generated
-// node names ("proud-heron-7" style, proposal §5.3).
+// node names ("proud-heron-7" style).
 var adjectives = []string{
 	"proud", "swift", "brave", "calm", "clever", "eager", "gentle", "lively",
 	"mellow", "nimble", "quiet", "rustic", "steady", "sunny", "witty", "zippy",
@@ -45,7 +44,7 @@ var animals = []string{
 }
 
 // resolveName returns the node name: VARVE_WORKER_NAME when set, otherwise
-// the persisted auto-generated name (DESIGN §2.10).
+// the persisted auto-generated name.
 func resolveName(cfg *config.WorkerConfig) (string, error) {
 	if cfg.WorkerName != "" {
 		return cfg.WorkerName, nil
@@ -54,8 +53,7 @@ func resolveName(cfg *config.WorkerConfig) (string, error) {
 }
 
 // persistedName reads a previously stored name, or generates and persists
-// a new one, so a host node keeps its identity across restarts (DESIGN
-// §2.10, proposal §5.3).
+// a new one, so a host node keeps its identity across restarts.
 func persistedName(path string) (string, error) {
 	if b, err := os.ReadFile(path); err == nil {
 		if name := strings.TrimSpace(string(b)); name != "" {

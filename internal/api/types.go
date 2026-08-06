@@ -22,11 +22,10 @@ import (
 	"git.0x0f.dev/varve/internal/sign"
 )
 
-// The worker protocol types are defined in dispatch (DETAIL §4.3 types.go)
-// and re-exported here by alias (decision D3, DETAIL §0.2 D3): worker
-// packages depend only on api, while the JSON wire contract stays
-// snake_case (DESIGN §5.3). KeyMaterial is likewise re-exported from sign
-// so worker packages never import sign directly.
+// The worker protocol types are defined in dispatch and re-exported here
+// by alias: worker packages depend only on api, while the JSON wire
+// contract stays snake_case. KeyMaterial is likewise re-exported from
+// sign so worker packages never import sign directly.
 
 type (
 	// RegisterReq is the POST /register payload.
@@ -35,16 +34,17 @@ type (
 	RegisterResp = dispatch.RegisterResp
 	// HeartbeatReq is the POST /heartbeat payload.
 	HeartbeatReq = dispatch.HeartbeatReq
-	// HeartbeatResp is the POST /heartbeat response (cancellation channel 1).
+	// HeartbeatResp is the POST /heartbeat response (carries the
+	// controller's cancellation signals).
 	HeartbeatResp = dispatch.HeartbeatResp
 	// PollReq is the POST /poll payload.
 	PollReq = dispatch.PollReq
 	// PollResp is the POST /poll response.
 	PollResp = dispatch.PollResp
 	// TaskDetail is the full task description handed to a worker
-	// (DESIGN §5.4, every field).
+	// (every field of the wire contract).
 	TaskDetail = dispatch.TaskDetail
-	// LogSegment is one buffered log batch (DESIGN §5.3).
+	// LogSegment is one buffered log batch.
 	LogSegment = dispatch.LogSegment
 	// LogAck acknowledges a log segment (offset + durable cancel flag).
 	LogAck = dispatch.LogAck
@@ -54,13 +54,13 @@ type (
 	ResultError = dispatch.ResultError
 	// FileMeta is the upload acknowledgment (name + new offset).
 	FileMeta = dispatch.FileMeta
-	// Metrics carries node-level system metrics (DESIGN §5.3).
+	// Metrics carries node-level system metrics.
 	Metrics = dispatch.Metrics
 	// TaskProgress is one running task's progress plus a resource sample.
 	TaskProgress = dispatch.TaskProgress
 	// ContainerState describes one container tracked by a host node.
 	ContainerState = dispatch.ContainerState
-	// KeyMaterial is the one-shot signing key material (sign package,
-	// D3: workers depend on api, not sign).
+	// KeyMaterial is the one-shot signing key material (sign package;
+	// workers depend on api, not sign).
 	KeyMaterial = sign.KeyMaterial
 )

@@ -62,7 +62,7 @@ func headerBlock(headers, name string) string {
 }
 
 // TestBuildMessageHeaders asserts every required RFC 5322 header is present
-// and well-formed (DETAIL §8.7 case 1).
+// and well-formed.
 func TestBuildMessageHeaders(t *testing.T) {
 	m := testMailer(config.MailConfig{From: "varve@example.org"}, nil)
 	info := testInfo()
@@ -101,7 +101,7 @@ func TestBuildMessageHeaders(t *testing.T) {
 }
 
 // TestBuildMessageBody asserts the plain-text body carries every field the
-// notification must contain, with no HTML markup (DETAIL §8.7 case 1).
+// notification must contain, with no HTML markup.
 func TestBuildMessageBody(t *testing.T) {
 	m := testMailer(config.MailConfig{From: "varve@example.org"}, nil)
 	info := testInfo()
@@ -123,7 +123,7 @@ func TestBuildMessageBody(t *testing.T) {
 	if strings.Contains(msg, "<html") || strings.Contains(msg, "<body") {
 		t.Error("message must not contain HTML markup")
 	}
-	// Line endings must be CRLF throughout (RFC 5322 §2.1).
+	// Line endings must be CRLF throughout (RFC 5322, section 2.1).
 	for i := 0; i < len(msg); i++ {
 		if msg[i] == '\n' && (i == 0 || msg[i-1] != '\r') {
 			t.Fatalf("bare LF at byte %d", i)

@@ -15,14 +15,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package host implements the varve-worker host mode (proposal §5.2,
-// DESIGN §2.10/§7.3, DETAIL §11): a node that registers with the
-// controller, heartbeats with system metrics and running-container state,
-// polls for tasks, runs each task in its own one-shot agent container,
-// monitors the container exit code (classifying normal / killed / OOM /
-// timeout outcomes), reports results on the agent's behalf when it
-// cannot, and deregisters on graceful shutdown. The host itself never
-// runs makepkg (proposal §5.2).
+// Package host implements the varve-worker host mode: a node that
+// registers with the controller, heartbeats with system metrics and
+// running-container state, polls for tasks, runs each task in its own
+// one-shot agent container, monitors the container exit code (classifying
+// normal / killed / OOM / timeout outcomes), reports results on the
+// agent's behalf when it cannot, and deregisters on graceful shutdown. The
+// host itself never runs makepkg.
 package host
 
 import (
@@ -38,14 +37,12 @@ import (
 	"git.0x0f.dev/varve/internal/config"
 )
 
-// version is the node version reported at registration. It tracks the
-// documented design version (DETAIL §15.4); cmd/varve-worker may override
-// it later if a build-time version is introduced.
+// version is the node version reported at registration. cmd/varve-worker
+// may override it later if a build-time version is introduced.
 const version = "0.1.0"
 
 // client is the narrowed worker protocol surface consumed by this module
-// (DETAIL §0.3 rule 5: the consumer defines the interface). *api.Client
-// satisfies it.
+// (the consumer defines the interface). *api.Client satisfies it.
 type client interface {
 	Register(ctx context.Context, req api.RegisterReq) (*api.RegisterResp, error)
 	Heartbeat(ctx context.Context, req api.HeartbeatReq) (*api.HeartbeatResp, error)
@@ -56,7 +53,7 @@ type client interface {
 
 // runtime is the container-runtime surface consumed by this module
 // (docker/podman CLI). It is the test substitute point for all container
-// operations (DETAIL §11.2).
+// operations.
 type runtime interface {
 	Pull(ctx context.Context, image string) error
 	// Run starts a detached container ("run -d") and returns its ID.
@@ -79,11 +76,11 @@ type ContainerStatus struct {
 type containerRun struct {
 	taskID    string
 	id        string
-	cancelled bool // set when the controller's cancel signal killed it (D4)
+	cancelled bool // set when the controller's cancel signal killed it
 }
 
-// Runner is a host-mode worker node (DETAIL §11.3). It is constructed via
-// NewRunner and driven by Run; the zero value is not usable.
+// Runner is a host-mode worker node. It is constructed via NewRunner and
+// driven by Run; the zero value is not usable.
 //
 // Concurrency: after NewRunner, the public entry point is Run, which owns
 // the node's lifecycle. All internal state is guarded by mu; slots is a
@@ -103,10 +100,10 @@ type Runner struct {
 	mu         sync.Mutex
 	containers map[string]*containerRun // taskID → running container
 
-	// Intervals and timeouts; injectable by same-package tests (DETAIL
-	// §0.3 rule 3: clock injection).
-	pollInterval       time.Duration // retry delay when a poll yields no task (D8: 5s)
-	heartbeatInterval  time.Duration // heartbeat period (proposal §19: 30s)
+	// Intervals and timeouts; injectable by same-package tests (clock
+	// injection).
+	pollInterval       time.Duration // retry delay when a poll yields no task (5s)
+	heartbeatInterval  time.Duration // heartbeat period (30s)
 	timeoutCheck       time.Duration // monitor deadline check granularity
 	drainInterval      time.Duration // shutdown drain poll interval
 	registerBackoff    time.Duration // initial register retry delay
@@ -119,14 +116,14 @@ var (
 	_ runtime = (*containerRuntime)(nil)
 )
 
-// NewRunner constructs a host runner for cfg (DETAIL §11.2). Preconditions:
-// cfg.Role=host and cfg.Image non-empty. It probes the container runtime
+// NewRunner constructs a host runner for cfg. Preconditions: cfg.Role=host
+// and cfg.Image non-empty. It probes the container runtime
 // (VARVE_CONTAINER_RUNTIME override, else docker → podman via "command
 // -v"), resolves the stable node name (VARVE_WORKER_NAME or a persisted
 // auto-generated name) and builds the capacity semaphore. It returns an
-// error — the documented *Runner-only signature cannot express it — when
-// no container runtime is available or the node name cannot be resolved,
-// so the caller fails startup (DETAIL §11.5: "NewRunner 报错, 启动失败").
+// error — the *Runner-only signature cannot express it — when no container
+// runtime is available or the node name cannot be resolved, so the caller
+// fails startup.
 func NewRunner(cfg *config.WorkerConfig, client client) (*Runner, error) {
 	if cfg.Role != "host" {
 		return nil, fmt.Errorf("host: NewRunner requires cfg.Role=host, got %q", cfg.Role)
@@ -173,7 +170,7 @@ func newRunner(cfg *config.WorkerConfig, client client, rt runtime, name, dataDi
 
 // needsReregister reports whether a node-level error means the node was
 // deleted or its credentials rotated: heartbeat/poll then re-register
-// (idempotent upsert, DETAIL §11.4 item 6).
+// (idempotent upsert).
 func needsReregister(err error) bool {
 	var apiErr *api.APIError
 	if !errors.As(err, &apiErr) {

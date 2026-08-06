@@ -15,11 +15,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package storage implements the unified file interface of the controller
-// (PROPOSAL §10, DESIGN §2.5, §4). It is the only channel through which the
-// controller reads and writes repository files, staging area files and side
-// files. Workers never use this module directly: all artifacts are relayed
-// through the controller API (decision A1).
+// Package storage implements the unified file interface of the controller.
+// It is the only channel through which the controller reads and writes
+// repository files, staging area files and side files. Workers never use
+// this module directly: all artifacts are relayed through the controller
+// API.
 //
 // Two backends are provided: local (real filesystem, OpenLocal) and
 // S3-compatible object stores (MinIO SDK, OpenS3). Both share one name
@@ -36,7 +36,7 @@ import (
 
 // ErrNotFound is returned by Get and Stat when the named object does not
 // exist. Delete never returns it: deletion is idempotent and treats a
-// missing object as success (DETAIL §5.2).
+// missing object as success.
 var ErrNotFound = errors.New("storage: object not found")
 
 // FileInfo is the metadata returned by Stat.
@@ -46,9 +46,9 @@ type FileInfo struct {
 }
 
 // Backend is the object-level file interface shared by both storage
-// implementations (DETAIL §5.2). Names are virtual paths relative to the
-// backend root: the root is flat for repository files ("<name>") and
-// staging files live under "staging/<taskID>/<name>" (see StagingPath).
+// implementations. Names are virtual paths relative to the backend root:
+// the root is flat for repository files ("<name>") and staging files live
+// under "staging/<taskID>/<name>" (see StagingPath).
 //
 // All methods are safe for concurrent use. Writes to the same name must be
 // serialized by the caller (dispatch's single-writer mutex); the backend
@@ -63,7 +63,7 @@ type Backend interface {
 	// Delete removes name. Deleting a missing object is a success.
 	Delete(ctx context.Context, name string) error
 	// List returns the names in the flat root area that match the glob
-	// prefix. Staging area entries are never returned (DESIGN §4.1).
+	// prefix. Staging area entries are never returned.
 	List(ctx context.Context, prefix string) ([]string, error)
 	// Stat returns the metadata of name, or ErrNotFound when missing.
 	Stat(ctx context.Context, name string) (FileInfo, error)
@@ -71,17 +71,17 @@ type Backend interface {
 
 // Mover is an optional Backend capability for moving an object without a
 // full copy through the controller: local renames the file, s3 degrades to
-// Get+Put+Delete (non-atomic, safe under the single-writer mutex, DETAIL
-// §5.5). Callers detect support with a type assertion.
+// Get+Put+Delete (non-atomic, safe under the single-writer mutex). Callers
+// detect support with a type assertion.
 type Mover interface {
 	Move(ctx context.Context, src, dst string) error
 }
 
 // Appender is an optional Backend capability for resuming a segmented
-// upload (PROPOSAL §4.3): it appends r to name assuming the stored size
-// already equals offset. local appends with O_APPEND; s3 degrades to
-// read-merge-reupload (correctness preserved, efficiency lost, DETAIL
-// §5.5). Callers detect support with a type assertion.
+// upload: it appends r to name assuming the stored size already equals
+// offset. local appends with O_APPEND; s3 degrades to read-merge-reupload
+// (correctness preserved, efficiency lost). Callers detect support with a
+// type assertion.
 type Appender interface {
 	Append(ctx context.Context, name string, r io.Reader, offset int64) error
 }

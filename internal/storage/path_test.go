@@ -21,8 +21,8 @@ import (
 	"testing"
 )
 
-// TestStagingPath asserts the documented staging convention
-// (DESIGN §4.1): "staging/<taskID>/<fileName>".
+// TestStagingPath asserts the staging convention:
+// "staging/<taskID>/<fileName>".
 func TestStagingPath(t *testing.T) {
 	cases := []struct {
 		taskID, fileName, want string
@@ -38,7 +38,7 @@ func TestStagingPath(t *testing.T) {
 	}
 }
 
-// TestValidName is the path traversal and whitelist table (DETAIL §5.4).
+// TestValidName is the path traversal and whitelist table.
 func TestValidName(t *testing.T) {
 	valid := []string{
 		"foo-1.2.3-1-x86_64.pkg.tar.zst",

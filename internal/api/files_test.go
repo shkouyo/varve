@@ -28,9 +28,9 @@ import (
 
 const testFileName = "foo-1.2.3-1-x86_64.pkg.tar.zst"
 
-// TestUploadResume exercises the segmented upload contract (DESIGN §5.3,
-// optimization O1): a 409 with the current offset lets the worker resume
-// from there; overwriting an existing offset is rejected.
+// TestUploadResume exercises the segmented upload contract: a 409 with
+// the current offset lets the worker resume from there; overwriting an
+// existing offset is rejected.
 func TestUploadResume(t *testing.T) {
 	f := newFake()
 	srv := newTestServer(t, f)
@@ -113,10 +113,10 @@ func TestDownloadStreams(t *testing.T) {
 	}
 }
 
-// TestLargeUploadStreams asserts the streaming property (DESIGN §4.3,
-// DETAIL §9.7 item 6): a 10 MiB upload must never be loaded into memory as
-// a whole — the fake records the largest read chunk it received — and the
-// staged content must hash identically to the source.
+// TestLargeUploadStreams asserts the streaming property: a 10 MiB upload
+// must never be loaded into memory as a whole — the fake records the
+// largest read chunk it received — and the staged content must hash
+// identically to the source.
 func TestLargeUploadStreams(t *testing.T) {
 	const size = 10 << 20 // 10 MiB
 

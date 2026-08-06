@@ -305,7 +305,7 @@ func TestLoadWorkerErrors(t *testing.T) {
 }
 
 func TestLoadWorkerOneShot(t *testing.T) {
-	// Decision A26: a one-shot agent does not need VARVE_TOKEN.
+	// A one-shot agent does not need VARVE_TOKEN.
 	clearWorkerEnv(t)
 	t.Setenv("VARVE_CONTROLLER_URL", "https://c")
 	t.Setenv("VARVE_ROLE", "agent")

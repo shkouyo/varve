@@ -34,9 +34,9 @@ func (e *testEnv) reportSucceeded(t *testing.T, taskID, token string, artifacts 
 		ResultReq{Status: "succeeded", Commit: commit, Artifacts: artifacts})
 }
 
-// TestReportSucceeded covers the happy path: manifest verification, ingest
-// with the resolved worker name, the SQLite transaction (succeeded + package
-// update), staging cleanup and D1 commit recording.
+// TestReportSucceeded covers the happy path: manifest verification,
+// ingest with the resolved worker name, the SQLite transaction (succeeded
+// + package update), staging cleanup and commit recording.
 func TestReportSucceeded(t *testing.T) {
 	env := newTestEnv(t)
 	artifacts := testArtifacts("foo", "1.0-1")
@@ -66,12 +66,13 @@ func TestReportSucceeded(t *testing.T) {
 		t.Fatalf("GetBuild: %v", err)
 	}
 	if build.Commit != "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" {
-		t.Errorf("build commit = %q, want the dispatched commit (fallback, D1)", build.Commit)
+		t.Errorf("build commit = %q, want the dispatched commit (fallback)", build.Commit)
 	}
-	// The actual checked-out commit reaches the sidecar via the build handed
-	// to Ingest (D1): the side file [build].commit is the authoritative record.
+	// The actual checked-out commit reaches the sidecar via the build
+	// handed to Ingest: the side file [build].commit is the authoritative
+	// record.
 	if env.up.lastBuild == nil || env.up.lastBuild.Commit != "deadbeef" {
-		t.Errorf("ingest build commit = %+v, want the reported commit deadbeef (D1)", env.up.lastBuild)
+		t.Errorf("ingest build commit = %+v, want the reported commit deadbeef", env.up.lastBuild)
 	}
 	if build.Artifacts == nil || len(build.Artifacts) != len(artifacts) {
 		t.Errorf("build artifacts = %+v", build.Artifacts)
@@ -183,10 +184,10 @@ func (e *testEnv) assertFailedVerify(t *testing.T, taskID, wantErrFragment strin
 	}
 }
 
-// TestReportIngestOrder asserts the D7 sequence recorded by the fakes:
-// verification reads happen before Ingest, and the staging cleanup only
-// after Ingest (the SQLite commit sits between them and is observable as
-// the terminal state once the report returns).
+// TestReportIngestOrder asserts the ingest sequence recorded by the
+// fakes: verification reads happen before Ingest, and the staging cleanup
+// only after Ingest (the SQLite commit sits between them and is
+// observable as the terminal state once the report returns).
 func TestReportIngestOrder(t *testing.T) {
 	env := newTestEnv(t)
 	artifacts := testArtifacts("foo", "1.0-1")
@@ -276,8 +277,9 @@ func TestReportIngestFailure(t *testing.T) {
 	}
 }
 
-// TestReportCancellationPriority covers D4: after a cancel request only a
-// cancelled report is accepted; any other status is a conflict.
+// TestReportCancellationPriority covers cancellation priority: after a
+// cancel request only a cancelled report is accepted; any other status is
+// a conflict.
 func TestReportCancellationPriority(t *testing.T) {
 	env := newTestEnv(t)
 	artifacts := testArtifacts("foo", "1.0-1")

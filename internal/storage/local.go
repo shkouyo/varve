@@ -34,9 +34,9 @@ import (
 // into memory at once (memory-cap test asserts this bound).
 const copyBufSize = 256 << 10
 
-// localBackend implements Backend over a real filesystem directory (DESIGN
-// §2.5). Names are validated and joined onto the root; all operations are
-// confined to the root by construction.
+// localBackend implements Backend over a real filesystem directory. Names
+// are validated and joined onto the root; all operations are confined to
+// the root by construction.
 type localBackend struct {
 	root string
 }
@@ -62,9 +62,9 @@ func (b *localBackend) resolve(name string) (string, error) {
 }
 
 // Put writes r atomically: the content is first written to a sibling temp
-// file, fsynced, then renamed over the target (DETAIL §5.4). A crash may
-// leave the temp file behind; the caller's staging sweep is responsible for
-// it. size is informational and ignored.
+// file, fsynced, then renamed over the target. A crash may leave the temp
+// file behind; the caller's staging sweep is responsible for it. size is
+// informational and ignored.
 func (b *localBackend) Put(ctx context.Context, name string, r io.Reader, size int64) error {
 	target, err := b.resolve(name)
 	if err != nil {
@@ -116,8 +116,7 @@ func (b *localBackend) Get(ctx context.Context, name string, w io.Writer) error 
 	return nil
 }
 
-// Delete removes name. Deleting a missing object is a success (idempotent,
-// DETAIL §5.2).
+// Delete removes name. Deleting a missing object is a success (idempotent).
 func (b *localBackend) Delete(ctx context.Context, name string) error {
 	target, err := b.resolve(name)
 	if err != nil {
@@ -133,8 +132,8 @@ func (b *localBackend) Delete(ctx context.Context, name string) error {
 }
 
 // List walks the root and returns the file names in the flat root area that
-// match the glob prefix (DETAIL §5.4). The staging/ subtree is skipped, so
-// staging entries never appear in results.
+// match the glob prefix. The staging/ subtree is skipped, so staging
+// entries never appear in results.
 func (b *localBackend) List(ctx context.Context, prefix string) ([]string, error) {
 	var names []string
 	err := filepath.WalkDir(b.root, func(p string, d fs.DirEntry, err error) error {
@@ -195,7 +194,7 @@ func (b *localBackend) Stat(ctx context.Context, name string) (FileInfo, error) 
 }
 
 // Move renames src onto dst. rename is atomic on the same filesystem and
-// the source disappears afterwards (Mover capability, DETAIL §5.2).
+// the source disappears afterwards (Mover capability).
 func (b *localBackend) Move(ctx context.Context, src, dst string) error {
 	srcPath, err := b.resolve(src)
 	if err != nil {
@@ -215,10 +214,10 @@ func (b *localBackend) Move(ctx context.Context, src, dst string) error {
 }
 
 // Append appends the content of r at the end of name (Appender capability).
-// The caller guarantees offset == current size (pre-checked, DETAIL §5.2);
-// as a defensive guard the backend verifies it and refuses a mismatch.
-// O_APPEND makes every write land at the end of the file, so a verified
-// offset is appended to directly.
+// The caller guarantees offset == current size (pre-checked); as a
+// defensive guard the backend verifies it and refuses a mismatch. O_APPEND
+// makes every write land at the end of the file, so a verified offset is
+// appended to directly.
 func (b *localBackend) Append(ctx context.Context, name string, r io.Reader, offset int64) error {
 	target, err := b.resolve(name)
 	if err != nil {

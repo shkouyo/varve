@@ -24,9 +24,9 @@ import (
 	"time"
 )
 
-// sampleSidecar mirrors the DESIGN §3.2 / PROPOSAL §11.2 example with every
-// field populated, including a package, a detached signature and the
-// .SRCINFO snapshot entry.
+// sampleSidecar mirrors the documented example with every field populated,
+// including a package, a detached signature and the .SRCINFO snapshot
+// entry.
 func sampleSidecar() *Sidecar {
 	return &Sidecar{
 		Pkgbase: "foo",
@@ -49,7 +49,7 @@ func sampleSidecar() *Sidecar {
 
 // TestSidecarRoundTrip asserts that serialization and deserialization are
 // mutually inverse: every field of a fully populated side file survives the
-// go-toml v2 round trip (DETAIL §6.7 case 3, T6.1).
+// go-toml v2 round trip.
 func TestSidecarRoundTrip(t *testing.T) {
 	cases := []struct {
 		name string
@@ -77,9 +77,9 @@ func TestSidecarRoundTrip(t *testing.T) {
 	}
 }
 
-// TestSidecarShape asserts the TOML structure matches DESIGN §3.2: lowercase
-// keys, a [[artifacts]] table array, a [build] table and the build time
-// serialized as an RFC3339 value.
+// TestSidecarShape asserts the TOML structure: lowercase keys, a
+// [[artifacts]] table array, a [build] table and the build time serialized
+// as an RFC3339 value.
 func TestSidecarShape(t *testing.T) {
 	data, err := MarshalSidecar(sampleSidecar())
 	if err != nil {
@@ -110,8 +110,7 @@ func TestSidecarShape(t *testing.T) {
 	}
 }
 
-// TestParseSidecarErrors asserts malformed and unknown-key input is refused
-// (T6.1: damaged TOML -> error).
+// TestParseSidecarErrors asserts malformed and unknown-key input is refused.
 func TestParseSidecarErrors(t *testing.T) {
 	cases := []struct {
 		name string

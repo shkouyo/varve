@@ -31,7 +31,7 @@ import (
 // transport is selected by cfg.TLS: "none" is plaintext, "starttls" starts
 // plaintext and upgrades with STARTTLS, and "implicit" speaks TLS from the
 // first byte (port 465 semantics). When cfg.Username is non-empty the
-// client authenticates with AUTH LOGIN (DETAIL §8.4).
+// client authenticates with AUTH LOGIN.
 func (m *Mailer) send(ctx context.Context, rcpt string, msg []byte) error {
 	client, err := m.dial(ctx)
 	if err != nil {

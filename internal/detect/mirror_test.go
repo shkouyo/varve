@@ -28,7 +28,7 @@ import (
 
 // TestEnsureMirrorCloneThenFetch pins the exact mirror maintenance command
 // lines: "git clone --mirror" on first use and "git fetch origin
-// +refs/heads/*:refs/heads/* --prune" afterwards (DETAIL §3.4 #1).
+// +refs/heads/*:refs/heads/* --prune" afterwards.
 func TestEnsureMirrorCloneThenFetch(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "calls")
 	script := "echo \"$*\" >> '" + record + "'\n"
@@ -84,7 +84,7 @@ func TestEnsureMirrorFetchFailure(t *testing.T) {
 }
 
 // TestMirrorTimeout asserts the 60s mirror command timeout fallback: a
-// hung command is killed when the deadline passes (DETAIL §3.4 #1).
+// hung command is killed when the deadline passes.
 func TestMirrorTimeout(t *testing.T) {
 	if mirrorTimeout != 60*time.Second {
 		t.Errorf("mirrorTimeout = %v, want 60s", mirrorTimeout)

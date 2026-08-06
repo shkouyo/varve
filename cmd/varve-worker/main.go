@@ -16,10 +16,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Command varve-worker is the worker-side binary of the varve build
-// system (proposal §5.2–5.3, DESIGN §2.12, DETAIL §14). It loads the
-// worker configuration from the environment — including the optional
-// CWD .env file — and dispatches to the host runner (default) or the
-// in-container agent runner by VARVE_ROLE. It takes no subcommands.
+// system. It loads the worker configuration from the environment —
+// including the optional CWD .env file — and dispatches to the host
+// runner (default) or the in-container agent runner by VARVE_ROLE. It
+// takes no subcommands.
 package main
 
 import (
@@ -29,7 +29,7 @@ import (
 
 // main runs the worker and exits non-zero on any startup or fatal
 // runtime error, so that containers and process supervisors observe
-// the failure (DETAIL §14.2).
+// the failure.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "varve-worker: %v\n", err)

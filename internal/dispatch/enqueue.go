@@ -35,19 +35,19 @@ import (
 const maxScanBuilds = 10000
 
 // Enqueue validates one detected change and creates the task plus its
-// mirrored build row in one transaction (DETAIL §4.4 step 1). It is the
-// detect.Sink implementation (force=false). force=true skips the D6 name
+// mirrored build row in one transaction. It is the detect.Sink
+// implementation (force=false). force=true skips the name-conflict
 // comparison and is used by the admin rebuild path.
 //
-// Order: D6 conflict check → branch HEAD resolution (TaskDetail
+// Order: name-conflict check → branch HEAD resolution (TaskDetail
 // source.commit and the archive snapshot both need it) → .SRCINFO hash →
 // package upsert (creates the row for a first-time pkgbase) → CreateTask
 // (the partial unique index is the dedupe backstop) → archive snapshot in
 // archive mode.
 //
 // An archive failure finalizes the task as failed (stage "ingest") and
-// logs the problem but never blocks the queue: other branches continue
-// (confirmed decision). Concurrently safe.
+// logs the problem but never blocks the queue: other branches continue.
+// Concurrently safe.
 func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force bool) error {
 	if c.Package.Pkgbase == "" {
 		return fmt.Errorf("dispatch: enqueue: empty pkgbase")
@@ -99,7 +99,7 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 		if err := o.archiveSource(ctx, t.ID, commit); err != nil {
 			// Snapshot failure: the task is recorded as failed with stage
 			// "ingest" so the failure is visible and notified, and the queue
-			// keeps flowing (confirmed decision).
+			// keeps flowing.
 			log.Printf("dispatch: enqueue %s: archive failed: %v", t.ID, err)
 			_ = o.finalizeTask(ctx, t.ID, "failed", "ingest: "+err.Error(), nil, nil)
 			o.notifyFailure(ctx, t, b, "ingest", err.Error())
@@ -114,11 +114,11 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 	return nil
 }
 
-// checkNameConflict implements the D6 pre-check for one change: the
-// incoming pkgbase must not collide with a pkgname produced by the last
-// build of another package, and must not be a duplicate of a change already
-// enqueued in this detection round. Conflicts return ErrConflict so detect
-// skips the branch without blocking the other branches.
+// checkNameConflict implements the pre-check for one change: the incoming
+// pkgbase must not collide with a pkgname produced by the last build of
+// another package, and must not be a duplicate of a change already
+// enqueued in this detection round. Conflicts return ErrConflict so
+// detect skips the branch without blocking the other branches.
 func (o *OrchestratorImpl) checkNameConflict(ctx context.Context, c detect.Change) error {
 	// Round set: prune entries older than one poll interval (a detection
 	// round), then look for a duplicate pkgbase.
@@ -135,8 +135,8 @@ func (o *OrchestratorImpl) checkNameConflict(ctx context.Context, c detect.Chang
 		return fmt.Errorf("%w: %s already enqueued in this detection round", ErrConflict, c.Package.Pkgbase)
 	}
 
-	// Packages table: another package's last build produced a pkgname equal
-	// to the incoming pkgbase (D6: "其他 pkgbase 的 last 产物 pkgname").
+	// Packages table: another package's last build produced a pkgname
+	// equal to the incoming pkgbase.
 	produced, err := o.producedPkgnames(ctx)
 	if err != nil {
 		return fmt.Errorf("dispatch: conflict check: %w", err)
@@ -150,7 +150,7 @@ func (o *OrchestratorImpl) checkNameConflict(ctx context.Context, c detect.Chang
 
 // producedPkgnames returns pkgname → producing pkgbase derived from the
 // newest build record of every package (only successful ingests carry
-// artifacts). Used by Enqueue (D6) and ValidateConflicts.
+// artifacts). Used by Enqueue and ValidateConflicts.
 func (o *OrchestratorImpl) producedPkgnames(ctx context.Context) (map[string]string, error) {
 	pkgs, _, err := o.store.ListPackages(ctx, "", 1, maxScanBuilds)
 	if err != nil {
@@ -181,9 +181,9 @@ func (o *OrchestratorImpl) producedPkgnames(ctx context.Context) (map[string]str
 }
 
 // branchHead resolves the current HEAD commit of a mirror branch with the
-// same canonical command detect uses ("git rev-parse refs/heads/<branch>",
-// DESIGN §2.3). It feeds TaskDetail.source.commit (fallback for D1) and
-// the archive snapshot.
+// same canonical command detect uses ("git rev-parse
+// refs/heads/<branch>"). It feeds TaskDetail.source.commit (fallback)
+// and the archive snapshot.
 func (o *OrchestratorImpl) branchHead(ctx context.Context, branch string) (string, error) {
 	cmd := o.execCommand(ctx, "git", "-C", o.mirrorDir, "rev-parse", "refs/heads/"+branch)
 	out, err := cmd.CombinedOutput()
@@ -206,12 +206,12 @@ func (o *OrchestratorImpl) srcinfoHash(ctx context.Context, branch string) (stri
 }
 
 // archiveSource snapshots the branch at commit into
-// staging/<taskID>/source.tar.zst by streaming "git archive --format=tar.zst
-// <commit>" through storage.Put (confirmed decision). Git performs the zstd
-// compression itself, so no external compressor is needed. The snapshot is
-// written immediately after task creation; a worker that claims the task in
-// the tiny window before the write finishes fails with a download error and
-// the next detection round re-enqueues it (recoverable).
+// staging/<taskID>/source.tar.zst by streaming "git archive
+// --format=tar.zst <commit>" through storage.Put. Git performs the zstd
+// compression itself, so no external compressor is needed. The snapshot
+// is written immediately after task creation; a worker that claims the
+// task in the tiny window before the write finishes fails with a download
+// error and the next detection round re-enqueues it (recoverable).
 func (o *OrchestratorImpl) archiveSource(ctx context.Context, taskID, commit string) error {
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -238,7 +238,7 @@ func (o *OrchestratorImpl) archiveSource(ctx context.Context, taskID, commit str
 // clearSigner drops the one-shot key material of a finished task; it is
 // safe when no signer is configured (NewOrchestrator normalizes an
 // interface-wrapped typed nil pointer to a true nil, so this interface
-// nil check is sound — bug fix M4).
+// nil check is sound).
 func (o *OrchestratorImpl) clearSigner(taskID string) {
 	if o.signer != nil {
 		o.signer.ClearTask(taskID)

@@ -27,8 +27,7 @@ import (
 	"git.0x0f.dev/varve/internal/config"
 )
 
-// requireGPG skips the test when the gpg binary is unavailable (DETAIL
-// §7.7).
+// requireGPG skips the test when the gpg binary is unavailable.
 func requireGPG(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("gpg"); err != nil {
@@ -93,7 +92,7 @@ func writeArmoredKeyFile(t *testing.T, armored string) string {
 
 // TestNewSignerImportKeyFile covers the key_file initialization path: the
 // armored private key is imported into a fresh GNUPGHOME and the key ID is
-// resolved from the keyring (DETAIL §7.7 case 1).
+// resolved from the keyring.
 func TestNewSignerImportKeyFile(t *testing.T) {
 	requireGPG(t)
 	src := t.TempDir()
@@ -114,8 +113,7 @@ func TestNewSignerImportKeyFile(t *testing.T) {
 }
 
 // TestNewSignerKeyIDReference covers the key_id-only path: the key is
-// referenced from the keyring already present in GNUPGHOME (decision A7),
-// with no import.
+// referenced from the keyring already present in GNUPGHOME, with no import.
 func TestNewSignerKeyIDReference(t *testing.T) {
 	requireGPG(t)
 	home := t.TempDir()
@@ -149,7 +147,7 @@ func TestNewSignerKeyFileWithKeyID(t *testing.T) {
 }
 
 // TestNewSignerMissingKey asserts that an unknown key ID is a startup
-// error (DETAIL §7.5).
+// error.
 func TestNewSignerMissingKey(t *testing.T) {
 	requireGPG(t)
 	home := t.TempDir()
@@ -162,7 +160,7 @@ func TestNewSignerMissingKey(t *testing.T) {
 }
 
 // TestNewSignerBadKeyFile asserts that an unimportable key file is a
-// startup error (DETAIL §7.5).
+// startup error.
 func TestNewSignerBadKeyFile(t *testing.T) {
 	requireGPG(t)
 	bad := filepath.Join(t.TempDir(), "bad.asc")
@@ -175,7 +173,7 @@ func TestNewSignerBadKeyFile(t *testing.T) {
 }
 
 // TestNewSignerCreatesHome asserts that a missing GNUPGHOME directory is
-// created with mode 0700 (DETAIL §7.4 step 1).
+// created with mode 0700.
 func TestNewSignerCreatesHome(t *testing.T) {
 	requireGPG(t)
 	src := t.TempDir()

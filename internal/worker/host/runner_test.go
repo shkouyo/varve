@@ -25,7 +25,7 @@ import (
 	"git.0x0f.dev/varve/internal/api"
 )
 
-// TestNewRunnerRequiresHostRole verifies the role precondition (H1).
+// TestNewRunnerRequiresHostRole verifies the role precondition.
 func TestNewRunnerRequiresHostRole(t *testing.T) {
 	cfg := testCfg()
 	cfg.Role = "agent"
@@ -34,7 +34,7 @@ func TestNewRunnerRequiresHostRole(t *testing.T) {
 	}
 }
 
-// TestNewRunnerRequiresImage verifies the image precondition (H1).
+// TestNewRunnerRequiresImage verifies the image precondition.
 func TestNewRunnerRequiresImage(t *testing.T) {
 	cfg := testCfg()
 	cfg.Image = ""
@@ -44,7 +44,7 @@ func TestNewRunnerRequiresImage(t *testing.T) {
 }
 
 // TestNewRunnerProbesRuntime verifies NewRunner probes docker before
-// podman and wires the discovered binary (H1).
+// podman and wires the discovered binary.
 func TestNewRunnerProbesRuntime(t *testing.T) {
 	old := execCommand
 	t.Cleanup(func() { execCommand = old })
@@ -74,7 +74,7 @@ func TestNewRunnerProbesRuntime(t *testing.T) {
 }
 
 // TestNewRunnerNoRuntime verifies startup fails when docker and podman are
-// both unavailable (H1, DETAIL §11.5).
+// both unavailable.
 func TestNewRunnerNoRuntime(t *testing.T) {
 	old := execCommand
 	t.Cleanup(func() { execCommand = old })
@@ -89,7 +89,7 @@ func TestNewRunnerNoRuntime(t *testing.T) {
 }
 
 // TestNewRunnerPersistsName verifies the auto-generated name is persisted
-// in <VARVE_DATA_DIR>/worker-name and stable across restarts (H2).
+// in <VARVE_DATA_DIR>/worker-name and stable across restarts.
 func TestNewRunnerPersistsName(t *testing.T) {
 	old := execCommand
 	t.Cleanup(func() { execCommand = old })
@@ -116,7 +116,7 @@ func TestNewRunnerPersistsName(t *testing.T) {
 }
 
 // TestProcessOneLaunchesContainer verifies poll → handleTask wiring: the
-// claimed task reaches Run with the one-shot env (H5, group 2).
+// claimed task reaches Run with the one-shot env.
 func TestProcessOneLaunchesContainer(t *testing.T) {
 	rt := newFakeRuntime()
 	c := newFakeClient()
@@ -155,9 +155,8 @@ func TestProcessOneEmptyPoll(t *testing.T) {
 }
 
 // TestConcurrentCapacity verifies the slot semaphore bounds concurrent
-// containers to the node capacity (H5, DETAIL §11.7 group 5): with
-// capacity=2 and a poller that always gets tasks, exactly two containers
-// run at once and no third is started.
+// containers to the node capacity: with capacity=2 and a poller that always
+// gets tasks, exactly two containers run at once and no third is started.
 func TestConcurrentCapacity(t *testing.T) {
 	rt := newFakeRuntime()
 	rt.blocked = make(chan struct{}) // containers stay alive

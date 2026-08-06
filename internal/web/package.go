@@ -24,9 +24,9 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// packageData feeds package.html (DESIGN §6.3): current version, metadata
-// from SQLite plus the latest build artifacts, the build history and the
-// optional download button (decisions A24 / A8).
+// packageData feeds package.html: current version, metadata from SQLite
+// plus the latest build artifacts, the build history and the optional
+// download button.
 type packageData struct {
 	base
 	Pkg       db.Package
@@ -36,7 +36,7 @@ type packageData struct {
 }
 
 // downloadLink is the artifact download destination: DownloadBaseURI +
-// "/" + the latest build's package artifact file name (decision A24).
+// "/" + the latest build's package artifact file name.
 type downloadLink struct {
 	URL   string
 	File  string
@@ -58,9 +58,9 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build history: the newest builds, restricted to this package
-	// (the store has no package-scoped list; GetPackageByBase +
-	// ListBuilds is the DESIGN §10.4 read path).
+	// Build history: the newest builds, restricted to this package (the
+	// store has no package-scoped list; GetPackageByBase + ListBuilds is
+	// the read path).
 	all, _, err := s.store.ListBuilds(ctx, 1, perPage, false)
 	if err != nil {
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the build history.")
@@ -105,9 +105,9 @@ func latestArtifacts(latest *db.Build) []db.Artifact {
 }
 
 // downloadFor builds the download link for the latest build, or nil when
-// downloads are disabled or the latest build has no package artifact
-// (decision A24). Only the primary package artifact is downloadable;
-// signature and srcinfo side files are metadata, not packages.
+// downloads are disabled or the latest build has no package artifact.
+// Only the primary package artifact is downloadable; signature and
+// srcinfo side files are metadata, not packages.
 func downloadFor(enabled bool, baseURI string, latest *db.Build) *downloadLink {
 	if !enabled || latest == nil || len(latest.Artifacts) == 0 {
 		return nil

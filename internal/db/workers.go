@@ -79,9 +79,9 @@ func (s *Store) SetWorkerStatus(ctx context.Context, name, status string) error 
 	return requireAffected(res, fmt.Sprintf("set worker %q status", name))
 }
 
-// GetWorkerByName returns one worker by its stable name (decision A21).
-// ErrNotFound when the worker is not registered. Added by the M4 dispatch
-// module: register/poll/heartbeat/deregister paths resolve the row by name.
+// GetWorkerByName returns one worker by its stable name.
+// ErrNotFound when the worker is not registered. The register/poll/
+// heartbeat/deregister paths resolve the row by name.
 func (s *Store) GetWorkerByName(ctx context.Context, name string) (*Worker, error) {
 	w, err := scanWorker(s.read.QueryRowContext(ctx,
 		`SELECT `+workerColumns+` FROM workers WHERE name = ?`, name))
@@ -95,8 +95,8 @@ func (s *Store) GetWorkerByName(ctx context.Context, name string) (*Worker, erro
 }
 
 // GetWorkerByID returns one worker by its primary key. ErrNotFound when
-// the worker does not exist. Added by the M4 dispatch module: the ingest
-// path resolves the executing node's display name from task.worker_id.
+// the worker does not exist. The ingest path resolves the executing node's
+// display name from task.worker_id.
 func (s *Store) GetWorkerByID(ctx context.Context, id int64) (*Worker, error) {
 	w, err := scanWorker(s.read.QueryRowContext(ctx,
 		`SELECT `+workerColumns+` FROM workers WHERE id = ?`, id))

@@ -30,8 +30,8 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// TestRebuildIndex exercises the rebuild semantics (DETAIL §13.4): a side
-// file set including a corrupt file is turned into the authoritative
+// TestRebuildIndex exercises the rebuild semantics: a side file set
+// including a corrupt file is turned into the authoritative
 // packages/builds state, the task queue is cleared, workers survive, and
 // the report counts every outcome. The real local storage and the real
 // database both run under t.TempDir().
@@ -48,7 +48,7 @@ func TestRebuildIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Seed state that the rebuild must preserve or clear (D5):
+	// Seed state that the rebuild must preserve or clear:
 	//   - worker "w1" must survive untouched;
 	//   - package "keep" carries pkgdesc/maintainers the side file does
 	//     not contain (preserved) and its build record is replaced;
@@ -152,8 +152,8 @@ func TestRebuildIndex(t *testing.T) {
 		t.Errorf("stale package still present (err = %v)", err)
 	}
 
-	// builds: exactly one per package (A20), status succeeded, worker
-	// resolved by name from the side file, artifacts carried over.
+	// builds: exactly one per package, status succeeded, worker resolved
+	// by name from the side file, artifacts carried over.
 	builds, total, err := store.ListBuilds(ctx, 1, 100, false)
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestRebuildIndex(t *testing.T) {
 		t.Errorf("active tasks after rebuild = %+v, want none", active)
 	}
 
-	// workers: untouched (D5).
+	// workers: untouched.
 	workers, err := store.ListWorkers(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -227,10 +227,10 @@ func TestRebuildIndex(t *testing.T) {
 	}
 }
 
-// TestRebuildIndexEmpty covers the empty interface (DETAIL §13.4): no side
-// files must rebuild without error. An empty database stays empty; a
-// populated one is cleared — the index must mirror the side files, so
-// packages without a side file (and their tasks) are removed.
+// TestRebuildIndexEmpty covers the empty interface: no side files must
+// rebuild without error. An empty database stays empty; a populated one is
+// cleared — the index must mirror the side files, so packages without a
+// side file (and their tasks) are removed.
 func TestRebuildIndexEmpty(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
@@ -318,8 +318,7 @@ type sidecarTOML struct {
 	build     sidecarBuild
 }
 
-// writeSidecar renders a side file in the DESIGN §3.2 layout and writes it
-// to path.
+// writeSidecar renders a side file and writes it to path.
 func writeSidecar(t *testing.T, path string, sc sidecarTOML) {
 	t.Helper()
 	var b []byte

@@ -25,9 +25,9 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// buildData feeds build.html (DESIGN §6.3): the command log history, the
-// executing node name and the cgroup resource samples rendered as text
-// (no charts, proposal §13.3).
+// buildData feeds build.html: the command log history, the executing
+// node name and the cgroup resource samples rendered as text (no
+// charts).
 type buildData struct {
 	base
 	Build       db.Build
@@ -87,13 +87,13 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log history from the log store (the live stream lives on the log
-	// page, W6).
+	// page).
 	if logData, err := s.logs.ReadLog(ctx, strconv.FormatInt(id, 10)); err == nil && len(logData) > 0 {
 		data.Log = string(logData)
 		data.HasLog = true
 	}
 
-	// Cgroup resource samples rendered as text (proposal §13.3).
+	// Cgroup resource samples rendered as text.
 	for _, smp := range b.ResourceUsage {
 		data.Samples = append(data.Samples, resourceView{
 			At:  smp.At.Format("15:04:05"),

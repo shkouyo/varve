@@ -25,11 +25,11 @@ import (
 	"strconv"
 )
 
-// validUploadName enforces the upload whitelist [A-Za-z0-9._+-]
-// (DESIGN §5.7): every byte must be a whitelisted character, which excludes
-// path separators and shell metacharacters and therefore prevents staging
-// escapes. The bare "." and ".." are rejected as well: they would resolve
-// outside the task directory despite matching the character class.
+// validUploadName enforces the upload whitelist [A-Za-z0-9._+-]: every
+// byte must be a whitelisted character, which excludes path separators
+// and shell metacharacters and therefore prevents staging escapes. The
+// bare "." and ".." are rejected as well: they would resolve outside the
+// task directory despite matching the character class.
 func validUploadName(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
@@ -45,8 +45,8 @@ func validUploadName(name string) bool {
 	return true
 }
 
-// parseOffset reads the ?offset=N query parameter (DESIGN §5.3); an absent
-// parameter means offset 0 (whole-file upload).
+// parseOffset reads the ?offset=N query parameter; an absent parameter
+// means offset 0 (whole-file upload).
 func parseOffset(r *http.Request) (int64, error) {
 	raw := r.URL.Query().Get("offset")
 	if raw == "" {
@@ -60,10 +60,10 @@ func parseOffset(r *http.Request) (int64, error) {
 }
 
 // handleUploadFile streams a raw artifact segment into the task staging
-// area (PUT /api/v1/tasks/{id}/files/{name}?offset=N, DESIGN §5.3): the
-// request body is forwarded to the orchestrator as an io.Reader without
-// loading it into memory. An offset mismatch surfaces as 409 carrying the
-// current server-side offset so the worker can resume.
+// area (PUT /api/v1/tasks/{id}/files/{name}?offset=N): the request body
+// is forwarded to the orchestrator as an io.Reader without loading it
+// into memory. An offset mismatch surfaces as 409 carrying the current
+// server-side offset so the worker can resume.
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !validUploadName(name) {

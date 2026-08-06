@@ -26,9 +26,9 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// dashboardData feeds dashboard.html (DESIGN §6.3): build status counts,
-// queue length, recent builds with their executing node name, and the
-// worker online overview.
+// dashboardData feeds dashboard.html: build status counts, queue length,
+// recent builds with their executing node name, and the worker online
+// overview.
 type dashboardData struct {
 	base
 	Counts   []statusCount
@@ -76,9 +76,9 @@ type recentBuildView struct {
 }
 
 // workerView is one worker row of the online overview. Performance
-// indicators are rendered as text (proposal §13.3); the worker table does
-// not carry cgroup samples, so it shows role, mode, arch, capacity and
-// heartbeat age instead.
+// indicators are rendered as text; the worker table does not carry cgroup
+// samples, so it shows role, mode, arch, capacity and heartbeat age
+// instead.
 type workerView struct {
 	Name          string
 	Status        string

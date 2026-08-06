@@ -28,11 +28,11 @@ import (
 	"git.0x0f.dev/varve/internal/api"
 )
 
-// pollWorker is one of the capacity poll loops (DETAIL §11.6): it acquires
-// a slot, polls once, and either hands the slot to a container monitor or
-// releases it and retries after pollInterval (D8: no-task 5s retry). While
-// its container runs, the worker parks on the next slot acquisition, so
-// the buffered channel bounds concurrent containers to the node capacity.
+// pollWorker is one of the capacity poll loops: it acquires a slot, polls
+// once, and either hands the slot to a container monitor or releases it and
+// retries after pollInterval (no-task retry). While its container runs, the
+// worker parks on the next slot acquisition, so the buffered channel bounds
+// concurrent containers to the node capacity.
 func (r *Runner) pollWorker(ctx context.Context) {
 	for {
 		select {
@@ -76,11 +76,11 @@ func (r *Runner) processOne(ctx context.Context) bool {
 	return true
 }
 
-// handleTask launches the one-shot agent container for a claimed task
-// (DETAIL §11.4 item 2): pull the image first (VARVE_PULL_IMAGE, default
-// true) unless a container is already running for it, then run it with the
-// one-shot environment, and hand the slot to the monitor. Any launch
-// failure is reported as failed(stage=container) and the slot is released.
+// handleTask launches the one-shot agent container for a claimed task:
+// pull the image first (VARVE_PULL_IMAGE, default true) unless a container
+// is already running for it, then run it with the one-shot environment,
+// and hand the slot to the monitor. Any launch failure is reported as
+// failed(stage=container) and the slot is released.
 func (r *Runner) handleTask(ctx context.Context, task *api.TaskDetail, claimToken string) {
 	// Container lifecycle operations must survive a shutdown that starts
 	// while the task is being launched.
@@ -108,9 +108,9 @@ func (r *Runner) handleTask(ctx context.Context, task *api.TaskDetail, claimToke
 	go r.monitor(ctx, task, claimToken, id)
 }
 
-// containerEnv is the one-shot agent environment (DETAIL §11.4 item 2).
-// The shared VARVE_TOKEN is deliberately never injected (decisions A10/A26:
-// task endpoints authenticate by the claim token only).
+// containerEnv is the one-shot agent environment. The shared VARVE_TOKEN
+// is deliberately never injected: task endpoints authenticate by the claim
+// token only.
 func (r *Runner) containerEnv(taskID, claimToken string) []string {
 	return []string{
 		"VARVE_ROLE=agent",
@@ -122,12 +122,12 @@ func (r *Runner) containerEnv(taskID, claimToken string) []string {
 }
 
 // monitor runs one container to completion, owns the acquired slot until
-// the container is gone, and reports the outcome (DETAIL §11.4 item 2-4).
-// It waits for the container exit (on a context that survives shutdown so
-// a running container can finish during the graceful drain), then reads
-// the exit code/OOMKilled via Inspect and classifies: exit 0 is left to
-// the in-container agent, non-zero is reported failed(stage=container),
-// a cancellation kill is reported cancelled, and a run past the per-task
+// the container is gone, and reports the outcome. It waits for the
+// container exit (on a context that survives shutdown so a running
+// container can finish during the graceful drain), then reads the exit
+// code/OOMKilled via Inspect and classifies: exit 0 is left to the
+// in-container agent, non-zero is reported failed(stage=container), a
+// cancellation kill is reported cancelled, and a run past the per-task
 // build timeout is killed and reported failed(stage=timeout).
 func (r *Runner) monitor(ctx context.Context, task *api.TaskDetail, claimToken, containerID string) {
 	defer r.slotRelease()
@@ -177,7 +177,7 @@ type waitResult struct {
 // awaitExit waits for the container to exit, enforcing the per-task
 // deadline. When ctx is cancelled (shutdown) it switches to a drain wait:
 // the container may finish on its own, and the deadline still force-kills
-// it as the fallback (DETAIL §11.4 item 5).
+// it as the fallback.
 func (r *Runner) awaitExit(ctx context.Context, waitDone chan waitResult, deadline time.Time) (waitResult, bool) {
 	tick := time.NewTicker(r.timeoutCheck)
 	defer tick.Stop()
@@ -207,11 +207,11 @@ func (r *Runner) awaitExit(ctx context.Context, waitDone chan waitResult, deadli
 	}
 }
 
-// classify reports the outcome of a finished container (DETAIL §11.4
-// item 2): a cancelled container is reported cancelled, exit 0 is left to
-// the in-container agent (the host does nothing), any other exit is
-// reported failed(stage=container) with the exit code/signal and OOM in
-// the summary.
+// classify reports the outcome of a finished container: a cancelled
+// container is reported cancelled, exit 0 is left to the in-container
+// agent (the host does nothing), any other exit is reported
+// failed(stage=container) with the exit code/signal and OOM in the
+// summary.
 func (r *Runner) classify(ctx context.Context, task *api.TaskDetail, claimToken, containerID string, res waitResult) {
 	cctx := context.WithoutCancel(ctx)
 	if r.isCancelled(task.ID) {
@@ -259,7 +259,7 @@ func failedResult(stage, summary string) api.ResultReq {
 
 // reportResult posts a task result. A 409 conflict means the controller
 // already accepted a result for this task (the in-container agent reported
-// first); it is ignored (DETAIL §11.4 item 2).
+// first); it is ignored.
 func (r *Runner) reportResult(ctx context.Context, taskID, token string, res api.ResultReq) {
 	if err := r.client.ReportResult(ctx, taskID, token, res); err != nil {
 		var apiErr *api.APIError

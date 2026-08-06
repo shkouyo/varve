@@ -20,8 +20,7 @@ package host
 import "testing"
 
 // TestSampleMetrics verifies /proc parsing against a fake tree: memory
-// (kB→bytes), uptime and the CPU percent delta between two stat samples
-// (H3, DETAIL §11.7 group 7).
+// (kB→bytes), uptime and the CPU percent delta between two stat samples.
 func TestSampleMetrics(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "stat",
@@ -54,7 +53,7 @@ func TestSampleMetrics(t *testing.T) {
 }
 
 // TestSampleMissingFiles verifies the missing-file tolerance: an empty
-// fake /proc yields a zero metrics struct without error (H3).
+// fake /proc yields a zero metrics struct without error.
 func TestSampleMissingFiles(t *testing.T) {
 	m := newMetricsReader(t.TempDir())
 	out := m.sample()

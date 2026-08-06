@@ -29,7 +29,7 @@ import (
 )
 
 // TestMirrorDir covers the mirror name derivation table: the URL path
-// part without ".git", with "/" replaced by "_" (DETAIL §3.3).
+// part without ".git", with "/" replaced by "_".
 func TestMirrorDir(t *testing.T) {
 	tests := []struct {
 		url  string
@@ -66,7 +66,7 @@ func TestNewDetectorErrors(t *testing.T) {
 }
 
 // TestNewDetectorMirrorDir asserts the production mirror path layout
-// "/data/source/<name>.git" (decision A7).
+// "/data/source/<name>.git".
 func TestNewDetectorMirrorDir(t *testing.T) {
 	store, _ := openStore(t)
 	d, err := NewDetector(&config.SourceConfig{URL: "git@git.example.org:pkgbuilds.git"}, store, &fakeSink{})
@@ -79,10 +79,10 @@ func TestNewDetectorMirrorDir(t *testing.T) {
 	}
 }
 
-// TestPollOncePlainPackage walks the full lifecycle of a plain package
-// (DETAIL §3.7 #8): first enqueue, no change after a recorded successful
-// build, enqueue on a .SRCINFO change, and the A16 natural re-queue while
-// the build outcome is not recorded.
+// TestPollOncePlainPackage walks the full lifecycle of a plain package:
+// first enqueue, no change after a recorded successful build, enqueue on a
+// .SRCINFO change, and the natural re-queue while the build outcome is
+// not recorded.
 func TestPollOncePlainPackage(t *testing.T) {
 	src := newSourceRepo(t, "foo", map[string]string{
 		"SRCINFO": srcinfoBody("foo", "1.0", "1"),
@@ -121,7 +121,7 @@ func TestPollOncePlainPackage(t *testing.T) {
 		t.Errorf("change #3 = %+v, want srcinfo for foo", changes[1])
 	}
 
-	// 4. A16: the failed build left the record stale, so the same diff is
+	// 4. The failed build left the record stale, so the same diff is
 	// detected again on the next round.
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #4: %v", err)
@@ -131,8 +131,8 @@ func TestPollOncePlainPackage(t *testing.T) {
 
 // TestPollOnceVCSGitUpstream covers a -git package whose upstream HEAD is
 // served by the testdata/bin/git PATH shim: first enqueue, no change after
-// a recorded build, enqueue on an upstream commit change and the A16
-// natural re-queue (DETAIL §3.7 #8).
+// a recorded build, enqueue on an upstream commit change and the natural
+// re-queue.
 func TestPollOnceVCSGitUpstream(t *testing.T) {
 	withShimPath(t)
 	src := newSourceRepo(t, "foo-git", map[string]string{
@@ -178,7 +178,7 @@ func TestPollOnceVCSGitUpstream(t *testing.T) {
 		t.Errorf("change #3 = %+v, want upstream %s", changes[1], h2)
 	}
 
-	// 4. A16: not recorded after the failed build -> re-queued.
+	// 4. Not recorded after the failed build -> re-queued.
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #4: %v", err)
 	}
@@ -254,8 +254,7 @@ exclude = ["*-debug"]
 
 // TestPollOnceSkips cover the per-branch fault isolation: a branch without
 // SRCINFO, one with an invalid dotfile and one whose sink submit conflicts
-// are all skipped without blocking the other branches (DETAIL §3.5, §3.7
-// #8).
+// are all skipped without blocking the other branches.
 func TestPollOnceSkips(t *testing.T) {
 	t.Run("missing SRCINFO", func(t *testing.T) {
 		src := newMultiBranchRepo(t, []branchSpec{
@@ -316,7 +315,7 @@ func TestPollOnceSkips(t *testing.T) {
 }
 
 // TestPollOnceUpstreamQueryFailureSkips asserts a failed upstream query
-// skips the branch instead of submitting a false positive (DETAIL §3.5).
+// skips the branch instead of submitting a false positive.
 // The svn shim fails when invoked without --xml; here the source= entry is
 // not a VCS URL so no query runs at all, and a package that cannot name an
 // upstream is still submitted on srcinfo changes with an empty ref.
@@ -339,7 +338,7 @@ func TestPollOnceUpstreamQueryFailureSkips(t *testing.T) {
 
 // TestPollOnceUpstreamConcurrencyBounded drives eight VCS branches whose
 // ls-remote calls are traced by the git PATH shim: the queries must
-// overlap but never exceed vcsQueryConcurrency (DETAIL §3.7 #8).
+// overlap but never exceed vcsQueryConcurrency.
 func TestPollOnceUpstreamConcurrencyBounded(t *testing.T) {
 	withShimPath(t)
 	branches := make([]branchSpec, 0, 8)

@@ -28,9 +28,9 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// TestEnqueueNameConflict covers the D6 packages-table check: a change whose
-// pkgbase equals a pkgname produced by the last build of another package is
-// rejected with ErrConflict.
+// TestEnqueueNameConflict covers the packages-table check: a change whose
+// pkgbase equals a pkgname produced by the last build of another package
+// is rejected with ErrConflict.
 func TestEnqueueNameConflict(t *testing.T) {
 	env := newTestEnv(t)
 	// foo ships a subpackage named libfoo.
@@ -71,7 +71,7 @@ func TestEnqueueDedupActive(t *testing.T) {
 	}
 }
 
-// TestEnqueueRoundDedup covers the D6 round set: the same pkgbase enqueued
+// TestEnqueueRoundDedup covers the round set: the same pkgbase enqueued
 // twice in one detection round conflicts.
 func TestEnqueueRoundDedup(t *testing.T) {
 	env := newTestEnv(t)
@@ -92,10 +92,9 @@ func TestEnqueueRoundDedup(t *testing.T) {
 	}
 }
 
-// TestEnqueueArchive covers the confirmed archive decision: with
-// cfg.Source.FetchKey set, Enqueue snapshots the branch via
-// "git archive --format=tar.zst <commit>" into staging/<task-id>/
-// source.tar.zst.
+// TestEnqueueArchive covers archive mode: with cfg.Source.FetchKey set,
+// Enqueue snapshots the branch via "git archive --format=tar.zst
+// <commit>" into staging/<task-id>/source.tar.zst.
 func TestEnqueueArchive(t *testing.T) {
 	env := newTestEnv(t)
 	env.cfg.Source.FetchKey = "/keys/id_rsa"
@@ -142,9 +141,9 @@ func TestEnqueueNoArchive(t *testing.T) {
 	}
 }
 
-// TestEnqueueArchiveFailure covers the confirmed failure decision: a failed
-// snapshot finalizes the task as failed (stage ingest), notifies and does
-// not block the queue.
+// TestEnqueueArchiveFailure covers the failure decision: a failed
+// snapshot finalizes the task as failed (stage ingest), notifies and
+// does not block the queue.
 func TestEnqueueArchiveFailure(t *testing.T) {
 	env := newTestEnv(t)
 	env.cfg.Source.FetchKey = "/keys/id_rsa"

@@ -40,9 +40,9 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Shared test doubles (DETAIL §6.7): fakeStorage records every operation in
-// one ordered shared log; the fake execCommand runs this test binary as a
-// programmable helper process that appends to the same log.
+// Shared test doubles: fakeStorage records every operation in one ordered
+// shared log; the fake execCommand runs this test binary as a programmable
+// helper process that appends to the same log.
 // ---------------------------------------------------------------------------
 
 // opLog is an append-only line log shared between the in-process fakeStorage
@@ -190,9 +190,9 @@ type execCfg struct {
 }
 
 // fakeExecFor returns an execCommand replacement that runs this test binary
-// as the programmable helper process (DETAIL §0.3 rule 4: same-package tests
-// replace execCommand with a recorder; the canonical re-exec pattern keeps
-// the fake self-contained without external tooling).
+// as the programmable helper process (same-package tests replace execCommand
+// with a recorder; the canonical re-exec pattern keeps the fake
+// self-contained without external tooling).
 func fakeExecFor(log *opLog, cfg execCfg) func(context.Context, string, ...string) *exec.Cmd {
 	return func(ctx context.Context, name string, arg ...string) *exec.Cmd {
 		args := []string{"-test.run=TestHelperProcess", "--", name}
@@ -407,13 +407,13 @@ func (e *ingestEnv) execLines() []string {
 }
 
 // ---------------------------------------------------------------------------
-// T6.2 Ingest orchestration
+// Ingest orchestration tests
 // ---------------------------------------------------------------------------
 
-// TestIngestMoveSequence asserts the D7 move step (DETAIL §6.7 case 1): every
-// package and signature entry moves from staging into the flat root, the
-// .SRCINFO snapshot stays in staging (DESIGN §3.3, only its hash is
-// recorded), and the side file plus the repo-add command follow.
+// TestIngestMoveSequence asserts the move step: every package and signature
+// entry moves from staging into the flat root, the .SRCINFO snapshot stays
+// in staging (only its hash is recorded), and the side file plus the
+// repo-add command follow.
 func TestIngestMoveSequence(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	e.stage(testManifest())
@@ -430,7 +430,7 @@ func TestIngestMoveSequence(t *testing.T) {
 			t.Errorf("root %s missing after move", name)
 		}
 	}
-	// .SRCINFO stays in staging (not persisted, decision A9).
+	// .SRCINFO stays in staging (not persisted).
 	if _, ok := e.fs.files[storage.StagingPath(testTaskID, testSrcinfo)]; !ok {
 		t.Error(".SRCINFO was moved out of staging; it must stay for the caller's staging cleanup")
 	}
@@ -460,10 +460,10 @@ func TestIngestMoveSequence(t *testing.T) {
 	}
 }
 
-// TestIngestSidecarContent asserts the side file carries every field
-// (DETAIL §6.7 case 3): pkgbase from the uploaded .SRCINFO, branch and
-// resolved commit / upstream ref from the build record, srcinfo hash from
-// the manifest, the injected ingest time and the worker name.
+// TestIngestSidecarContent asserts the side file carries every field:
+// pkgbase from the uploaded .SRCINFO, branch and resolved commit / upstream
+// ref from the build record, srcinfo hash from the manifest, the injected
+// ingest time and the worker name.
 func TestIngestSidecarContent(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -534,10 +534,10 @@ func TestIngestSidecarContent(t *testing.T) {
 	}
 }
 
-// TestIngestOldVersionCleanup asserts the keep_versions=1 pruning
-// (DETAIL §6.7 case 4): old package files and their detached signatures are
-// deleted, files of the new manifest survive, and the replaced pkgname is
-// repo-removed before the new packages are added (A19, case 2).
+// TestIngestOldVersionCleanup asserts the keep_versions=1 pruning: old
+// package files and their detached signatures are deleted, files of the new
+// manifest survive, and the replaced pkgname is repo-removed before the new
+// packages are added.
 func TestIngestOldVersionCleanup(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	oldPkg := "foo-old-1-1-x86_64.pkg.tar.zst"
@@ -586,7 +586,7 @@ func TestIngestOldVersionCleanup(t *testing.T) {
 }
 
 // TestIngestOldSidecarCorrupt asserts a damaged previous side file only
-// warns and is treated as "no previous version" (DETAIL §6.5).
+// warns and is treated as "no previous version".
 func TestIngestOldSidecarCorrupt(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	e.seedRoot(testPkgbase+".meta.toml", "not toml at all [")
@@ -604,7 +604,7 @@ func TestIngestOldSidecarCorrupt(t *testing.T) {
 }
 
 // TestIngestEmptyManifestRejected asserts an ingest without any package
-// artifact is refused before any side effect (DETAIL §6.5, case 6).
+// artifact is refused before any side effect.
 func TestIngestEmptyManifestRejected(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	e.stage(testManifest())
@@ -645,7 +645,7 @@ func TestIngestMissingSrcinfoRejected(t *testing.T) {
 // TestIngestMoveFailureContext asserts a failed move returns an error
 // carrying the file context, and that a retry where the destination already
 // exists (a previously ingested entry) is treated as done (idempotent
-// retry, DETAIL §6.4 step 5).
+// retry).
 func TestIngestMoveFailureContext(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	e.stage(testManifest())
@@ -690,7 +690,7 @@ func TestIngestNoMover(t *testing.T) {
 }
 
 // TestIngestIdempotent asserts a second Ingest of the same manifest succeeds
-// without residue or error (DETAIL §6.7 case 7).
+// without residue or error.
 func TestIngestIdempotent(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	m := testManifest()
@@ -711,7 +711,7 @@ func TestIngestIdempotent(t *testing.T) {
 
 // TestIngestLocalAtomicNoTempResidue runs Ingest against the real local
 // backend and asserts the atomic side file write leaves no temp files in the
-// repository root (DETAIL §6.7 case 3: atomic write, no residue).
+// repository root (atomic write, no residue).
 func TestIngestLocalAtomicNoTempResidue(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	real, err := storage.OpenLocal(e.root)

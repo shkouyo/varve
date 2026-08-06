@@ -50,8 +50,8 @@ func sha256Hex(s string) string {
 
 // ---------------------------------------------------------------------------
 // opLog: append-only line log shared between the in-process fakes and the
-// child processes of the fake exec command (DETAIL §0.3 rule 4: the
-// canonical re-exec pattern keeps the fakes self-contained).
+// child processes of the fake exec command (the canonical re-exec pattern
+// keeps the fakes self-contained).
 // ---------------------------------------------------------------------------
 
 type opLog struct {
@@ -88,7 +88,7 @@ func (l *opLog) read() []string {
 
 // ---------------------------------------------------------------------------
 // fakeStorage: in-memory Backend + Mover + Appender recording every
-// operation in the opLog (DETAIL §4.7).
+// operation in the opLog.
 // ---------------------------------------------------------------------------
 
 type fakeStorage struct {
@@ -195,7 +195,7 @@ func (f *fakeStorage) GetBytes(ctx context.Context, name string) ([]byte, error)
 }
 
 // ---------------------------------------------------------------------------
-// fakeUpdater / fakeSigner / fakeNotifier (DETAIL §4.7).
+// fakeUpdater / fakeSigner / fakeNotifier
 // ---------------------------------------------------------------------------
 
 type fakeUpdater struct {
@@ -276,8 +276,8 @@ func (f *fakeNotifier) SendFailure(ctx context.Context, to []string, info mail.F
 }
 
 // ---------------------------------------------------------------------------
-// Fake git (DETAIL §0.3 rule 4): the helper process replays a state file
-// for rev-parse / show / archive, and every invocation is recorded.
+// Fake git: the helper process replays a state file for rev-parse / show
+// / archive, and every invocation is recorded.
 // ---------------------------------------------------------------------------
 
 type gitState struct {
@@ -384,10 +384,10 @@ func TestHelperProcess(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Orchestrator test harness: real db (:memory:), fakes everywhere, injected
-// clock and git (DETAIL §4.7). env.now starts at the real wall clock so
-// claim timestamps (which db writes with time.Now internally) stay in the
-// past relative to injected advances.
+// Orchestrator test harness: real db (:memory:), fakes everywhere,
+// injected clock and git. env.now starts at the real wall clock so claim
+// timestamps (which db writes with time.Now internally) stay in the past
+// relative to injected advances.
 // ---------------------------------------------------------------------------
 
 type testEnv struct {

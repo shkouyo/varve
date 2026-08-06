@@ -28,12 +28,12 @@ import (
 
 // execCommand is the command constructor for every external call: the
 // container runtime CLI and the runtime probe ("command -v"). Same-package
-// tests replace it with a recorder (DETAIL §0.3 rule 4).
+// tests replace it with a recorder.
 var execCommand = exec.CommandContext
 
-// containerRuntime runs the docker/podman CLI (DETAIL §11.2 runtime). All
-// container lifecycle commands go through execCommand so tests can stub
-// them; the container itself is never executed by the test suite.
+// containerRuntime runs the docker/podman CLI. All container lifecycle
+// commands go through execCommand so tests can stub them; the container
+// itself is never executed by the test suite.
 type containerRuntime struct {
 	bin string // "docker" | "podman"
 }
@@ -45,7 +45,7 @@ func (r *containerRuntime) Pull(ctx context.Context, image string) error {
 
 // Run starts a detached one-shot agent container ("run -d") with the given
 // environment and resource limits and returns its ID. --rm is always
-// present so the container is destroyed even when it fails (proposal §5.2).
+// present so the container is destroyed even when it fails.
 func (r *containerRuntime) Run(ctx context.Context, image string, env []string, cpuLimit int, memLimit string) (string, error) {
 	args := append(runArgs(env, cpuLimit, memLimit), image)
 	out, err := execCommand(ctx, r.bin, args...).Output()
@@ -83,9 +83,9 @@ func (r *containerRuntime) Wait(ctx context.Context, id string) (int, error) {
 	return code, nil
 }
 
-// detectRuntime resolves the container runtime binary (DETAIL §11.2):
-// VARVE_CONTAINER_RUNTIME overrides auto-detection; otherwise docker is
-// probed before podman via "command -v". Both missing → error.
+// detectRuntime resolves the container runtime binary: VARVE_CONTAINER_
+// RUNTIME overrides auto-detection; otherwise docker is probed before
+// podman via "command -v". Both missing → error.
 func detectRuntime(override string) (string, error) {
 	if override != "" {
 		return override, nil
@@ -110,9 +110,8 @@ func pullArgs(image string) []string {
 }
 
 // runArgs builds the "run -d" argument list (without the trailing image):
-// --rm is always present (proposal §5.2: destroy even on failure); each
-// env entry becomes "--env K=V"; cpuLimit > 0 → --cpus=N; memLimit != ""
-// → --memory=<v> (DETAIL §11.4 item 2).
+// --rm is always present (destroy even on failure); each env entry becomes
+// "--env K=V"; cpuLimit > 0 → --cpus=N; memLimit != "" → --memory=<v>.
 func runArgs(env []string, cpuLimit int, memLimit string) []string {
 	args := []string{"run", "-d", "--rm"}
 	for _, kv := range env {

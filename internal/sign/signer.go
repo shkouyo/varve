@@ -16,10 +16,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package sign implements controller-side GPG key custody
-// (GNUPGHOME=/data/gnupg, decision A7), per-task key material export,
-// artifact signature verification and the signing environment consumed by
-// repo-add --sign (DESIGN §2.7, §7.7; DETAIL §7). Secret keys are never
-// baked into images and never persist on workers (proposal §9).
+// (GNUPGHOME=/data/gnupg), per-task key material export, artifact signature
+// verification and the signing environment consumed by repo-add --sign.
+// Secret keys are never baked into images and never persist on workers.
 package sign
 
 import (
@@ -34,17 +33,17 @@ import (
 	"git.0x0f.dev/varve/internal/config"
 )
 
-// defaultGNUPGHome is the controller-side key custody directory (decision A7).
+// defaultGNUPGHome is the controller-side key custody directory.
 const defaultGNUPGHome = "/data/gnupg"
 
 // execCommand is the command constructor used for every external gpg call;
-// same-package tests may replace it with a recorder (DETAIL §0.3).
+// same-package tests may replace it with a recorder.
 var execCommand = exec.CommandContext
 
 // KeyMaterial is the one-shot signing material handed to a task over HTTPS
-// (D3: defined in this package; the API depends on this package only for
-// the type). It carries the armored private key plus the passphrase needed
-// to use it inside the worker build container.
+// (defined in this package; the API depends on this package only for the
+// type). It carries the armored private key plus the passphrase needed to
+// use it inside the worker build container.
 type KeyMaterial struct {
 	KeyID             string
 	ArmoredPrivateKey string
@@ -52,7 +51,7 @@ type KeyMaterial struct {
 }
 
 // Signer manages the controller GNUPGHOME and hands out per-task key
-// material. All public methods are safe for concurrent use (DETAIL §7.6).
+// material. All public methods are safe for concurrent use.
 type Signer struct {
 	cfg         *config.GPGConfig
 	gnupgHome   string
@@ -62,13 +61,13 @@ type Signer struct {
 	execCommand func(ctx context.Context, name string, arg ...string) *exec.Cmd
 }
 
-// NewSigner prepares the managed GNUPGHOME and the signing key (DETAIL
-// §7.4). It creates /data/gnupg with mode 0700, imports the armored
-// private key from cfg.KeyFile when set, otherwise references the key
-// identified by cfg.KeyID already present in the keyring (decision A7),
-// and verifies that a usable secret key exists afterwards. A missing gpg
-// binary, a failed import or an unknown key ID are all startup errors
-// (DETAIL §7.5). Not safe for concurrent use: call once at startup.
+// NewSigner prepares the managed GNUPGHOME and the signing key. It creates
+// /data/gnupg with mode 0700, imports the armored private key from
+// cfg.KeyFile when set, otherwise references the key identified by
+// cfg.KeyID already present in the keyring, and verifies that a usable
+// secret key exists afterwards. A missing gpg binary, a failed import or
+// an unknown key ID are all startup errors. Not safe for concurrent use:
+// call once at startup.
 func NewSigner(cfg *config.GPGConfig) (*Signer, error) {
 	return newSigner(cfg, defaultGNUPGHome)
 }
@@ -113,7 +112,7 @@ func newSigner(cfg *config.GPGConfig, home string) (*Signer, error) {
 }
 
 // importKeyFile imports the armored private key file into the managed
-// keyring (gpg --batch --import, DETAIL §7.4 step 1).
+// keyring (gpg --batch --import).
 func (s *Signer) importKeyFile(path string) error {
 	cmd := s.execCommand(context.Background(), "gpg", "--homedir", s.gnupgHome,
 		"--batch", "--import", path)
@@ -147,7 +146,7 @@ func (s *Signer) listSecretKeyID() (string, error) {
 }
 
 // verifySecretKey asserts that a secret key with the given ID exists in
-// the managed keyring; startup fails otherwise (DETAIL §7.5).
+// the managed keyring; startup fails otherwise.
 func (s *Signer) verifySecretKey(keyID string) error {
 	cmd := s.execCommand(context.Background(), "gpg", "--homedir", s.gnupgHome,
 		"--batch", "--list-secret-keys", keyID)

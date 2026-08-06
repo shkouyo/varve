@@ -22,9 +22,9 @@ import (
 	"math/rand/v2"
 )
 
-// Readable node-name word lists (proposal §5.3: auto-generated names look
-// like "proud-heron-7"). The host module persists its auto-generated name;
-// pool agents regenerate one on every run.
+// Readable node-name word lists: auto-generated names look like
+// "proud-heron-7". The host module persists its auto-generated name; pool
+// agents regenerate one on every run.
 var nameAdjectives = []string{
 	"proud", "swift", "gentle", "brave", "calm", "clever", "daring",
 	"eager", "fancy", "golden", "happy", "jolly", "keen", "lively",

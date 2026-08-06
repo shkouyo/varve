@@ -36,9 +36,9 @@ func newTestClient(srvURL string) *Client {
 	return NewClient(srvURL, testToken)
 }
 
-// TestClientHeartbeatRetry verifies the idempotent retry semantics
-// (DETAIL §9.7 item 7): a transient 500 on heartbeat is retried with a
-// fixed 1s interval and succeeds on the second attempt.
+// TestClientHeartbeatRetry verifies the idempotent retry semantics: a
+// transient 500 on heartbeat is retried with a fixed 1s interval and
+// succeeds on the second attempt.
 func TestClientHeartbeatRetry(t *testing.T) {
 	orig := retryInterval
 	retryInterval = time.Millisecond
@@ -170,8 +170,8 @@ func TestClientUploadRetry(t *testing.T) {
 	}
 }
 
-// TestClientUploadResumeOffset verifies the resume channel: a 409 conflict
-// surfaces as *APIError carrying the current server offset (DESIGN §5.3).
+// TestClientUploadResumeOffset verifies the resume channel: a 409
+// conflict surfaces as *APIError carrying the current server offset.
 func TestClientUploadResumeOffset(t *testing.T) {
 	f := newFake()
 	f.claimToken = testClaimTok

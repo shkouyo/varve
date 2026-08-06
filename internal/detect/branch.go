@@ -25,13 +25,13 @@ import (
 )
 
 // defaultExcludeBranches is applied when the configuration leaves
-// exclude_branches unset (DESIGN §8.1).
+// exclude_branches unset.
 var defaultExcludeBranches = []string{"main"}
 
 // listBranches enumerates the mirror's heads and drops the excluded ones
-// (path.Match glob per pattern, DESIGN §8.1). Branches deleted upstream
-// disappear after a pruned fetch and are simply not enumerated any more;
-// their packages rows are left untouched for manual inspection.
+// (path.Match glob per pattern). Branches deleted upstream disappear after
+// a pruned fetch and are simply not enumerated any more; their packages
+// rows are left untouched for manual inspection.
 func (d *Detector) listBranches(ctx context.Context) ([]string, error) {
 	cmd := d.execCommand(ctx, "git", "-C", d.mirrorDir,
 		"for-each-ref", "refs/heads", "--format=%(refname:short)")
@@ -72,8 +72,8 @@ func matchAnyGlob(branch string, patterns []string) bool {
 
 // BranchSnapshot returns the commit the branch currently points at
 // ("git rev-parse refs/heads/<branch>"). The caller uses it to stamp
-// tasks with the detected commit (decision A15, DETAIL §3.2). Not safe
-// for concurrent use with PollOnce/Run (DETAIL §3.6).
+// tasks with the detected commit. Not safe for concurrent use with
+// PollOnce/Run.
 func (d *Detector) BranchSnapshot(ctx context.Context, branch string) (string, error) {
 	cmd := d.execCommand(ctx, "git", "-C", d.mirrorDir, "rev-parse", "refs/heads/"+branch)
 	out, err := cmd.CombinedOutput()

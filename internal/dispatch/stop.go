@@ -19,9 +19,9 @@ package dispatch
 
 // Stop halts the periodic scheduler goroutine, then waits for the ingest
 // mutex to drain so no ingest orchestration is in flight when the caller
-// shuts the servers down (optimization O2, DETAIL §4.4 step 10). It is
-// idempotent; the concrete *OrchestratorImpl exposes it (cmd/varve calls
-// it on SIGTERM; the interface intentionally does not carry it).
+// shuts the servers down. It is idempotent; the concrete
+// *OrchestratorImpl exposes it (cmd/varve calls it on SIGTERM; the
+// interface intentionally does not carry it).
 func (o *OrchestratorImpl) Stop() {
 	o.stopOnce.Do(func() {
 		o.schedCancel()

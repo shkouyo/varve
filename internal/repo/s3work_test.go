@@ -25,10 +25,10 @@ import (
 	"testing"
 )
 
-// TestS3RepoUpdateFlow asserts the s3 work dir flow (DETAIL §6.7 case 5):
-// the database and the new packages are downloaded, the commands run with
-// cwd = work dir, the regenerated database and packages are uploaded back
-// and the work dir is cleared afterwards.
+// TestS3RepoUpdateFlow asserts the s3 work dir flow: the database and the
+// new packages are downloaded, the commands run with cwd = work dir, the
+// regenerated database and packages are uploaded back and the work dir is
+// cleared afterwards.
 func TestS3RepoUpdateFlow(t *testing.T) {
 	e := newIngestEnv(t, "s3", execCfg{})
 	workDir := e.cfg.Repo.WorkDir
@@ -78,8 +78,8 @@ func TestS3RepoUpdateFlow(t *testing.T) {
 }
 
 // TestS3WorkDirCleanupFailureWarns asserts a failed work dir cleanup only
-// warns and does not block the ingest (DETAIL §6.5); stale files are
-// overwritten by the next ingest.
+// warns and does not block the ingest; stale files are overwritten by the
+// next ingest.
 func TestS3WorkDirCleanupFailureWarns(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission-based cleanup failure cannot be provoked as root")

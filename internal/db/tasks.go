@@ -50,7 +50,7 @@ func (s *Store) CreateTask(ctx context.Context, t *Task, b *Build) error {
 		t.LastProgressAt = t.CreatedAt
 	}
 	b.PackageID = t.PackageID
-	b.Status = t.State // builds.status mirrors the task state (DESIGN 3.1)
+	b.Status = t.State // builds.status mirrors the task state
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `INSERT INTO builds
 			(package_id, branch, "commit", upstream_ref, srcinfo_hash, status, worker_id, log_path, started_at, finished_at, error, artifacts, resource_usage)
@@ -102,14 +102,13 @@ func (s *Store) GetTask(ctx context.Context, id string) (*Task, error) {
 	return t, nil
 }
 
-// RequeueTask returns a stalled assigned/running task to the queue head
-// (decision A17, DETAIL §4.4): state=queued, the worker and claim token
-// are released, attempts is incremented and created_at is preserved so the
-// task keeps its FIFO position. The mirrored build row is set back to
-// queued with started_at cleared. ErrConflict when the task is not in
-// assigned/running (it may have just been finalized), ErrNotFound when it
-// does not exist. Added by the M4 dispatch module: the stall recovery
-// scan had no requeue primitive (DETAIL §2.2).
+// RequeueTask returns a stalled assigned/running task to the queue head:
+// state=queued, the worker and claim token are released, attempts is
+// incremented and created_at is preserved so the task keeps its FIFO
+// position. The mirrored build row is set back to queued with started_at
+// cleared. ErrConflict when the task is not in assigned/running (it may
+// have just been finalized), ErrNotFound when it does not exist. The stall
+// recovery scan uses this primitive.
 func (s *Store) RequeueTask(ctx context.Context, id string) error {
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `UPDATE tasks SET
@@ -147,11 +146,10 @@ func (s *Store) RequeueTask(ctx context.Context, id string) error {
 	return nil
 }
 
-// RequestTaskCancel persists the durable cancellation flag (decision A3:
-// the signal survives a controller restart). It is a no-op when the task
-// already reached a terminal state. ErrNotFound when the task does not
-// exist. Added by the M4 dispatch module: CancelTask needs to persist
-// cancel_requested outside the terminal-state transitions (DETAIL §2.2).
+// RequestTaskCancel persists the durable cancellation flag: the signal
+// survives a controller restart. It is a no-op when the task already
+// reached a terminal state. ErrNotFound when the task does not exist. It
+// is set outside the terminal-state transitions handled elsewhere.
 func (s *Store) RequestTaskCancel(ctx context.Context, id string) error {
 	res, err := s.write.ExecContext(ctx, `UPDATE tasks SET cancel_requested = 1
 		WHERE id = ? AND state NOT IN ('succeeded', 'failed', 'cancelled')`, id)

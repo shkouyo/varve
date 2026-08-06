@@ -30,15 +30,15 @@ import (
 )
 
 // Compile-time assertion: the fake implements the full orchestrator
-// contract (DETAIL §9.7).
+// contract.
 var _ dispatch.Orchestrator = (*fakeOrchestrator)(nil)
 
-// fakeOrchestrator is an in-memory implementation of dispatch.Orchestrator
-// for contract tests (DETAIL §9.7). Each method either runs a programmable
-// hook (hook* fields) or the built-in default semantics: claim-token
-// validation, log offset checks, one-shot signing keys, staged file
-// storage with offset validation, and request recording for assertions.
-// All methods are safe for concurrent use.
+// fakeOrchestrator is an in-memory implementation of
+// dispatch.Orchestrator for contract tests. Each method either runs a
+// programmable hook (hook* fields) or the built-in default semantics:
+// claim-token validation, log offset checks, one-shot signing keys,
+// staged file storage with offset validation, and request recording for
+// assertions. All methods are safe for concurrent use.
 type fakeOrchestrator struct {
 	mu sync.Mutex
 
@@ -98,7 +98,7 @@ func newFake() *fakeOrchestrator {
 	}
 }
 
-// checkToken mirrors the orchestrator's claim-token check (DESIGN §5.7).
+// checkToken mirrors the orchestrator's claim-token check.
 func (f *fakeOrchestrator) checkToken(token string) error {
 	if f.claimToken != "" && token != f.claimToken {
 		return dispatch.ErrForbidden
@@ -227,7 +227,7 @@ func (f *fakeOrchestrator) IssueSigningKey(ctx context.Context, taskID, token st
 
 // UploadFile implements Orchestrator with offset validation and streaming
 // instrumentation (the largest read chunk is recorded for the memory-cap
-// assertion, DETAIL §9.7 item 6).
+// assertion).
 func (f *fakeOrchestrator) UploadFile(ctx context.Context, taskID, token, name string, r io.Reader, size, offset int64) (*dispatch.FileMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -314,8 +314,8 @@ func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset i
 	return 0, nil
 }
 
-// chunkRecorder wraps a reader and tracks the largest single read returned
-// plus the total bytes read (the memory-cap proxy, DETAIL §9.7 item 6).
+// chunkRecorder wraps a reader and tracks the largest single read
+// returned plus the total bytes read (the memory-cap proxy).
 type chunkRecorder struct {
 	r     io.Reader
 	peak  *int

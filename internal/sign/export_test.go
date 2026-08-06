@@ -27,7 +27,7 @@ import (
 
 // TestExportForTaskMaterial asserts the returned key material carries the
 // armored private key (with the PGP armor markers), the key ID and the
-// configured passphrase (DETAIL §7.7 case 2).
+// configured passphrase.
 func TestExportForTaskMaterial(t *testing.T) {
 	requireGPG(t)
 	const pass = "test-pass-123"
@@ -58,8 +58,7 @@ func TestExportForTaskMaterial(t *testing.T) {
 }
 
 // TestExportForTaskOnceOnly asserts the one-shot semantics: the second
-// export of the same task is refused with ErrAlreadyExported (DETAIL §7.7
-// case 2, DETAIL §7.5).
+// export of the same task is refused with ErrAlreadyExported.
 func TestExportForTaskOnceOnly(t *testing.T) {
 	requireGPG(t)
 	src := t.TempDir()
@@ -105,7 +104,7 @@ func TestExportForTaskIndependentTasks(t *testing.T) {
 }
 
 // TestClearTaskReexport asserts that after ClearTask the same task can be
-// exported again (documented semantics, DETAIL §7.7 case 3, §7.5).
+// exported again.
 func TestClearTaskReexport(t *testing.T) {
 	requireGPG(t)
 	src := t.TempDir()
@@ -140,9 +139,8 @@ func TestClearTaskIdempotent(t *testing.T) {
 	s.ClearTask("never-exported")
 }
 
-// TestExportForTaskConcurrent guards the mutex (DETAIL §7.6): concurrent
-// claims of the same task yield exactly one success and
-// ErrAlreadyExported for the rest.
+// TestExportForTaskConcurrent guards the mutex: concurrent claims of the
+// same task yield exactly one success and ErrAlreadyExported for the rest.
 func TestExportForTaskConcurrent(t *testing.T) {
 	requireGPG(t)
 	src := t.TempDir()

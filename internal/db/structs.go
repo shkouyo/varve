@@ -38,7 +38,7 @@ var (
 	ErrConflict = errors.New("db: conflict")
 )
 
-// Package mirrors one packages row (DESIGN 3.1).
+// Package mirrors one packages row.
 type Package struct {
 	ID              int64
 	Pkgbase         string
@@ -54,7 +54,7 @@ type Package struct {
 	Maintainers     []string
 }
 
-// Build mirrors one builds row (DESIGN 3.1).
+// Build mirrors one builds row.
 type Build struct {
 	ID            int64
 	PackageID     int64
@@ -72,7 +72,7 @@ type Build struct {
 	ResourceUsage []Sample
 }
 
-// Worker mirrors one workers row (DESIGN 3.1).
+// Worker mirrors one workers row.
 type Worker struct {
 	ID            int64
 	Name          string
@@ -85,7 +85,7 @@ type Worker struct {
 	Version       string
 }
 
-// Task mirrors one tasks row (DESIGN 3.1).
+// Task mirrors one tasks row.
 type Task struct {
 	ID              string
 	PackageID       int64
@@ -100,16 +100,15 @@ type Task struct {
 	CancelRequested bool
 }
 
-// Sample is one cgroup resource sample (DESIGN 5.3). It is stored inside
-// the builds.resource_usage JSON column.
+// Sample is one cgroup resource sample. It is stored inside the builds.resource_usage JSON column.
 type Sample struct {
 	At          time.Time `json:"at"`
 	CPUTimeNS   int64     `json:"cpu_time_ns"`
 	MemoryBytes int64     `json:"memory_bytes"`
 }
 
-// Artifact describes one uploaded build artifact (DESIGN 5.5). It is
-// stored inside the builds.artifacts JSON column.
+// Artifact describes one uploaded build artifact. It is stored inside the
+// builds.artifacts JSON column.
 type Artifact struct {
 	File    string `json:"file"`
 	Kind    string `json:"kind"`

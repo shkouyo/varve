@@ -48,9 +48,9 @@ type testMsg struct {
 	authPass string
 }
 
-// testSMTP is a minimal in-memory SMTP server (DETAIL §8.7): it answers the
-// classic 220/250/334/235 sequence, records every envelope and DATA payload,
-// and can be configured to reject authentication or individual recipients.
+// testSMTP is a minimal in-memory SMTP server: it answers the classic
+// 220/250/334/235 sequence, records every envelope and DATA payload, and
+// can be configured to reject authentication or individual recipients.
 type testSMTP struct {
 	t        *testing.T
 	ln       net.Listener

@@ -54,9 +54,9 @@ func TestLocalOpenLocalValidation(t *testing.T) {
 }
 
 // TestLocalStreamingMemoryBound asserts that Put and Get stream large
-// objects in bounded chunks instead of loading them whole into memory
-// (DETAIL §5.7, memory-cap assertion): the reader never hands out more than
-// copyBufSize bytes at once, and the writer never receives more.
+// objects in bounded chunks instead of loading them whole into memory: the
+// reader never hands out more than copyBufSize bytes at once, and the
+// writer never receives more.
 func TestLocalStreamingMemoryBound(t *testing.T) {
 	b := mustLocal(t)
 	ctx := context.Background()
@@ -88,7 +88,7 @@ func TestLocalStreamingMemoryBound(t *testing.T) {
 }
 
 // TestLocalAtomicWriteNoTmpLeftover asserts that successful Puts leave no
-// temp files behind (atomic write, DETAIL §5.4).
+// temp files behind (atomic write).
 func TestLocalAtomicWriteNoTmpLeftover(t *testing.T) {
 	b := mustLocal(t)
 	ctx := context.Background()

@@ -23,9 +23,8 @@ import (
 	"time"
 )
 
-// validate checks a resolved ControllerConfig against the rule table of
-// DETAIL §1.4 (rule 3). The first failing rule is reported with the concrete
-// field name.
+// validate checks a resolved ControllerConfig against the validation rules.
+// The first failing rule is reported with the concrete field name.
 func validate(c *ControllerConfig) error {
 	switch c.Storage.Backend {
 	case "local", "s3":

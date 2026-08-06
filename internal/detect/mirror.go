@@ -31,8 +31,7 @@ import (
 var mirrorTimeout = 60 * time.Second
 
 // ensureMirror clones the source repository as a bare mirror on first use
-// and fetches it afterwards, pruning vanished branches (DESIGN §2.3,
-// DETAIL §3.4 #1).
+// and fetches it afterwards, pruning vanished branches.
 func (d *Detector) ensureMirror(ctx context.Context) error {
 	if _, err := os.Stat(d.mirrorDir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

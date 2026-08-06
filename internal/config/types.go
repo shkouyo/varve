@@ -17,18 +17,18 @@
 
 // Package config parses and validates the controller TOML configuration and
 // the worker environment-variable configuration (including the optional CWD
-// .env file, DESIGN §8.3).
+// .env file).
 //
 // Configurations are loaded once at process startup (LoadController /
 // LoadWorker). The returned structures are treated as read-only and are
-// shared concurrently by the other modules (DETAIL §1.6); callers must not
-// modify them at runtime.
+// shared concurrently by the other modules; callers must not modify them at
+// runtime.
 package config
 
 import "time"
 
-// ControllerConfig is the fully resolved controller configuration
-// (DESIGN §8.1, DETAIL §1.2). Field defaults are noted in parentheses.
+// ControllerConfig is the fully resolved controller configuration. Field
+// defaults are noted in parentheses.
 type ControllerConfig struct {
 	Server   ServerConfig
 	API      APIConfig
@@ -142,12 +142,12 @@ type LogsConfig struct {
 	MaxBuilds int           // maximum successful logs kept, 1000
 }
 
-// WorkerConfig is the fully resolved worker configuration
-// (DESIGN §8.2, DETAIL §1.2). It is built from the process environment, the
-// optional CWD .env file, and built-in defaults (env > .env > default).
+// WorkerConfig is the fully resolved worker configuration. It is built from
+// the process environment, the optional CWD .env file, and built-in defaults
+// (env > .env > default).
 type WorkerConfig struct {
 	ControllerURL    string        // controller API base URL (required)
-	Token            string        // shared Bearer token (required for host/pool; empty for one-shot, decision A26)
+	Token            string        // shared Bearer token (required for host/pool; empty for one-shot)
 	Role             string        // "host" | "agent", default "host"
 	WorkerName       string        // node name; empty = auto-generated (host module)
 	WorkerArch       string        // architecture, default "x86_64"
@@ -157,7 +157,7 @@ type WorkerConfig struct {
 	PullImage        bool          // pull the image before each run, default true
 	OneShot          bool          // agent: handle a single task then exit (VARVE_ONE_SHOT=1)
 	TaskID           string        // one-shot task ID (injected by the host)
-	TaskToken        string        // one-shot claim token (injected by the host, decision A10)
+	TaskToken        string        // one-shot claim token (injected by the host)
 	PoolIdleTimeout  time.Duration // pool idle exit timeout, default 10m
 	DataDir          string        // data directory, default "/var/lib/varve"
 }

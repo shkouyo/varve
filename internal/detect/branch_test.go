@@ -24,8 +24,8 @@ import (
 )
 
 // TestListBranches builds a real multi-branch repository, mirrors it and
-// asserts enumeration plus exclude_branches glob filtering (DETAIL §3.7
-// #9 / T3.5): "main" and "wip/*" are dropped, everything else is kept.
+// asserts enumeration plus exclude_branches glob filtering: "main" and
+// "wip/*" are dropped, everything else is kept.
 func TestListBranches(t *testing.T) {
 	src := newMultiBranchRepo(t, []branchSpec{
 		{name: "foo", files: map[string]string{"SRCINFO": srcinfoBody("foo", "1.0", "1")}},
@@ -50,7 +50,7 @@ func TestListBranches(t *testing.T) {
 }
 
 // TestListBranchesDefaultExclude asserts the ["main"] default when the
-// configuration leaves exclude_branches unset (DESIGN §8.1).
+// configuration leaves exclude_branches unset.
 func TestListBranchesDefaultExclude(t *testing.T) {
 	src := newMultiBranchRepo(t, []branchSpec{
 		{name: "foo", files: map[string]string{"SRCINFO": srcinfoBody("foo", "1.0", "1")}},
@@ -71,7 +71,7 @@ func TestListBranchesDefaultExclude(t *testing.T) {
 }
 
 // TestBranchSnapshot returns the branch HEAD commit from the mirror and
-// errors for a branch that does not exist (DETAIL §3.7 #9).
+// errors for a branch that does not exist.
 func TestBranchSnapshot(t *testing.T) {
 	src := newSourceRepo(t, "foo", map[string]string{
 		"SRCINFO": srcinfoBody("foo", "1.0", "1"),

@@ -1,7 +1,7 @@
--- Initial schema (DESIGN 3.1). "commit" is a reserved word in SQLite and
--- is therefore quoted everywhere it appears. idx_tasks_active is UNIQUE
--- per DETAIL 2.2 (enqueue dedupe): the DESIGN DDL text omits UNIQUE but
--- the ErrConflict contract requires it.
+-- Initial schema. "commit" is a reserved word in SQLite and is therefore
+-- quoted everywhere it appears. idx_tasks_active is UNIQUE to enforce
+-- enqueue dedupe: only one active task (queued/assigned/running) may exist
+-- per package, matching the ErrConflict contract.
 
 CREATE TABLE packages (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,

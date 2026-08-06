@@ -27,12 +27,11 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// CgroupSampler reads the container's cgroup v2 resource statistics
-// (proposal §8.3, DETAIL §12.4 #5): cpu.stat usage_usec → CPU time in ns,
-// memory.current → resident bytes. Sample() caches for the configured
-// interval (10s) so callers sample cheaply at their own cadence (log
-// batches in one-shot mode, heartbeats in pool mode). Paths, interval and
-// clock are injectable for tests.
+// CgroupSampler reads the container's cgroup v2 resource statistics:
+// cpu.stat usage_usec → CPU time in ns, memory.current → resident bytes.
+// Sample() caches for the configured interval (10s) so callers sample
+// cheaply at their own cadence (log batches in one-shot mode, heartbeats in
+// pool mode). Paths, interval and clock are injectable for tests.
 //
 // All methods are safe for concurrent use.
 type CgroupSampler struct {
@@ -60,7 +59,7 @@ func NewCgroupSampler() *CgroupSampler {
 
 // Sample returns a fresh resource sample when the interval has elapsed,
 // otherwise the cached one. Missing files degrade to zero values (tolerant
-// parsing, DETAIL §12.7).
+// parsing).
 func (s *CgroupSampler) Sample() db.Sample {
 	s.mu.Lock()
 	defer s.mu.Unlock()

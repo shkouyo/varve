@@ -16,10 +16,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package vcs identifies VCS packages by their -git/-svn naming convention
-// (following yay, proposal §7.3) and queries the upstream reference of a
-// VCS source: the HEAD commit for git and the last-changed revision for
-// svn (DETAIL §3.2, M3b). Every external command goes through the package
-// variable execCommand so same-package tests can substitute a recorder.
+// (following yay) and queries the upstream reference of a VCS source: the
+// HEAD commit for git and the last-changed revision for svn. Every
+// external command goes through the package variable execCommand so
+// same-package tests can substitute a recorder.
 package vcs
 
 import (
@@ -43,13 +43,13 @@ const (
 )
 
 // execCommand is the command constructor used for every external git/svn
-// call; same-package tests may replace it with a recorder (DETAIL §0.3).
+// call; same-package tests may replace it with a recorder.
 var execCommand = exec.CommandContext
 
 // DetectKind decides whether a package is a VCS package. A non-"auto"
 // dotfileVCS value (git/svn/none) wins directly; "auto" (or an empty
 // value) falls back to the -git/-svn suffix of pkgbase, then of each
-// pkgname in order (proposal §7.3).
+// pkgname in order.
 func DetectKind(pkgbase string, pkgnames []string, dotfileVCS string) Kind {
 	switch dotfileVCS {
 	case "git":
@@ -85,7 +85,7 @@ func kindBySuffix(name string) Kind {
 
 // UpstreamURLs extracts the VCS upstream addresses from source= entries:
 // values carrying a git+/svn+ prefix (prefix stripped) or a .git suffix
-// are returned, in order, skipping plain tarball sources (DETAIL §3.2).
+// are returned, in order, skipping plain tarball sources.
 func UpstreamURLs(source []string) []string {
 	var out []string
 	for _, s := range source {

@@ -82,10 +82,9 @@ func (s *Store) ListPackages(ctx context.Context, q string, page, perPage int) (
 }
 
 // GetPackageByID returns one package by its primary key with maintainers
-// decoded. ErrNotFound when the package does not exist. Added by the M4
-// dispatch module: task detail assembly and failure notifications resolve
-// the package row through task.package_id (DETAIL §2.2 had no by-id
-// accessor).
+// decoded. ErrNotFound when the package does not exist. It is used by task
+// detail assembly and failure notifications, which resolve the package row
+// through task.package_id.
 func (s *Store) GetPackageByID(ctx context.Context, id int64) (*Package, error) {
 	p, err := scanPackage(s.read.QueryRowContext(ctx,
 		`SELECT `+packageColumns+` FROM packages WHERE id = ?`, id))
@@ -102,10 +101,9 @@ func (s *Store) GetPackageByID(ctx context.Context, id int64) (*Package, error) 
 // refreshes the mutable detection metadata (branch, vcs_kind, arch,
 // maintainers) of an existing row. It never touches the build-derived
 // records (current_version, pkgdesc, hashes, last_build_id), which are
-// updated only after a successful build (decision A16). Fills p.ID. Added
-// by the M4 dispatch module: enqueueing a change whose pkgbase appears in
-// the source for the first time needs a creation path (DETAIL §2.2 had
-// none); the maintainers snapshot is refreshed here at enqueue time.
+// updated only after a successful build. Fills p.ID. Enqueueing a change
+// whose pkgbase appears in the source for the first time needs a creation
+// path; the maintainers snapshot is refreshed here at enqueue time.
 func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 	if p == nil || p.Pkgbase == "" {
 		return errors.New("db: UpsertPackage requires a package with a pkgbase")

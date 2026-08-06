@@ -26,11 +26,10 @@ import (
 )
 
 // collect gathers the build artifacts of one task from dir (the checkout):
-// every *.pkg.tar.zst, minus the collect.exclude globs (DETAIL §12.4 #2,
-// proposal §7.4). Exclude globs match both the file name and the package
-// name parsed from .SRCINFO (so the canonical "*-debug" excludes
-// foo-debug-1.0-1-x86_64.pkg.tar.zst). An empty result is an error: the
-// controller never ingests an empty manifest (DETAIL §12.5).
+// every *.pkg.tar.zst, minus the collect.exclude globs. Exclude globs match
+// both the file name and the package name parsed from .SRCINFO (so the
+// canonical "*-debug" excludes foo-debug-1.0-1-x86_64.pkg.tar.zst). An
+// empty result is an error: the controller never ingests an empty manifest.
 func collect(dir string, excludes []string, pkgnames []string) ([]string, error) {
 	matches, err := filepath.Glob(filepath.Join(dir, "*.pkg.tar.zst"))
 	if err != nil {
@@ -86,7 +85,7 @@ func pkgnameMatches(name string, pkgnames []string, pattern string) bool {
 // srcInfo is the minimal .SRCINFO view the agent needs: the package names,
 // version and arch used to build the upload manifest entries. The agent
 // never parses dotfiles; .SRCINFO is a makepkg artifact of the checkout
-// itself (DESIGN §2.3).
+// itself.
 type srcInfo struct {
 	Pkgbase string
 	Pkgver  string

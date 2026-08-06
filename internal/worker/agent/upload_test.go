@@ -27,7 +27,7 @@ import (
 )
 
 // TestUploadWithResume409 asserts a 409 with an offset resumes the upload
-// from that offset and eventually succeeds (DETAIL §12.7 #6).
+// from that offset and eventually succeeds.
 func TestUploadWithResume409(t *testing.T) {
 	f := &fakeClient{uploadConflict: 1, uploadOffset: 123}
 	r := runOneShotRunner(t, f)
@@ -53,7 +53,7 @@ func TestUploadWithResume409(t *testing.T) {
 }
 
 // TestUploadRetriesExhausted asserts a persistent 409 fails the upload
-// after 3 attempts and reports failed(upload) (DETAIL §12.5).
+// after 3 attempts and reports failed(upload).
 func TestUploadRetriesExhausted(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1"), uploadConflict: 99, uploadOffset: 123}
 	r := runOneShotRunner(t, f)
@@ -76,7 +76,7 @@ func TestUploadRetriesExhausted(t *testing.T) {
 }
 
 // TestUploadManifest asserts the manifest entries carry name, kind,
-// package identity, size and the streaming sha256 (DETAIL §12.7 #6).
+// package identity, size and the streaming sha256.
 func TestUploadManifest(t *testing.T) {
 	f := &fakeClient{}
 	r := runOneShotRunner(t, f)

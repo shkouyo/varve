@@ -25,9 +25,9 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// TestBasicAuthMatrix drives the credential matrix over /admin (DETAIL
-// §10.7 point 2): no credentials and wrong credentials are rejected with
-// 401 + challenge, correct credentials pass, and public routes stay open.
+// TestBasicAuthMatrix drives the credential matrix over /admin: no
+// credentials and wrong credentials are rejected with 401 + challenge,
+// correct credentials pass, and public routes stay open.
 func TestBasicAuthMatrix(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
 		newTestDB(t), newFakeLogReader(""))
@@ -73,7 +73,7 @@ func TestBasicAuthMatrix(t *testing.T) {
 }
 
 // TestUnauthorizedRendersErrorPage asserts the 401 response carries the
-// error page markup (DETAIL §10.4 point 4).
+// error page markup.
 func TestUnauthorizedRendersErrorPage(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
 		newTestDB(t), newFakeLogReader(""))

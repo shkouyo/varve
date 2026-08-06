@@ -109,8 +109,7 @@ func readDSN(path string) string {
 	return path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
 }
 
-// configureConn applies the per-connection PRAGMAs required by the design
-// (DETAIL 2.3).
+// configureConn applies the per-connection PRAGMAs required by the schema.
 func configureConn(db *sql.DB) error {
 	var mode string
 	if err := db.QueryRow("PRAGMA journal_mode=WAL").Scan(&mode); err != nil {

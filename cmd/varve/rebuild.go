@@ -30,9 +30,9 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// RebuildReport summarizes one rebuild-index run (DETAIL §13.3 step 3):
-// package counts by outcome plus the side files that were skipped with a
-// warning instead of blocking the rebuild.
+// RebuildReport summarizes one rebuild-index run: package counts by
+// outcome plus the side files that were skipped with a warning instead
+// of blocking the rebuild.
 type RebuildReport struct {
 	Added   int // packages newly indexed from a side file
 	Updated int // packages whose side file refreshed an existing row
@@ -40,11 +40,10 @@ type RebuildReport struct {
 	Skipped int // side files that could not be used (read/parse/duplicate)
 }
 
-// runRebuildIndex is the testable entry of the rebuild-index subcommand
-// (DESIGN §2.12, DETAIL §13.3). args may carry the optional "--config
-// <path>" pair. It loads the configuration, opens the database and the
-// artifact backend, rebuilds the index from the side files and prints the
-// report.
+// runRebuildIndex is the testable entry of the rebuild-index subcommand.
+// args may carry the optional "--config <path>" pair. It loads the
+// configuration, opens the database and the artifact backend, rebuilds
+// the index from the side files and prints the report.
 func runRebuildIndex(args []string) error {
 	path, err := configPath(args)
 	if err != nil {
@@ -72,13 +71,13 @@ func runRebuildIndex(args []string) error {
 	return nil
 }
 
-// rebuildIndex reconstructs the SQLite index from the storage side files
-// (DETAIL §13.3, decisions A9/A20, D5): every "*.meta.toml" in the flat
-// repository root is parsed (repo.Sidecar) and turned into one authoritative
-// package record; the database is then rebuilt in a single transaction —
-// tasks cleared, packages and the single latest build per package recreated,
-// workers untouched. Side files that cannot be read or parsed are logged as
-// warnings and skipped; they never abort the rebuild.
+// rebuildIndex reconstructs the SQLite index from the storage side files:
+// every "*.meta.toml" in the flat repository root is parsed (repo.Sidecar)
+// and turned into one authoritative package record; the database is then
+// rebuilt in a single transaction — tasks cleared, packages and the single
+// latest build per package recreated, workers untouched. Side files that
+// cannot be read or parsed are logged as warnings and skipped; they never
+// abort the rebuild.
 func rebuildIndex(ctx context.Context, store *db.Store, backend storage.Backend) (*RebuildReport, error) {
 	names, err := backend.List(ctx, "*.meta.toml")
 	if err != nil {
@@ -128,8 +127,8 @@ func rebuildIndex(ctx context.Context, store *db.Store, backend storage.Backend)
 			continue
 		}
 		if seen[sc.Pkgbase] {
-			// One side file per pkgbase (DESIGN §3.2); a duplicate
-			// pkgbase in a second file is treated as broken input.
+			// One side file per pkgbase; a duplicate pkgbase in a
+			// second file is treated as broken input.
 			log.Printf("varve: rebuild-index: %s: duplicate side file for pkgbase %q (skipped)", name, sc.Pkgbase)
 			report.Skipped++
 			continue

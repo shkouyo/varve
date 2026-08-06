@@ -26,17 +26,16 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Artifact describes one uploaded build artifact (DESIGN §5.5). It is
-// defined in this package because the dependency table allows no other
-// module to own it (D3): repo is the only feasible owner, and dispatch
-// re-exports it to the API layer.
+// Artifact describes one uploaded build artifact. It is defined in this
+// package because the dependency table allows no other module to own it:
+// repo is the only feasible owner, and dispatch re-exports it to the API
+// layer.
 //
 // Kind is one of "package" | "signature" | "srcinfo". Pkgname, Version and
 // Arch are required when Kind == "package".
 //
 // The json tags mirror the toml keys so the worker wire protocol serializes
-// the manifest with the DESIGN §5.3 snake_case field names (added on behalf
-// of the M4 dispatch module; the sidecar encoding is unaffected).
+// the manifest with the snake_case field names.
 type Artifact struct {
 	File    string `toml:"file" json:"file"`
 	Kind    string `toml:"kind" json:"kind"`
@@ -47,11 +46,11 @@ type Artifact struct {
 	SHA256  string `toml:"sha256" json:"sha256"`
 }
 
-// BuildInfo mirrors the [build] section of the side file (DESIGN §3.2).
-// Commit is the actually checked-out commit of the built source (D1),
-// UpstreamRef is the upstream reference recorded at detection time (D2),
-// SrcinfoHash is the SHA256 of the uploaded .SRCINFO, Time is the ingest
-// timestamp and Worker is the name of the node that executed the build.
+// BuildInfo mirrors the [build] section of the side file. Commit is the
+// actually checked-out commit of the built source, UpstreamRef is the
+// upstream reference recorded at detection time, SrcinfoHash is the SHA256
+// of the uploaded .SRCINFO, Time is the ingest timestamp and Worker is the
+// name of the node that executed the build.
 type BuildInfo struct {
 	Commit      string    `toml:"commit"`
 	UpstreamRef string    `toml:"upstream_ref"`
@@ -61,9 +60,8 @@ type BuildInfo struct {
 }
 
 // Sidecar is the authoritative per-package record stored as
-// "<pkgbase>.meta.toml" next to the package files (DESIGN §3.2,
-// PROPOSAL §11.2). It is the rebuild source of the SQLite index
-// (rebuild-index scans every side file, DETAIL §13.3).
+// "<pkgbase>.meta.toml" next to the package files. It is the rebuild source
+// of the SQLite index (rebuild-index scans every side file).
 type Sidecar struct {
 	Pkgbase   string     `toml:"pkgbase"`
 	Branch    string     `toml:"branch"`
@@ -73,9 +71,8 @@ type Sidecar struct {
 }
 
 // MarshalSidecar serializes s as TOML with the [[artifacts]] / [build]
-// structure of DESIGN §3.2. Time is written as an RFC3339 string (UTC
-// text per DETAIL §0.3 rule 2) via the encoding.TextMarshaler support of
-// go-toml v2.
+// structure of the side file. Time is written as an RFC3339 string (UTC
+// text) via the encoding.TextMarshaler support of go-toml v2.
 func MarshalSidecar(s *Sidecar) ([]byte, error) {
 	if s == nil {
 		return nil, errors.New("repo: nil sidecar")

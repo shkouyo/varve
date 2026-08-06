@@ -32,9 +32,9 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// logData feeds log.html (DESIGN §6.3): the full log history rendered
-// server-side plus an EventSource that appends live increments. Without
-// JavaScript a <meta http-equiv="refresh"> fallback keeps the page fresh.
+// logData feeds log.html: the full log history rendered server-side plus
+// an EventSource that appends live increments. Without JavaScript a <meta
+// http-equiv="refresh"> fallback keeps the page fresh.
 type logData struct {
 	base
 	BuildID string
@@ -43,16 +43,16 @@ type logData struct {
 	HasLog  bool
 }
 
-// logEvent is the JSON payload of an SSE "log" event (DETAIL §10.4 point
-// 2, derived: the payload is JSON so multi-line log chunks survive).
+// logEvent is the JSON payload of an SSE "log" event (JSON so multi-line
+// log chunks survive).
 type logEvent struct {
 	Offset int64  `json:"offset"`
 	Data   string `json:"data"`
 }
 
-// handleLog renders GET /builds/{id}/log. Content negotiation (decision
-// A5): requests with Accept: text/event-stream get the SSE stream;
-// everything else gets the HTML page.
+// handleLog renders GET /builds/{id}/log. Content negotiation: requests
+// with Accept: text/event-stream get the SSE stream; everything else gets
+// the HTML page.
 func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, ok := parseID(r.PathValue("id"))
@@ -129,10 +129,10 @@ func (s *Server) renderLogPage(w http.ResponseWriter, r *http.Request, buildID s
 	s.render(w, "log.html", data)
 }
 
-// serveSSE streams the build log to the client (DETAIL §10.4 point 2):
-// each incremental read becomes an event: log with a JSON payload, an
-// empty read is followed by a terminal-state check (event: done) or a 2s
-// comment ping, and the goroutine exits when the client disconnects.
+// serveSSE streams the build log to the client: each incremental read
+// becomes an event: log with a JSON payload, an empty read is followed by
+// a terminal-state check (event: done) or a 2s comment ping, and the
+// goroutine exits when the client disconnects.
 func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -152,8 +152,7 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 		newOffset, err := s.logs.TailLog(ctx, buildID, offset, &chunk)
 		if err != nil {
 			if errors.Is(err, dispatch.ErrNotFound) {
-				// Log missing: done immediately with a message
-				// (DETAIL §10.5).
+				// Log missing: done immediately with a message.
 				writeSSELog(w, offset, "Build log not found.\n")
 				writeSSEDone(w)
 				return
@@ -177,7 +176,7 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 			return
 		}
 
-		// Keep-alive comment ping (2s, DETAIL §10.4).
+		// Keep-alive comment ping (2s).
 		_, _ = fmt.Fprint(w, ": ping\n\n")
 		flusher.Flush()
 

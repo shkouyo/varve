@@ -29,7 +29,7 @@ import (
 // os.Stderr. Tests may replace it to capture warning output.
 var warnW io.Writer = os.Stderr
 
-// parseDotenv parses dotenv-style content (DETAIL §1.3, DESIGN §8.3).
+// parseDotenv parses dotenv-style content.
 //
 // Supported syntax:
 //   - KEY=VALUE lines (the value is trimmed of surrounding whitespace)
@@ -73,7 +73,7 @@ func parseDotenv(data []byte, warn io.Writer) map[string]string {
 
 // loadDotenvFile loads a dotenv file from path. A missing file is not an
 // error; read failures and syntax warnings are reported on warnW and do not
-// abort the caller (DETAIL §1.5).
+// abort the caller.
 func loadDotenvFile(path string) map[string]string {
 	data, err := os.ReadFile(path)
 	if err != nil {

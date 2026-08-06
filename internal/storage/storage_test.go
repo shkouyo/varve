@@ -41,8 +41,8 @@ func TestLocalBackendContract(t *testing.T) {
 }
 
 // TestS3BackendContract runs the abstract contract suite against the s3
-// backend driven by the in-memory fake object store (T5.4: both backends
-// must satisfy one and the same interface contract).
+// backend driven by the in-memory fake object store: both backends must
+// satisfy one and the same interface contract.
 func TestS3BackendContract(t *testing.T) {
 	testBackendContract(t, func(t *testing.T) Backend {
 		t.Helper()
@@ -51,9 +51,9 @@ func TestS3BackendContract(t *testing.T) {
 	})
 }
 
-// testBackendContract asserts the documented Backend semantics (DETAIL
-// §5.2) against any implementation. Each subtest gets a fresh backend so
-// the assertions are self-contained.
+// testBackendContract asserts the Backend semantics against any
+// implementation. Each subtest gets a fresh backend so the assertions are
+// self-contained.
 func testBackendContract(t *testing.T, newBackend func(t *testing.T) Backend) {
 	t.Helper()
 	ctx := context.Background()

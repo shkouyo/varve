@@ -43,8 +43,7 @@ import (
 // orchestrator is the orchestration surface the serve path needs: the full
 // Orchestrator contract consumed by the API server, the web server and the
 // log reader, plus Submit (detect.Sink) and the concrete Stop used for
-// graceful shutdown (DETAIL §13.2 step 10). dispatch.OrchestratorImpl
-// satisfies it.
+// graceful shutdown. dispatch.OrchestratorImpl satisfies it.
 type orchestrator interface {
 	dispatch.Orchestrator
 	Submit(ctx context.Context, c detect.Change) error
@@ -58,7 +57,7 @@ type detector interface {
 }
 
 // httpServer is a started HTTP server: Close stops it. The default is
-// *http.Server; tests substitute a recorder (DETAIL §13.4).
+// *http.Server; tests substitute a recorder.
 type httpServer interface {
 	Close() error
 }
@@ -69,8 +68,7 @@ type httpServer interface {
 // declared with this interface type so a disabled signer
 // (repo.sign="off") stays a true nil: a nil *sign.Signer stored inside
 // an interface would be a non-nil interface wrapping a nil pointer, which
-// defeats dispatch's nil checks and crashes task finalization (bug fix
-// M4, V2 acceptance).
+// defeats dispatch's nil checks and crashes task finalization.
 type signerSurface interface {
 	VerifyDetached(sigPath, pkgPath string) error
 	ExportForTask(taskID string) (*sign.KeyMaterial, error)
@@ -78,19 +76,18 @@ type signerSurface interface {
 	GnuPGEnv() []string
 }
 
-// Injectables for the serve tests (DETAIL §13.4), following the pattern of
+// Injectables for the serve tests, following the pattern of
 // cmd/varve-worker's runner constructors: runServe calls these package
 // variables instead of the module constructors directly, so tests can
 // replace them with recorders.
 var (
-	// newSigner prepares the GPG signer when cfg.Repo.Sign != "off"
-	// (DETAIL §13.2 step 4).
+	// newSigner prepares the GPG signer when cfg.Repo.Sign != "off".
 	newSigner = sign.NewSigner
 
 	// newOrchestrator builds the orchestration core (step 6); its
 	// scheduler goroutine starts immediately and Stop halts it. The
 	// signer travels as the signerSurface interface so a disabled
-	// signer reaches dispatch as a true nil (bug fix M4).
+	// signer reaches dispatch as a true nil.
 	newOrchestrator = func(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
 		signer signerSurface, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
 		return dispatch.NewOrchestrator(cfg, store, backend, signer, updater, notifier, logs)
@@ -119,8 +116,8 @@ var (
 		return srv, nil
 	}
 
-	// waitSignal blocks until SIGTERM/SIGINT (DETAIL §13.2 step 10).
-	// Tests replace it to trigger the shutdown path deterministically.
+	// waitSignal blocks until SIGTERM/SIGINT. Tests replace it to
+	// trigger the shutdown path deterministically.
 	waitSignal = func() error {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -131,18 +128,17 @@ var (
 	}
 )
 
-// runServe is the testable entry of the serve subcommand (DETAIL §13.2).
-// args may carry the optional "--config <path>" pair (default
-// /data/varve.toml). The ten startup steps run in order; any failure
-// aborts startup. On SIGTERM/SIGINT the stack shuts down gracefully in the
-// mandated order.
+// runServe is the testable entry of the serve subcommand. args may carry
+// the optional "--config <path>" pair (default /data/varve.toml). The ten
+// startup steps run in order; any failure aborts startup. On
+// SIGTERM/SIGINT the stack shuts down gracefully in the mandated order.
 func runServe(args []string) error {
 	path, err := configPath(args)
 	if err != nil {
 		return err
 	}
 
-	// 1. Configuration (DETAIL §13.2 step 1).
+	// 1. Configuration.
 	cfg, err := config.LoadController(path)
 	if err != nil {
 		return err
@@ -161,11 +157,11 @@ func runServe(args []string) error {
 		return err
 	}
 
-	// 4. GPG signer (step 4): "off" leaves the signerSurface nil —
-	// dispatch and repo branch on cfg.Repo.Sign and never touch the
-	// signer then. The interface type keeps the nil a true nil: a typed
-	// nil *sign.Signer in the interface would defeat dispatch's checks
-	// and crash task finalization (bug fix M4).
+	// 4. GPG signer: "off" leaves the signerSurface nil — dispatch
+	// and repo branch on cfg.Repo.Sign and never touch the signer
+	// then. The interface type keeps the nil a true nil: a typed nil
+	// *sign.Signer in the interface would defeat dispatch's checks and
+	// crash task finalization.
 	var signer signerSurface
 	if cfg.Repo.Sign != "off" {
 		signer, err = newSigner(&cfg.GPG)
@@ -182,8 +178,7 @@ func runServe(args []string) error {
 	// 6. Orchestration core (step 6); its scheduler starts immediately.
 	orch := newOrchestrator(cfg, store, backend, signer, updater, notifier, logs)
 
-	// 7. Startup validation: a conflicted repository refuses to serve
-	// (D6, proposal §7.5).
+	// 7. Startup validation: a conflicted repository refuses to serve.
 	if err := orch.ValidateConflicts(context.Background()); err != nil {
 		orch.Stop()
 		return err
@@ -202,9 +197,9 @@ func runServe(args []string) error {
 		_ = det.Run(detCtx)
 	}()
 
-	// 9. HTTP servers (step 9): the worker API on the API port, the web
-	// UI on the web port. The web server receives the same orchestrator
-	// instance as its LogReader (DETAIL §10.2).
+	// 9. HTTP servers: the worker API on the API port, the web UI on
+	// the web port. The web server receives the same orchestrator
+	// instance as its LogReader.
 	apiHandler := api.NewServer(cfg, orch).Handler()
 	webHandler := web.New(cfg, orch, store, orch).Handler()
 
@@ -247,9 +242,9 @@ func runServe(args []string) error {
 		}
 	}
 
-	// Graceful shutdown order (DETAIL §13.2 step 10, optimization O2):
-	// stop the orchestrator (halts the scheduler, drains the ingest
-	// mutex), stop detection, then close both HTTP servers.
+	// Graceful shutdown order: stop the orchestrator (halts the
+	// scheduler, drains the ingest mutex), stop detection, then close
+	// both HTTP servers.
 	orch.Stop()
 	detCancel()
 	<-detDone
@@ -258,8 +253,8 @@ func runServe(args []string) error {
 	return errors.Join(apiErr, webErr)
 }
 
-// openStorage opens the configured artifact backend (DESIGN §2.5): the
-// local filesystem or an S3-compatible object store.
+// openStorage opens the configured artifact backend: the local
+// filesystem or an S3-compatible object store.
 func openStorage(cfg *config.StorageConfig) (storage.Backend, error) {
 	if cfg.Backend == "s3" {
 		return storage.OpenS3(cfg.S3)

@@ -15,12 +15,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package api implements the worker protocol (DESIGN §2.9, §5; DETAIL §9):
-// the HTTP server (routing, Bearer authentication, JSON codec, error
-// mapping) and the worker-side client, plus the shared wire types
-// re-exported by alias (decision D3). The server depends only on the
-// dispatch.Orchestrator interface and the sign.KeyMaterial type; it
-// contains no business logic and no storage access.
+// Package api implements the worker protocol: the HTTP server (routing,
+// Bearer authentication, JSON codec, error mapping) and the worker-side
+// client, plus the shared wire types re-exported by alias. The server
+// depends only on the dispatch.Orchestrator interface and the
+// sign.KeyMaterial type; it contains no business logic and no storage
+// access.
 package api
 
 import (
@@ -33,12 +33,11 @@ import (
 )
 
 // taskTokenHeader is the claim-token header used by task-level endpoints
-// (DESIGN §5.2, decision A26: the shared Bearer never enters build
-// containers).
+// (the shared Bearer never enters build containers).
 const taskTokenHeader = "X-Varve-Task-Token"
 
-// Server serves the worker API (DESIGN §5.1). It is stateless between
-// requests and safe for concurrent use; the orchestrator owns all state.
+// Server serves the worker API. It is stateless between requests and
+// safe for concurrent use; the orchestrator owns all state.
 type Server struct {
 	cfg  *config.ControllerConfig
 	orch dispatch.Orchestrator
@@ -54,9 +53,9 @@ func NewServer(cfg *config.ControllerConfig, orch dispatch.Orchestrator) *Server
 	return &Server{cfg: cfg, orch: orch}
 }
 
-// Handler returns the full worker API handler: the eleven DESIGN §5.1
-// endpoints wrapped in their per-class authentication middlewares. Method
-// mismatches on a registered path yield 405 (Go 1.22 ServeMux semantics).
+// Handler returns the full worker API handler: all endpoints wrapped in
+// their per-class authentication middlewares. Method mismatches on a
+// registered path yield 405 (Go 1.22 ServeMux semantics).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -78,8 +77,8 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// bearerAuth guards the node-level endpoints (DESIGN §5.7): the request
-// must carry a valid shared Bearer token, compared in constant time.
+// bearerAuth guards the node-level endpoints: the request must carry a
+// valid shared Bearer token, compared in constant time.
 func (s *Server) bearerAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const prefix = "Bearer "
@@ -97,8 +96,8 @@ func (s *Server) bearerAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// taskAuth guards the task-level endpoints: the claim token header must be
-// present (validity is decided by the orchestrator, DETAIL §9.5).
+// taskAuth guards the task-level endpoints: the claim token header must
+// be present (validity is decided by the orchestrator).
 func (s *Server) taskAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(taskTokenHeader) == "" {

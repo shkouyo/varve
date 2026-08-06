@@ -35,10 +35,10 @@ import (
 )
 
 // ReportResult handles the final result report of a task. succeeded runs
-// the full verification + ingest orchestration (D7 order); failed and
-// cancelled finalize the task, notify (failed only) and clean the staging
-// area. The task must not be terminal and, once cancellation was requested,
-// only a cancelled report is accepted (cancellation wins, D4). Claim-token
+// the full verification + ingest orchestration; failed and cancelled
+// finalize the task, notify (failed only) and clean the staging area. The
+// task must not be terminal and, once cancellation was requested, only a
+// cancelled report is accepted (cancellation wins). Claim-token
 // protected. Concurrently safe.
 func (o *OrchestratorImpl) ReportResult(ctx context.Context, taskID, token string, res ResultReq) error {
 	if err := o.checkToken(taskID, token); err != nil {
@@ -55,7 +55,7 @@ func (o *OrchestratorImpl) ReportResult(ctx context.Context, taskID, token strin
 		return ErrConflict
 	}
 	if task.CancelRequested && res.Status != "cancelled" {
-		return ErrConflict // cancellation wins over any late report (D4)
+		return ErrConflict // cancellation wins over any late report
 	}
 
 	switch res.Status {
@@ -70,10 +70,10 @@ func (o *OrchestratorImpl) ReportResult(ctx context.Context, taskID, token strin
 	}
 }
 
-// handleSucceeded runs the ingest orchestration in the D7 order:
-// manifest verification → repo.Ingest → SQLite transaction (FinalizeTask +
-// UpdatePackageAfterBuild) → staging cleanup. The whole sequence holds the
-// single-repo ingest mutex. Any failure in verification finalizes
+// handleSucceeded runs the ingest orchestration in order: manifest
+// verification → repo.Ingest → SQLite transaction (FinalizeTask +
+// UpdatePackageAfterBuild) → staging cleanup. The whole sequence holds
+// the single-repo ingest mutex. Any failure in verification finalizes
 // failed(verify) with staging cleanup; any failure in ingest finalizes
 // failed(ingest) and preserves the staging area for a retry.
 func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, res ResultReq) error {
@@ -81,8 +81,8 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	defer o.ingestMu.Unlock()
 
 	// 1. Manifest verification: every entry exists and its sha256
-	// recomputation matches; with signing enabled, package signatures are
-	// verified with gpg (DESIGN §5.5, §7.5 step 1).
+	// recomputation matches; with signing enabled, package signatures
+	// are verified with gpg.
 	if err := o.verifyManifest(ctx, task.ID, res.Artifacts); err != nil {
 		o.failTask(ctx, task, "verify", err.Error())
 		o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
@@ -97,14 +97,13 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	if err != nil {
 		return err
 	}
-	// D1: the actual checked-out commit, falling back to the dispatched one.
+	// The actual checked-out commit, falling back to the dispatched one.
 	if res.Commit != "" {
 		build.Commit = res.Commit
 	}
 
 	// 2. Ingest into the repository (move, old-version cleanup, side file,
-	// repo-add). The worker display name resolves through the database
-	// (confirmed decision).
+	// repo-add). The worker display name resolves through the database.
 	workerName := o.workerName(ctx, task.WorkerID)
 	if err := o.updater.Ingest(ctx, task, build, workerName, res.Artifacts); err != nil {
 		o.failTask(ctx, task, "ingest", err.Error())
@@ -113,7 +112,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	}
 
 	// 3. One SQLite transaction: finalize succeeded + update the package
-	// record (D7 order: after repo-add, before staging cleanup).
+	// record (after repo-add, before staging cleanup).
 	samples := o.finalSamples(ctx, task.BuildID, res.ResourceUsage)
 	currentVersion, pkgdesc, srcinfoHash := o.packageUpdateFields(ctx, task.ID, res.Artifacts)
 	err = o.store.WithTx(ctx, func(tx *db.Tx) error {
@@ -162,8 +161,7 @@ func (o *OrchestratorImpl) failTask(ctx context.Context, task *db.Task, stage, s
 }
 
 // handleFailed finalizes the task as failed with the agent's stage and
-// summary, notifies the maintainers and cleans the staging area (DESIGN
-// §7.5 failure path).
+// summary, notifies the maintainers and cleans the staging area.
 func (o *OrchestratorImpl) handleFailed(ctx context.Context, task *db.Task, res ResultReq) error {
 	stage, summary := "report", "build failed"
 	if res.Error != nil {
@@ -198,10 +196,9 @@ func (o *OrchestratorImpl) handleCancelled(ctx context.Context, task *db.Task) e
 	return nil
 }
 
-// verifyManifest validates every manifest entry against the staging area:
-// existence (Stat), sha256 recomputation (Get) and, when signing is
-// enabled, gpg detached-signature verification of package entries
-// (DESIGN §5.5, §7.5 step 1).
+// verifyManifest validates every manifest entry against the staging
+// area: existence (Stat), sha256 recomputation (Get) and, when signing
+// is enabled, gpg detached-signature verification of package entries.
 func (o *OrchestratorImpl) verifyManifest(ctx context.Context, taskID string, manifest []repo.Artifact) error {
 	if len(manifest) == 0 {
 		return errors.New("empty manifest")
@@ -252,7 +249,7 @@ func (o *OrchestratorImpl) signatureEntry(manifest []repo.Artifact, file string)
 func (o *OrchestratorImpl) verifySignature(ctx context.Context, taskID string, pkg, sig *repo.Artifact) error {
 	// Defensive: signing is requested by the config but no signer is
 	// wired (a caller passed nil with repo.sign != "off"). Fail the
-	// verify cleanly instead of dereferencing a nil signer (bug fix M4).
+	// verify cleanly instead of dereferencing a nil signer.
 	if o.signer == nil {
 		return errors.New("signing enabled but no signer configured")
 	}

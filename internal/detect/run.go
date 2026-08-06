@@ -22,13 +22,13 @@ import (
 	"time"
 )
 
-// defaultPollInterval guards against a zero poll_interval (DESIGN §8.1).
+// defaultPollInterval guards against a zero poll_interval.
 const defaultPollInterval = 5 * time.Minute
 
 // Run polls the source mirror forever: it runs one PollOnce immediately
-// and then repeats every cfg.PollInterval (DETAIL §3.4 #5). A failed
-// round is logged and the loop continues; cancelling ctx exits cleanly.
-// Not safe for concurrent use with PollOnce or BranchSnapshot (§3.6).
+// and then repeats every cfg.PollInterval. A failed round is logged and
+// the loop continues; cancelling ctx exits cleanly. Not safe for
+// concurrent use with PollOnce or BranchSnapshot.
 func (d *Detector) Run(ctx context.Context) error {
 	interval := d.cfg.PollInterval
 	if interval <= 0 {

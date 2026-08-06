@@ -28,15 +28,14 @@ import (
 )
 
 // signPackages claims the task's one-shot signing key and detach-signs
-// every package into a temporary GNUPGHOME (DESIGN §7.7): the armored
-// private key is imported once, then each package gets
+// every package into a temporary GNUPGHOME: the armored private key is
+// imported once, then each package gets
 // "gpg --batch --pinentry-mode loopback --passphrase <pass> --detach-sign".
 // It returns the created .sig paths. The caller owns the GNUPGHOME
 // lifecycle (created here, removed by the caller at task end; the
 // container teardown is the backstop).
 //
-// A key-claim failure or any gpg failure fails the task (stage=sign,
-// DETAIL §12.5).
+// A key-claim failure or any gpg failure fails the task (stage=sign).
 func (r *Runner) signPackages(ctx context.Context, task *api.TaskDetail, token string,
 	pkgs []string, gnupgHome string, w io.Writer) ([]string, error) {
 	km, err := r.client.GetSigningKey(ctx, task.ID, token)

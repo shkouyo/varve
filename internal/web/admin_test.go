@@ -28,7 +28,7 @@ import (
 )
 
 // TestAdminRender asserts the admin page shows the dashboard data plus
-// the task queue with cancel forms and worker manage buttons (A23).
+// the task queue with cancel forms and worker manage buttons.
 func TestAdminRender(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -66,7 +66,7 @@ func TestAdminRender(t *testing.T) {
 }
 
 // TestAdminActions asserts each POST action reaches the orchestrator and
-// redirects with a flash (DETAIL §10.7 point 5).
+// redirects with a flash.
 func TestAdminActions(t *testing.T) {
 	orch := &fakeOrchestrator{stats: &dispatch.Stats{}}
 	s := newTestServer(t, testConfig(), orch, newTestDB(t), newFakeLogReader(""))
@@ -113,8 +113,7 @@ func TestAdminActions(t *testing.T) {
 }
 
 // TestAdminActionErrorFlash asserts a failing action redirects with the
-// error carried in the query string and the admin page displays it
-// (DETAIL §10.4 point 3).
+// error carried in the query string and the admin page displays it.
 func TestAdminActionErrorFlash(t *testing.T) {
 	store := newTestDB(t)
 	seedPackage(t, store, "demo-pkg", "A demo package")
@@ -138,7 +137,7 @@ func TestAdminActionErrorFlash(t *testing.T) {
 }
 
 // TestAdminFailedBuilds asserts GET /admin/builds?failed=1 lists failed
-// builds only, with package and error summary (DETAIL §10.7 point 5).
+// builds only, with package and error summary.
 func TestAdminFailedBuilds(t *testing.T) {
 	store := newTestDB(t)
 	good := seedPackage(t, store, "good-pkg", "works")

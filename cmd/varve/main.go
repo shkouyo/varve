@@ -15,10 +15,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Command varve is the controller binary of the varve build system
-// (proposal §4.1, DESIGN §2.12, DETAIL §13): the single assembly point of
-// every controller module. It serves the worker API and the web UI, or
-// rebuilds the SQLite index from the storage side files.
+// Command varve is the controller binary of the varve build system: the
+// single assembly point of every controller module. It serves the worker
+// API and the web UI, or rebuilds the SQLite index from the storage side
+// files.
 //
 // Usage:
 //
@@ -34,7 +34,7 @@ import (
 
 // main runs the controller and exits non-zero on any startup or fatal
 // runtime error, so that containers and process supervisors observe the
-// failure (DETAIL §13.2).
+// failure.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "varve: %v\n", err)
@@ -42,12 +42,12 @@ func main() {
 	}
 }
 
-// defaultConfigPath is the controller configuration location (DESIGN §6.1).
+// defaultConfigPath is the controller configuration location.
 const defaultConfigPath = "/data/varve.toml"
 
-// run dispatches the DESIGN §2.12 command line: "serve" is the default,
-// both subcommands accept the optional "--config <path>" pair. The testable
-// entry points are runServe (DETAIL §13.2) and runRebuildIndex (§13.3).
+// run dispatches the command line: "serve" is the default, and both
+// subcommands accept the optional "--config <path>" pair. The testable
+// entry points are runServe and runRebuildIndex.
 func run(args []string) error {
 	if len(args) == 0 {
 		return runServe(nil)
@@ -65,8 +65,8 @@ func run(args []string) error {
 }
 
 // configPath extracts the configuration path from args: the optional
-// "--config <path>" pair, or the default when args is empty (DESIGN §2.12).
-// Anything else is a usage error.
+// "--config <path>" pair, or the default when args is empty. Anything
+// else is a usage error.
 func configPath(args []string) (string, error) {
 	switch len(args) {
 	case 0:

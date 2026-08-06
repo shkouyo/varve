@@ -35,7 +35,7 @@ const (
 )
 
 // newTestServer builds an httptest server over the real Handler() and the
-// given fake orchestrator (DETAIL §9.7 pairing).
+// given fake orchestrator.
 func newTestServer(t *testing.T, f *fakeOrchestrator) *httptest.Server {
 	t.Helper()
 	cfg := &config.ControllerConfig{API: config.APIConfig{Token: testToken}}

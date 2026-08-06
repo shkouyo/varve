@@ -25,13 +25,12 @@ import (
 	"git.0x0f.dev/varve/internal/api"
 )
 
-// runPool implements the pool lifecycle (Actions containers, proposal
-// §5.3, DETAIL §12.4 #1): register as a capacity-1 agent node (name from
-// VARVE_WORKER_NAME or freshly auto-generated on every run), then loop
-// polling every pollInterval. Claimed tasks are executed in place; the
-// node deregisters and exits after PoolIdleTimeout of idleness (measured
-// from startup or the end of the last task) or when the context is
-// cancelled.
+// runPool implements the pool lifecycle: register as a capacity-1 agent
+// node (name from VARVE_WORKER_NAME or freshly auto-generated on every
+// run), then loop polling every pollInterval. Claimed tasks are executed in
+// place; the node deregisters and exits after PoolIdleTimeout of idleness
+// (measured from startup or the end of the last task) or when the context
+// is cancelled.
 func (r *Runner) runPool(ctx context.Context) error {
 	name := r.cfg.WorkerName
 	if name == "" {
@@ -44,7 +43,7 @@ func (r *Runner) runPool(ctx context.Context) error {
 
 	// Heartbeat goroutine: every heartbeatInterval, send system metrics +
 	// the running task's progress (containers always empty) and deliver
-	// cancellation signals (channel 1, DESIGN §7.8).
+	// cancellation signals (channel 1).
 	hbCtx, hbCancel := context.WithCancel(ctx)
 	defer hbCancel()
 	go r.heartbeatLoop(hbCtx, name)
@@ -89,8 +88,7 @@ func (r *Runner) runPool(ctx context.Context) error {
 }
 
 // registerWithBackoff registers the node, retrying with an exponential
-// backoff (5s doubling to 60s, DETAIL §11.4 #1) until success or context
-// cancellation.
+// backoff (5s doubling to 60s) until success or context cancellation.
 func (r *Runner) registerWithBackoff(ctx context.Context, name string) error {
 	for attempt := 0; ; attempt++ {
 		_, err := r.client.Register(ctx, api.RegisterReq{
@@ -115,7 +113,7 @@ func (r *Runner) registerWithBackoff(ctx context.Context, name string) error {
 }
 
 // reRegister re-establishes the node after an identity failure (401/404)
-// on poll or heartbeat; the upsert is idempotent (DETAIL §11.4 #6).
+// on poll or heartbeat; the upsert is idempotent.
 func (r *Runner) reRegister(ctx context.Context, name string, cause error) {
 	log.Printf("agent: %s: %v; re-registering node", name, cause)
 	if err := r.registerWithBackoff(ctx, name); err != nil && ctx.Err() == nil {
@@ -123,7 +121,7 @@ func (r *Runner) reRegister(ctx context.Context, name string, cause error) {
 	}
 }
 
-// deregister marks the node offline on normal shutdown (decision A18).
+// deregister marks the node offline on normal shutdown.
 func (r *Runner) deregister(name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -147,8 +145,7 @@ func (r *Runner) heartbeatLoop(ctx context.Context, name string) {
 }
 
 // sendHeartbeat sends one heartbeat: system metrics + the running task's
-// progress (DETAIL §12.4 #1) and delivers the cancellation signal list
-// (channel 1).
+// progress and delivers the cancellation signal list (channel 1).
 func (r *Runner) sendHeartbeat(ctx context.Context, name string) {
 	metrics, counters := readMetrics(r.procDir, r.prevCPU)
 	r.prevCPU = counters

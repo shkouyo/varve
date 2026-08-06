@@ -28,8 +28,8 @@ import (
 )
 
 // metricsReader samples host metrics from /proc (Linux). The proc
-// directory is injectable so tests can use a fake tree (DETAIL §11.7);
-// missing files degrade to zero values instead of failing the heartbeat.
+// directory is injectable so tests can use a fake tree; missing files
+// degrade to zero values instead of failing the heartbeat.
 type metricsReader struct {
 	procDir string
 	prevCPU *cpuSample
@@ -47,10 +47,10 @@ func newMetricsReader(procDir string) *metricsReader {
 }
 
 // sample returns the current host metrics: /proc/stat CPU percentage,
-// /proc/meminfo used/total memory and /proc/uptime (DETAIL §11.4 item 3).
-// CPU percent is derived from the delta between consecutive samples; the
-// first sample reports 0. A missing or unparsable file contributes zero
-// values rather than an error (missing-file tolerance, DETAIL §11.7).
+// /proc/meminfo used/total memory and /proc/uptime. CPU percent is derived
+// from the delta between consecutive samples; the first sample reports 0. A
+// missing or unparsable file contributes zero values rather than an error
+// (missing-file tolerance).
 func (m *metricsReader) sample() api.Metrics {
 	var out api.Metrics
 	if cur, ok := readCPUStat(filepath.Join(m.procDir, "stat")); ok {

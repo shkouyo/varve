@@ -27,8 +27,8 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// TestLogContentNegotiation drives the Accept matrix (DETAIL §10.4 point
-// 2): text/event-stream selects SSE, everything else gets the HTML page.
+// TestLogContentNegotiation drives the Accept matrix:
+// text/event-stream selects SSE, everything else gets the HTML page.
 func TestLogContentNegotiation(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -74,7 +74,7 @@ func TestLogContentNegotiation(t *testing.T) {
 
 // TestSSEEventSequence asserts the log increment becomes event: log with
 // the JSON {"offset","data"} payload and the terminal build closes the
-// stream with event: done (DETAIL §10.4 point 2).
+// stream with event: done.
 func TestSSEEventSequence(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -112,8 +112,7 @@ func TestSSEDoneOnTerminal(t *testing.T) {
 }
 
 // TestSSEPingAndDisconnect asserts the keep-alive comment ping appears on
-// a non-terminal build and the handler exits when the client disconnects
-// (DETAIL §10.4 point 2, DETAIL §10.5).
+// a non-terminal build and the handler exits when the client disconnects.
 func TestSSEPingAndDisconnect(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -140,7 +139,7 @@ func TestSSEPingAndDisconnect(t *testing.T) {
 }
 
 // TestSSELogMissing asserts a missing log file yields an immediate
-// event: log with a message plus event: done (DETAIL §10.5).
+// event: log with a message plus event: done.
 func TestSSELogMissing(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -155,8 +154,8 @@ func TestSSELogMissing(t *testing.T) {
 	mustContain(t, body, "Build log not found", "event: done")
 }
 
-// TestLogHTMLMissing asserts the HTML log page maps a missing log file to
-// a 404 error page (DETAIL §10.5).
+// TestLogHTMLMissing asserts the HTML log page maps a missing log file
+// to a 404 error page.
 func TestLogHTMLMissing(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -185,7 +184,7 @@ func TestLogBuildMissing(t *testing.T) {
 }
 
 // TestLogHTMLNoScript asserts the no-JavaScript fallback meta refresh is
-// present in the HTML log page (decision A5).
+// present in the HTML log page.
 func TestLogHTMLNoScript(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")

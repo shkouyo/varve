@@ -34,22 +34,22 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// executeTask runs the canonical 9-step build flow for one task (DESIGN
-// §7.4): prepare → hook:pre_build → makepkg → hook:post_build → collect →
-// sign → upload → report, then the on_success/on_failure hooks. Task-level
-// failures are reported to the controller and never propagated as errors;
-// only fatal runner errors surface (DETAIL §12.2).
+// executeTask runs the canonical 9-step build flow for one task: prepare →
+// hook:pre_build → makepkg → hook:post_build → collect → sign → upload →
+// report, then the on_success/on_failure hooks. Task-level failures are
+// reported to the controller and never propagated as errors; only fatal
+// runner errors surface.
 //
 // The main flow is a single goroutine; the log flush goroutine, the
 // cancellation watcher and (in pool mode) the heartbeat goroutine run
-// alongside, all coordinated through the task context (DETAIL §12.6).
+// alongside, all coordinated through the task context.
 func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token string) {
 	tail := newTailBuffer(4096)
 	stateCh := r.state.begin(task.ID)
 	defer r.state.end()
 
 	// Log buffer: batched 1–2s/64KiB; one-shot segments carry a resource
-	// sample in their progress field (decision A10).
+	// sample in their progress field.
 	var progress progressFn
 	if r.mode == modeOneShot {
 		progress = func() *api.TaskProgress {
@@ -81,7 +81,7 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	}()
 
 	// Build deadline: derived from the dispatched absolute deadline or
-	// build.timeout_seconds (DETAIL §12.4 #2).
+	// build.timeout_seconds.
 	taskCtx, cancelTask := taskContext(ctx, task)
 	defer cancelTask()
 
@@ -100,8 +100,7 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	}
 
 	// ① prepare: clone (single-branch shallow) or download+extract the
-	// source archive; require .SRCINFO; record the actual checkout commit
-	// (D1).
+	// source archive; require .SRCINFO; record the actual checkout commit.
 	r.state.setStage(stagePrepare)
 	commit, err := r.prepare(taskCtx, task, token, taskDir, buildLog)
 	if err != nil {
@@ -118,8 +117,8 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	}
 
 	// ③ makepkg: run directly as builder (dependency installation goes
-	// through sudo NOPASSWD, decision A11); bounded by the deadline, with
-	// cancellation handling.
+	// through sudo NOPASSWD); bounded by the deadline, with cancellation
+	// handling.
 	r.state.setStage(stageMakepkg)
 	kind, exit, merr := r.runMakepkg(taskCtx, taskDir, buildLog, cancelCh)
 	switch kind {
@@ -182,7 +181,7 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	}
 
 	// ⑧ report: succeeded with the full manifest, resource usage and the
-	// actual checkout commit (D1).
+	// actual checkout commit.
 	r.state.setStage(stageReport)
 	r.report(ctx, task, token, api.ResultReq{
 		Status:        statusSucceeded,
@@ -198,9 +197,8 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	}
 }
 
-// taskContext derives the build context from the task deadline
-// (DETAIL §12.4 #2): the absolute deadline when present, otherwise
-// build.timeout_seconds.
+// taskContext derives the build context from the task deadline: the
+// absolute deadline when present, otherwise build.timeout_seconds.
 func taskContext(parent context.Context, task *api.TaskDetail) (context.Context, context.CancelFunc) {
 	if !task.Build.Deadline.IsZero() {
 		return context.WithDeadline(parent, task.Build.Deadline)
@@ -214,9 +212,9 @@ func taskContext(parent context.Context, task *api.TaskDetail) (context.Context,
 // prepare checks out the task source: single-branch shallow clone for
 // mode=clone, download+extract of the controller-staged tar.zst snapshot
 // for mode=archive. It requires a .SRCINFO in the checkout (bottom-line
-// guard, DESIGN §8.3 step 2) and records the actually checked-out commit
-// (D1); an unknown commit (archive snapshots carry no git metadata) stays
-// empty and the controller falls back to the dispatched source commit.
+// guard) and records the actually checked-out commit; an unknown commit
+// (archive snapshots carry no git metadata) stays empty and the controller
+// falls back to the dispatched source commit.
 func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskDir string, w io.Writer) (string, error) {
 	switch task.Source.Mode {
 	case "archive":
@@ -268,7 +266,7 @@ func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskD
 	out, err := captureCmd(ctx, r.execCommand, taskDir, "git", "rev-parse", "HEAD")
 	if err != nil {
 		// No git metadata (archive mode) or rev-parse failure: the commit
-		// stays empty and the controller falls back (D1).
+		// stays empty and the controller falls back.
 		return "", nil
 	}
 	return strings.TrimSpace(out), nil
@@ -295,7 +293,7 @@ func (r *Runner) runHooks(ctx context.Context, taskDir string, hooks []string, w
 // runMakepkg runs "makepkg -s --noconfirm" in the checkout, streaming
 // merged output to w. The process runs in its own process group; the
 // cancellation watcher terminates it with SIGTERM escalated to SIGKILL
-// after killGrace (DETAIL §12.4 #3). kind is empty on a normal exit, or
+// after killGrace. kind is empty on a normal exit, or
 // outcomeCancelled/outcomeTimeout when the watcher had to stop the build.
 func (r *Runner) runMakepkg(taskCtx context.Context, taskDir string, w io.Writer, cancelCh <-chan struct{}) (kind string, exit int, err error) {
 	cmd := r.execCommand(context.Background(), "makepkg", "-s", "--noconfirm")
@@ -335,7 +333,7 @@ func (r *Runner) runMakepkg(taskCtx context.Context, taskDir string, w io.Writer
 }
 
 // makepkgSummary builds the makepkg failure summary including the tail of
-// the build log (DETAIL §12.5).
+// the build log.
 func makepkgSummary(exit int, err error, tail *tailBuffer) string {
 	if err != nil {
 		return "makepkg failed: " + err.Error()
@@ -385,15 +383,15 @@ func (r *Runner) failTask(ctx context.Context, task *api.TaskDetail, token, stag
 	})
 }
 
-// reportCancelled reports a controller-requested cancellation (decision
-// A3). Late duplicate reports (409) are ignored by the controller.
+// reportCancelled reports a controller-requested cancellation. Late
+// duplicate reports (409) are ignored by the controller.
 func (r *Runner) reportCancelled(ctx context.Context, task *api.TaskDetail, token string) {
 	log.Printf("agent: task %s: cancelled", task.ID)
 	r.report(ctx, task, token, api.ResultReq{Status: statusCancelled, ResourceUsage: r.finalSamples()})
 }
 
 // report sends the final result; a 409 (late duplicate) is logged and
-// ignored, any other failure is logged best-effort (DETAIL §12.5).
+// ignored, any other failure is logged best-effort.
 func (r *Runner) report(ctx context.Context, task *api.TaskDetail, token string, res api.ResultReq) {
 	if err := r.client.ReportResult(ctx, task.ID, token, res); err != nil {
 		if isConflict(err) {

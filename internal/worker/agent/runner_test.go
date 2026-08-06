@@ -42,7 +42,7 @@ func TestNewRunnerMode(t *testing.T) {
 }
 
 // TestOneShotDoesNotRegister runs the full one-shot flow and asserts the
-// agent never calls Register (decision A10).
+// agent never calls Register.
 func TestOneShotDoesNotRegister(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)

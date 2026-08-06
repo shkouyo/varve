@@ -26,9 +26,8 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// Register upserts a worker keyed by its stable name (decision A21),
-// status=online with a fresh heartbeat, and returns its id and name.
-// Concurrently safe.
+// Register upserts a worker keyed by its stable name, status=online with
+// a fresh heartbeat, and returns its id and name. Concurrently safe.
 func (o *OrchestratorImpl) Register(ctx context.Context, reg RegisterReq) (*RegisterResp, error) {
 	if reg.Name == "" {
 		return nil, fmt.Errorf("dispatch: register: empty worker name")
@@ -52,10 +51,10 @@ func (o *OrchestratorImpl) Register(ctx context.Context, reg RegisterReq) (*Regi
 
 // Heartbeat refreshes the node's heartbeat, applies the reported task
 // progress (TouchTaskProgress + resource samples) and returns the
-// cancellation signals of this node's active tasks (channel 1, D4), always
-// read from the database. Metrics and containers are informational and are
-// not persisted. A disabled worker keeps its status (db.Heartbeat would
-// reset it to online), so its heartbeat only refreshes the last-seen time.
+// cancellation signals of this node's active tasks, always read from the
+// database. Metrics and containers are informational and are not
+// persisted. A disabled worker keeps its status (db.Heartbeat would reset
+// it to online), so its heartbeat only refreshes the last-seen time.
 // Concurrently safe.
 func (o *OrchestratorImpl) Heartbeat(ctx context.Context, hb HeartbeatReq) (*HeartbeatResp, error) {
 	w, err := o.store.GetWorkerByName(ctx, hb.Name)
@@ -83,14 +82,14 @@ func (o *OrchestratorImpl) Heartbeat(ctx context.Context, hb HeartbeatReq) (*Hea
 	return &HeartbeatResp{CancelledTaskIDs: cancelled, ServerTime: now}, nil
 }
 
-// Poll doubles as a heartbeat (optimization O2) and atomically claims the
-// FIFO head task for the node within its free capacity. The claimed task is
-// returned together with a fresh 32-byte hex claim token (cached in memory)
-// and the cancellation signals. No claimable task yields task=null, not an
-// error. Workers that are not online (disabled/offline) are never assigned
-// new work; a disabled worker's heartbeat is not refreshed either, so the
-// admin's disable state survives its polls (db.Heartbeat would reset
-// status to online). Concurrently safe.
+// Poll doubles as a heartbeat and atomically claims the FIFO head task
+// for the node within its free capacity. The claimed task is returned
+// together with a fresh 32-byte hex claim token (cached in memory) and
+// the cancellation signals. No claimable task yields task=null, not an
+// error. Workers that are not online (disabled/offline) are never
+// assigned new work; a disabled worker's heartbeat is not refreshed
+// either, so the admin's disable state survives its polls (db.Heartbeat
+// would reset status to online). Concurrently safe.
 func (o *OrchestratorImpl) Poll(ctx context.Context, poll PollReq) (*PollResp, error) {
 	w, err := o.store.GetWorkerByName(ctx, poll.Name)
 	if err != nil {
@@ -137,9 +136,9 @@ func (o *OrchestratorImpl) Poll(ctx context.Context, poll PollReq) (*PollResp, e
 	return resp, nil
 }
 
-// Deregister marks a node offline (its row is kept for history, decision
-// A18). A node with active tasks cannot deregister: the caller must drain
-// them first (ErrConflict, D4). Concurrently safe.
+// Deregister marks a node offline (its row is kept for history). A node
+// with active tasks cannot deregister: the caller must drain them first
+// (ErrConflict). Concurrently safe.
 func (o *OrchestratorImpl) Deregister(ctx context.Context, name string) error {
 	w, err := o.store.GetWorkerByName(ctx, name)
 	if err != nil {

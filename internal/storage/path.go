@@ -22,22 +22,22 @@ import (
 	"strings"
 )
 
-// StagingPath returns the staging area path of a task artifact
-// (DESIGN §4.1): "staging/<taskID>/<fileName>". The staging tree is created
-// implicitly on first upload and must be cleaned up after result handling.
+// StagingPath returns the staging area path of a task artifact:
+// "staging/<taskID>/<fileName>". The staging tree is created implicitly on
+// first upload and must be cleaned up after result handling.
 func StagingPath(taskID, fileName string) string {
 	return "staging/" + taskID + "/" + fileName
 }
 
 // validName reports whether name is a safe, normalized virtual path usable
-// by both backends (DETAIL §5.4):
+// by both backends:
 //
 //   - path.Clean(name) == name (no redundant separators, no "." segments,
 //     no trailing slash),
 //   - name does not start with "/" (no absolute paths),
 //   - no segment is ".." (no parent traversal),
 //   - every segment matches the basename whitelist [A-Za-z0-9._+-]
-//     (identical to the upload whitelist, DESIGN §5.7).
+//     (identical to the upload whitelist).
 //
 // The whitelist intentionally excludes separators and shell metacharacters,
 // so a validated name is safe to embed in a filesystem path (local) and in
@@ -61,7 +61,7 @@ func validName(name string) bool {
 }
 
 // validBasename reports whether a single path segment contains only
-// whitelisted characters (DETAIL §5.4).
+// whitelisted characters.
 func validBasename(seg string) bool {
 	for _, r := range seg {
 		switch {
@@ -76,7 +76,7 @@ func validBasename(seg string) bool {
 
 // globLiteralPrefix returns the longest literal (non-meta) prefix of a glob
 // pattern: "foo*" -> "foo", "*.meta.toml" -> "". Backends use it to narrow
-// server-side listings before applying path.Match client-side (DETAIL §5.4).
+// server-side listings before applying path.Match client-side.
 func globLiteralPrefix(pattern string) string {
 	for i, r := range pattern {
 		switch r {

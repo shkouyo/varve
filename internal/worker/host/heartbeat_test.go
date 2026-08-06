@@ -28,7 +28,7 @@ import (
 )
 
 // TestHeartbeatPayload verifies the heartbeat request: name, fake-/proc
-// metrics, tasks: [] and the running-container states (H6, group 7).
+// metrics, tasks: [] and the running-container states.
 func TestHeartbeatPayload(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "stat", "cpu  100 0 0 900 0 0 0 0\n")
@@ -69,7 +69,7 @@ func TestHeartbeatPayload(t *testing.T) {
 
 // TestHeartbeatCancelKillsContainer verifies cancelled_task_ids in the
 // heartbeat response kill the matching container and flag it cancelled
-// (H6, group 4; channel 1, D4).
+// (cancellation channel 1).
 func TestHeartbeatCancelKillsContainer(t *testing.T) {
 	rt := newFakeRuntime()
 	c := newFakeClient()
@@ -88,7 +88,7 @@ func TestHeartbeatCancelKillsContainer(t *testing.T) {
 }
 
 // TestPollResponseCancellations verifies the poll response also carries
-// the cancellation channel and triggers the kill (D4: dual channel).
+// the cancellation channel and triggers the kill (dual channel).
 func TestPollResponseCancellations(t *testing.T) {
 	rt := newFakeRuntime()
 	c := newFakeClient()
@@ -121,7 +121,7 @@ func TestHeartbeatGenericErrorNoReregister(t *testing.T) {
 }
 
 // TestCancelKillReportsCancelled verifies the full cancellation path: the
-// killed container's monitor reports cancelled, not failed (D4①, H6).
+// killed container's monitor reports cancelled, not failed.
 func TestCancelKillReportsCancelled(t *testing.T) {
 	rt := newFakeRuntime()
 	rt.exitCodes["c1"] = 137 // killed by SIGKILL
@@ -155,7 +155,7 @@ func TestCancelKillReportsCancelled(t *testing.T) {
 }
 
 // TestHeartbeatReregisterOn401Or404 verifies heartbeat 401/404 trigger a
-// re-registration (DETAIL §11.4 item 6).
+// re-registration.
 func TestHeartbeatReregisterOn401Or404(t *testing.T) {
 	for _, status := range []int{401, 404} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {

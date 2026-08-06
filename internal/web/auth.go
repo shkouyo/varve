@@ -22,11 +22,10 @@ import (
 	"net/http"
 )
 
-// requireAuth gates an admin handler behind HTTP Basic Auth (DESIGN §6.4,
-// DETAIL §10.4 point 4). Unauthorized requests receive a 401 with the
-// WWW-Authenticate challenge so browsers prompt for credentials. There is
-// no cookie session, so the admin area is naturally CSRF-free (proposal
-// §18).
+// requireAuth gates an admin handler behind HTTP Basic Auth.
+// Unauthorized requests receive a 401 with the WWW-Authenticate challenge
+// so browsers prompt for credentials. There is no cookie session, so the
+// admin area is naturally CSRF-free.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.authorized(r) {

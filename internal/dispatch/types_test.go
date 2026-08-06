@@ -25,9 +25,9 @@ import (
 	"git.0x0f.dev/varve/internal/repo"
 )
 
-// TestTaskDetailJSONGolden asserts the wire encoding of a fully populated
-// TaskDetail matches DESIGN §5.4 field-for-field (snake_case keys, every
-// field present).
+// TestTaskDetailJSONGolden asserts the wire encoding of a fully
+// populated TaskDetail field-for-field (snake_case keys, every field
+// present).
 func TestTaskDetailJSONGolden(t *testing.T) {
 	d := TaskDetail{
 		ID:      "550e8400-e29b-41d4-a716-446655440000",
@@ -70,7 +70,7 @@ func TestTaskDetailJSONGolden(t *testing.T) {
 }
 
 // TestProtocolRoundTrip covers JSON round-trips of the worker protocol
-// types against their snake_case field names (DETAIL §0.3 rule 8).
+// types against their snake_case field names.
 func TestProtocolRoundTrip(t *testing.T) {
 	reg := RegisterReq{Name: "proud-heron-7", Role: "host", Mode: "host", Arch: "x86_64", Capacity: 2, Version: "0.1.0"}
 	assertJSON(t, reg, `{"name":"proud-heron-7","role":"host","mode":"host","arch":"x86_64","capacity":2,"version":"0.1.0"}`)

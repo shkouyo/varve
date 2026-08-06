@@ -36,9 +36,9 @@ func testInfo() FailureInfo {
 	}
 }
 
-// TestSendFailureNoop asserts the documented no-op semantics (DETAIL §8.5):
-// mail disabled, empty recipient list, and a nil Mailer all return nil
-// without touching the network.
+// TestSendFailureNoop asserts the no-op semantics: mail disabled, empty
+// recipient list, and a nil Mailer all return nil without touching the
+// network.
 func TestSendFailureNoop(t *testing.T) {
 	srv := newTestSMTP(t, false, nil)
 	cfg := config.MailConfig{

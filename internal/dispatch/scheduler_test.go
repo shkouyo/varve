@@ -39,7 +39,7 @@ func (e *testEnv) claimAndStall(t *testing.T, worker string) (string, string) {
 	return claimed, token
 }
 
-// TestStallRecovery covers decision A17: the first stall re-queues the task
+// TestStallRecovery covers the first-stall policy: the task is re-queued
 // (attempts 0→1, worker and claim token released, created_at preserved).
 func TestStallRecovery(t *testing.T) {
 	env := newTestEnv(t)
@@ -123,8 +123,8 @@ func TestStallSecondFails(t *testing.T) {
 	}
 }
 
-// TestStallCancelledWins covers D4②: a stalled task with a durable cancel
-// request is finalized cancelled, never re-queued.
+// TestStallCancelledWins covers cancellation priority: a stalled task
+// with a durable cancel request is finalized cancelled, never re-queued.
 func TestStallCancelledWins(t *testing.T) {
 	env := newTestEnv(t)
 	taskID := env.enqueue(t, "foo", "foo", "maint@example.org")
@@ -254,8 +254,8 @@ func TestSweepLogs(t *testing.T) {
 	}
 }
 
-// TestSweepWorkers covers decision A18: agents offline for more than 24h
-// are deleted, hosts never are, and disabled nodes are left alone.
+// TestSweepWorkers covers the worker sweep: agents offline for more than
+// 24h are deleted, hosts never are, and disabled nodes are left alone.
 func TestSweepWorkers(t *testing.T) {
 	env := newTestEnv(t)
 	env.advance(-25 * time.Hour)

@@ -27,9 +27,9 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// adminData feeds admin.html (DESIGN §6.3): the public dashboard view
-// plus the task queue (queued/running, with cancel buttons) and action
-// buttons on recent builds and workers (decision A23).
+// adminData feeds admin.html: the public dashboard view plus the task
+// queue (queued/running, with cancel buttons) and action buttons on
+// recent builds and workers.
 type adminData struct {
 	base
 	Counts   []statusCount
@@ -50,7 +50,7 @@ type taskView struct {
 }
 
 // adminBuildsData feeds admin_builds.html: the failed build list (the
-// long-term retention area, DESIGN §6.3).
+// long-term retention area).
 type adminBuildsData struct {
 	base
 	Builds []failedBuildView
@@ -221,7 +221,7 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 }
 
 // redirectFlash redirects back to the admin area with a flash message
-// carried in the query string (no cookies, DETAIL §10.4 point 3).
+// carried in the query string (no cookies).
 func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, target, kind, msg string) {
 	q := url.Values{}
 	q.Set(kind, msg)

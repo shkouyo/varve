@@ -25,20 +25,19 @@ import (
 )
 
 // PkgbuildSource points at an external repository that replaces this
-// branch as the PKGBUILD source (proposal §7.2).
+// branch as the PKGBUILD source.
 type PkgbuildSource struct {
 	URL       string
 	Branch    string
 	Directory string
 }
 
-// Collect describes artifact collection rules (proposal §7.4).
+// Collect describes artifact collection rules.
 type Collect struct {
 	Exclude []string // globs excluded from the collected artifacts
 }
 
-// Hooks lists the build hooks executed inside the build container
-// (proposal §7.2).
+// Hooks lists the build hooks executed inside the build container.
 type Hooks struct {
 	PreBuild  []string
 	PostBuild []string
@@ -46,9 +45,9 @@ type Hooks struct {
 	OnFailure []string
 }
 
-// Dotfile is the parsed and merged .varve.toml of one branch (decision
-// A6: parsing lives here, the agent never parses dotfiles). VCS is one of
-// "auto", "git", "svn" or "none".
+// Dotfile is the parsed and merged .varve.toml of one branch. Parsing
+// lives here; the agent never parses dotfiles. VCS is one of "auto",
+// "git", "svn" or "none".
 type Dotfile struct {
 	Maintainers    []string
 	PkgbuildSource *PkgbuildSource
@@ -57,9 +56,8 @@ type Dotfile struct {
 	Hooks          Hooks
 }
 
-// rawDotfile mirrors the TOML schema (proposal §7.2) plus the extras
-// reference list, which is consumed during merging and not part of the
-// exported Dotfile.
+// rawDotfile mirrors the TOML schema plus the extras reference list, which
+// is consumed during merging and not part of the exported Dotfile.
 type rawDotfile struct {
 	Maintainers    []string `toml:"maintainers"`
 	PkgbuildSource *struct {
@@ -80,8 +78,8 @@ type rawDotfile struct {
 	Extras []string `toml:"extras"`
 }
 
-// maxDotfileDepth bounds the recursive extras chain (DESIGN §2.3). The
-// main file is depth 1; exceeding the limit is an error.
+// maxDotfileDepth bounds the recursive extras chain. The main file is
+// depth 1; exceeding the limit is an error.
 const maxDotfileDepth = 8
 
 // ParseDotfile parses a single dotfile body without following extras
@@ -96,11 +94,11 @@ func ParseDotfile(data []byte) (*Dotfile, error) {
 
 // ParseDotfileWithExtras parses data and recursively merges every extras
 // file referenced by it, resolving paths through get (relative to the
-// branch root). Merge semantics (DESIGN §2.3): maintainers and hooks
-// append, scalars (vcs, pkgbuild_source) are overridden by later files,
-// collect.exclude appends de-duplicated. Cyclic references, chains deeper
-// than maxDotfileDepth and missing extras files are all errors so the
-// caller can skip the branch.
+// branch root). Merge semantics: maintainers and hooks append, scalars
+// (vcs, pkgbuild_source) are overridden by later files, collect.exclude
+// appends de-duplicated. Cyclic references, chains deeper than
+// maxDotfileDepth and missing extras files are all errors so the caller
+// can skip the branch.
 func ParseDotfileWithExtras(get func(path string) ([]byte, error), data []byte) (*Dotfile, error) {
 	if get == nil {
 		return nil, errors.New("detect: ParseDotfileWithExtras requires a non-nil get callback")
@@ -169,9 +167,9 @@ func (r *rawDotfile) toDotfile() *Dotfile {
 	return d
 }
 
-// mergeDotfile applies the merge semantics of src on top of dst
-// (DESIGN §2.3): list fields append, scalars are replaced when present,
-// collect.exclude appends de-duplicated.
+// mergeDotfile applies the merge semantics of src on top of dst: list
+// fields append, scalars are replaced when present, collect.exclude
+// appends de-duplicated.
 func mergeDotfile(dst, src *Dotfile) {
 	dst.Maintainers = append(dst.Maintainers, src.Maintainers...)
 	if src.PkgbuildSource != nil {

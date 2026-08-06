@@ -26,9 +26,9 @@ import (
 )
 
 // LoadWorker resolves the worker configuration from the process environment,
-// the optional CWD .env file, and built-in defaults (DESIGN §8.2, §8.3). The
-// precedence is: exported environment variables > .env > defaults; .env never
-// overrides an already-exported variable.
+// the optional CWD .env file, and built-in defaults. The precedence is:
+// exported environment variables > .env > defaults; .env never overrides an
+// already-exported variable.
 //
 // It is called once at startup and is safe for concurrent use; the returned
 // configuration must be treated as read-only.
@@ -56,8 +56,8 @@ func LoadWorker() (*WorkerConfig, error) {
 		DataDir:          get("VARVE_DATA_DIR"),
 	}
 
-	// Defaults (DETAIL §1.2, §1.4). An empty ContainerRuntime means
-	// "auto-detect" and is performed by the host module.
+	// Defaults. An empty ContainerRuntime means "auto-detect" and is
+	// performed by the host module.
 	if cfg.Role == "" {
 		cfg.Role = "host"
 	}
@@ -109,10 +109,10 @@ func LoadWorker() (*WorkerConfig, error) {
 	return cfg, nil
 }
 
-// validateWorker checks a resolved WorkerConfig against the rules of DETAIL
-// §1.4 (rule 4). ControllerURL is always required; a host worker requires
-// Token and Image; a one-shot agent requires TaskID and TaskToken (decision
-// A26: no shared Token), while a pool agent requires the shared Token.
+// validateWorker checks a resolved WorkerConfig against the validation
+// rules. ControllerURL is always required; a host worker requires Token and
+// Image; a one-shot agent requires TaskID and TaskToken (it has no shared
+// Token), while a pool agent requires the shared Token.
 func validateWorker(c *WorkerConfig) error {
 	if c.ControllerURL == "" {
 		return errors.New("config: VARVE_CONTROLLER_URL is required")

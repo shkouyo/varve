@@ -27,7 +27,7 @@ import (
 	"testing"
 )
 
-// --- pure functions (DETAIL §3.7 #3, #4) ---
+// --- pure functions ---
 
 func TestDetectKind(t *testing.T) {
 	tests := []struct {
@@ -107,7 +107,7 @@ func TestUpstreamURLs(t *testing.T) {
 	}
 }
 
-// --- GitHead against real local repositories (DETAIL §3.7 #5) ---
+// --- GitHead against real local repositories ---
 
 func TestGitHeadLocalRepo(t *testing.T) {
 	dir := initGitRepo(t, "one")
@@ -155,11 +155,11 @@ func TestGitHeadEmptyRepo(t *testing.T) {
 	}
 }
 
-// --- execCommand recording (DETAIL §3.7 #5, #6) ---
+// --- execCommand recording ---
 
 // TestCommandArgs pins the exact external command lines and asserts the
 // SVNRevision call carries the --xml flag. The package execCommand var is
-// replaced with a script-backed fake (DETAIL §0.3).
+// replaced with a script-backed fake.
 func TestCommandArgs(t *testing.T) {
 	old := execCommand
 	defer func() { execCommand = old }()
@@ -216,9 +216,9 @@ esac
 	}
 }
 
-// TestSVNRevisionPathShim resolves svn through the testdata/bin PATH shim
-// (DETAIL §3.7 #6): the shim only accepts "svn info --xml" invocations
-// and emits a fixed last-changed-revision.
+// TestSVNRevisionPathShim resolves svn through the testdata/bin PATH shim:
+// the shim only accepts "svn info --xml" invocations and emits a fixed
+// last-changed-revision.
 func TestSVNRevisionPathShim(t *testing.T) {
 	shimDir, err := filepath.Abs(filepath.Join("..", "testdata", "bin"))
 	if err != nil {

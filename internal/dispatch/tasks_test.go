@@ -125,8 +125,8 @@ func TestAppendLogOffsetSemantics(t *testing.T) {
 	}
 }
 
-// TestAppendLogCancelFlag covers cancellation channel 2: after a cancel
-// request the log ack reports cancelled=true.
+// TestAppendLogCancelFlag covers the log cancellation signal: after a
+// cancel request the log ack reports cancelled=true.
 func TestAppendLogCancelFlag(t *testing.T) {
 	env := newTestEnv(t)
 	env.enqueue(t, "foo", "foo")

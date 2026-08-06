@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Git PATH shim used by the detect pipeline tests (DETAIL §3.7 #8).
+# Git PATH shim used by the detect pipeline tests.
 # "git ls-remote" invocations (the only place the vcs subpackage cannot
 # substitute execCommand from outside) are intercepted so tests can return
 # canned upstream HEAD hashes; every other invocation is forwarded to the

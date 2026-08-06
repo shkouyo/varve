@@ -38,8 +38,7 @@ pkgname = foo
 `
 
 // TestTaskNineStepSequence drives a full one-shot task with signing and
-// asserts the controller call sequence and the log progress samples
-// (DETAIL §12.7 #1).
+// asserts the controller call sequence and the log progress samples.
 func TestTaskNineStepSequence(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	f.keyMaterial = &api.KeyMaterial{ArmoredPrivateKey: "-----BEGIN PGP PRIVATE KEY BLOCK-----\nFAKE\n", Passphrase: "secret"}
@@ -98,7 +97,7 @@ func TestTaskNineStepSequence(t *testing.T) {
 		t.Errorf("upload order = %v, want %v", gotUploads, wantUploads)
 	}
 
-	// One-shot segments carry a resource sample in progress (A10).
+	// One-shot segments carry a resource sample in progress.
 	sawProgress := false
 	for _, seg := range f.segments {
 		if seg.Progress != nil && seg.Progress.TaskID == "t-1" {
@@ -137,7 +136,7 @@ func contains(ss []string, want string) bool {
 }
 
 // TestTaskPreBuildHookFailureAborts asserts a failing pre_build hook fails
-// the task with stage hook:pre_build and runs on_failure (DETAIL §12.7 #3).
+// the task with stage hook:pre_build and runs on_failure.
 func TestTaskPreBuildHookFailureAborts(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)
@@ -169,7 +168,7 @@ func TestTaskPreBuildHookFailureAborts(t *testing.T) {
 }
 
 // TestTaskPostBuildHookFailureWarns asserts a failing post_build hook is
-// warned about but does not abort the build (DETAIL §12.5).
+// warned about but does not abort the build.
 func TestTaskPostBuildHookFailureWarns(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)
@@ -236,7 +235,7 @@ func TestTaskMakepkgFailureIncludesTail(t *testing.T) {
 }
 
 // TestTaskCollectEmptyFails asserts a build with no collectable artifacts
-// fails with stage=collect (DETAIL §12.5: no empty manifests).
+// fails with stage=collect (no empty manifests).
 func TestTaskCollectEmptyFails(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)
@@ -311,14 +310,14 @@ func TestTaskArchivePrepare(t *testing.T) {
 		t.Errorf("tar args = %v, want --zstd extraction", tarArgs)
 	}
 	// Archive snapshots carry no git metadata: the commit stays empty and
-	// the controller falls back (D1).
+	// the controller falls back.
 	if res.Commit != "" {
 		t.Errorf("archive mode commit = %q, want empty", res.Commit)
 	}
 }
 
-// TestTaskCommitRecorded (D1): a real clone (local file:// only) makes the
-// agent report the actually checked-out commit.
+// TestTaskCommitRecorded: a real clone (local file:// only) makes the agent
+// report the actually checked-out commit.
 func TestTaskCommitRecorded(t *testing.T) {
 	url, wantCommit := makeRepo(t, testSrcinfo)
 
@@ -345,8 +344,8 @@ func TestTaskCommitRecorded(t *testing.T) {
 	}
 }
 
-// TestTaskCommitFallback (D1): when rev-parse fails the agent reports an
-// empty commit and the controller falls back to the dispatched one.
+// TestTaskCommitFallback: when rev-parse fails the agent reports an empty
+// commit and the controller falls back to the dispatched one.
 func TestTaskCommitFallback(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)
@@ -371,7 +370,7 @@ func TestTaskCommitFallback(t *testing.T) {
 }
 
 // TestTaskTimeout asserts the deadline terminates makepkg and reports
-// failed(timeout) (DETAIL §12.7 #10).
+// failed(timeout).
 func TestTaskTimeout(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)
@@ -401,7 +400,7 @@ func TestTaskTimeout(t *testing.T) {
 }
 
 // TestTaskLateReportConflictIgnored asserts a 409 on the result report is
-// logged and ignored (DETAIL §12.5).
+// logged and ignored.
 func TestTaskLateReportConflictIgnored(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	f.reportErr = &api.APIError{Status: 409, Code: "conflict"}

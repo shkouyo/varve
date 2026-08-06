@@ -25,9 +25,9 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// TestHandlerRouteTable exercises every route of DESIGN §6.1: public
-// pages render, admin routes demand Basic Auth (401 + challenge) and the
-// missing-resource pages are 404.
+// TestHandlerRouteTable exercises every route: public pages render, admin
+// routes demand Basic Auth (401 + challenge) and the missing-resource
+// pages are 404.
 func TestHandlerRouteTable(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -83,7 +83,7 @@ func TestHandlerRouteTable(t *testing.T) {
 }
 
 // TestTemplateSetCompiles asserts that the full eight-template set is
-// registered (DETAIL §10.3) and each renders with a 200.
+// registered and each renders with a 200.
 func TestTemplateSetCompiles(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")

@@ -34,10 +34,9 @@ type cpuCounters struct {
 }
 
 // readMetrics reads node-level system metrics from procDir (default
-// /proc): CPU percentage (delta against prev), memory usage and uptime
-// (DETAIL §12.4 #1: pool heartbeats carry system metrics). Missing or
-// unparsable files degrade to zero values; the /proc paths are injectable
-// for tests.
+// /proc): CPU percentage (delta against prev), memory usage and uptime.
+// Pool heartbeats carry these. Missing or unparsable files degrade to zero
+// values; the /proc paths are injectable for tests.
 func readMetrics(procDir string, prev cpuCounters) (api.Metrics, cpuCounters) {
 	m := api.Metrics{}
 

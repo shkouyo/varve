@@ -28,7 +28,7 @@ import (
 
 // TestPoolRegistersAndIdlesOut asserts the pool lifecycle: register as a
 // capacity-1 agent node (auto-generated name), poll with no tasks, exit
-// via the idle timeout with a deregister (DETAIL §12.7 #2).
+// via the idle timeout with a deregister.
 func TestPoolRegistersAndIdlesOut(t *testing.T) {
 	f := &fakeClient{}
 	cfg := configForTest(t, false)
@@ -100,7 +100,7 @@ func TestPoolManualName(t *testing.T) {
 }
 
 // TestPoolRegisterBackoff asserts exponential retry until registration
-// succeeds (DETAIL §11.4 #1: same rule as the host).
+// succeeds (same rule as the host).
 func TestPoolRegisterBackoff(t *testing.T) {
 	f := &fakeClient{regFailTimes: 2, regErr: errors.New("boom")}
 	cfg := configForTest(t, false)
@@ -126,7 +126,7 @@ func TestPoolRegisterBackoff(t *testing.T) {
 }
 
 // TestPoolHeartbeatPayload asserts the heartbeat carries system metrics,
-// the running task's progress and empty containers (DETAIL §12.7 #2).
+// the running task's progress and empty containers.
 func TestPoolHeartbeatPayload(t *testing.T) {
 	f := &fakeClient{}
 	cfg := configForTest(t, false)

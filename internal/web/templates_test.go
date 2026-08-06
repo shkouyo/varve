@@ -28,7 +28,7 @@ import (
 )
 
 // TestErrorPages asserts the 404 and 401 responses render the error page
-// with semantic markup and no JavaScript (DETAIL §10.7 point 7).
+// with semantic markup and no JavaScript.
 func TestErrorPages(t *testing.T) {
 	store := newTestDB(t)
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader(""))
@@ -58,8 +58,7 @@ func TestErrorPages(t *testing.T) {
 
 // TestSemanticMarkup asserts the shared page chrome on every rendered
 // page: html lang, skip link, semantic landmarks, table headers with
-// scope, and aria-hidden decorative icons (DETAIL §10.7 point 7, WCAG
-// 2.2 AA).
+// scope, and aria-hidden decorative icons (WCAG 2.2 AA).
 func TestSemanticMarkup(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -108,10 +107,10 @@ func TestSemanticMarkup(t *testing.T) {
 	}
 }
 
-// TestNoExternalResources asserts pages reference no external resources
-// (proposal §13.1): no stylesheet links, no remote scripts or media, and
-// no CDN mentions. The SVG xmlns namespace is not a resource request and
-// is intentionally ignored.
+// TestNoExternalResources asserts pages reference no external resources:
+// no stylesheet links, no remote scripts or media, and no CDN mentions.
+// The SVG xmlns namespace is not a resource request and is intentionally
+// ignored.
 func TestNoExternalResources(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -167,8 +166,8 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// TestA11yContrastAndKeyboard pins the WCAG 2.2 AA fixes from the V7
-// axe-core audit (will-not-commit/verify/V7) to the rendered HTML:
+// TestA11yContrastAndKeyboard pins the WCAG 2.2 AA fixes from the
+// axe-core audit to the rendered HTML:
 //
 //   - no sub-threshold secondary text (stone-400, 2.59:1 on white) and
 //     footer text uses stone-600 instead of stone-500 (4.39:1 on the

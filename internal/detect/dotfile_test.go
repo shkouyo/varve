@@ -24,8 +24,7 @@ import (
 	"testing"
 )
 
-// TestParseDotfileSingleFile covers the full schema of one dotfile body
-// (DETAIL §3.7 #7).
+// TestParseDotfileSingleFile covers the full schema of one dotfile body.
 func TestParseDotfileSingleFile(t *testing.T) {
 	data := []byte(`maintainers = ["alice@example.org"]
 
@@ -74,7 +73,7 @@ on_failure = ["scripts/fail.sh"]
 }
 
 // TestParseDotfileEmpty treats an empty body as an empty Dotfile (a branch
-// without a dotfile builds as a plain PKGBUILD branch, proposal §7.1).
+// without a dotfile builds as a plain PKGBUILD branch).
 func TestParseDotfileEmpty(t *testing.T) {
 	d, err := ParseDotfile(nil)
 	if err != nil {
@@ -94,9 +93,9 @@ func TestParseDotfileInvalid(t *testing.T) {
 	}
 }
 
-// TestDotfileMerge covers the DESIGN §2.3 merge semantics across extras:
-// maintainers/hooks append, vcs and pkgbuild_source are overridden by
-// later files, collect.exclude appends de-duplicated (DETAIL §3.7 #7).
+// TestDotfileMerge covers the merge semantics across extras: maintainers/
+// hooks append, vcs and pkgbuild_source are overridden by later files,
+// collect.exclude appends de-duplicated.
 func TestDotfileMerge(t *testing.T) {
 	files := map[string]string{
 		"main": `maintainers = ["a@example.org"]
@@ -155,8 +154,7 @@ on_success = ["scripts/ok.sh"]
 	}
 }
 
-// TestDotfileCycle asserts that an extras cycle A -> B -> A is an error
-// (DETAIL §3.7 #7).
+// TestDotfileCycle asserts that an extras cycle A -> B -> A is an error.
 func TestDotfileCycle(t *testing.T) {
 	files := map[string]string{
 		"a.toml": "extras = [\"b.toml\"]\n",
@@ -168,7 +166,7 @@ func TestDotfileCycle(t *testing.T) {
 }
 
 // TestDotfileDepth asserts the recursion limit: depth 8 is fine, depth 9
-// errors (DETAIL §3.7 #7). The main file counts as depth 1.
+// errors. The main file counts as depth 1.
 func TestDotfileDepth(t *testing.T) {
 	// Chain of 7 extras: the deepest file sits at depth 8, which is allowed.
 	files := map[string]string{}
@@ -195,7 +193,7 @@ func itof(i int) string {
 }
 
 // TestDotfileMissingExtra asserts that a referenced extras file that get
-// cannot resolve is an error (DETAIL §3.7 #7).
+// cannot resolve is an error.
 func TestDotfileMissingExtra(t *testing.T) {
 	files := map[string]string{
 		"main": "extras = [\"gone.toml\"]\n",

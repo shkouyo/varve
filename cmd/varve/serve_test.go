@@ -124,7 +124,7 @@ func requireErrorContaining(t *testing.T, err error, want string) {
 }
 
 // replaceVar swaps an injectable package variable and restores it at test
-// cleanup (DETAIL §13.4).
+// cleanup.
 func replaceVar[T any](t *testing.T, dst *T, val T) {
 	t.Helper()
 	old := *dst
@@ -132,10 +132,10 @@ func replaceVar[T any](t *testing.T, dst *T, val T) {
 	t.Cleanup(func() { *dst = old })
 }
 
-// TestRunServeStartupFailures is the runServe failure matrix (DETAIL
-// §13.4): config missing, validation failure, db migration failure, gpg
-// missing and D6 conflict rejection. Every case must abort startup with an
-// error naming the failing step.
+// TestRunServeStartupFailures is the runServe failure matrix: config
+// missing, validation failure, db migration failure, gpg missing and
+// conflict rejection. Every case must abort startup with an error naming
+// the failing step.
 func TestRunServeStartupFailures(t *testing.T) {
 	t.Run("config missing", func(t *testing.T) {
 		err := runServe([]string{"--config", filepath.Join(t.TempDir(), "nope.toml")})
@@ -175,9 +175,9 @@ func TestRunServeStartupFailures(t *testing.T) {
 	})
 
 	t.Run("gpg missing", func(t *testing.T) {
-		// The real sign.NewSigner needs a gpg keyring under /data/gnupg
-		// (decision A7). Substitute an erroring constructor to exercise
-		// the serve wiring of step 4 deterministically.
+		// The real sign.NewSigner needs a gpg keyring under
+		// /data/gnupg. Substitute an erroring constructor to exercise
+		// the serve wiring deterministically.
 		replaceVar(t, &newSigner, func(*config.GPGConfig) (*sign.Signer, error) {
 			return nil, errors.New("sign: gpg: executable file not found in $PATH")
 		})
@@ -196,9 +196,9 @@ func TestRunServeStartupFailures(t *testing.T) {
 		}
 		ctx := context.Background()
 
-		// Package "a" whose latest successful build produces pkgname "b",
-		// plus a package whose pkgbase is exactly "b": the D6 name
-		// collision (proposal §7.5).
+		// Package "a" whose latest successful build produces pkgname
+		// "b", plus a package whose pkgbase is exactly "b": a name
+		// collision.
 		pkgA := &db.Package{Pkgbase: "a", Branch: "master", VCSKind: "git"}
 		if err := seed.UpsertPackage(ctx, pkgA); err != nil {
 			t.Fatal(err)
@@ -229,11 +229,10 @@ func TestRunServeStartupFailures(t *testing.T) {
 }
 
 // TestRunServeGracefulShutdown drives the full serve path with recorder
-// fakes (DETAIL §13.4): the startup order of the injected components and
-// the graceful shutdown order mandated by DETAIL §13.2 step 10 (signal →
-// orch.Stop → detect stopped → api closed → web closed) are asserted from
-// the recorded event list. The real config, database and storage backends
-// run against t.TempDir().
+// fakes: the startup order of the injected components and the graceful
+// shutdown order (signal → orch.Stop → detect stopped → api closed → web
+// closed) are asserted from the recorded event list. The real config,
+// database and storage backends run against t.TempDir().
 func TestRunServeGracefulShutdown(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := writeControllerConfig(t, dir, "off", "")
@@ -294,12 +293,11 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 	}
 }
 
-// TestRunServeSignerWiring pins the bug fix M4 wiring contract: with
+// TestRunServeSignerWiring pins the signer wiring contract: with
 // repo.sign="off" the orchestrator injectable must receive a true nil
 // signer, and with signing enabled a non-nil one. The pre-fix shape — a
 // typed nil *sign.Signer inside the interface — defeats dispatch's nil
-// checks and crashes when a task reaches a terminal state (V2
-// acceptance, signer-typed-nil panic).
+// checks and crashes when a task reaches a terminal state.
 func TestRunServeSignerWiring(t *testing.T) {
 	run := func(t *testing.T, sign, gpgKey string) signerSurface {
 		t.Helper()
@@ -340,9 +338,9 @@ func TestRunServeSignerWiring(t *testing.T) {
 	})
 }
 
-// TestRunDispatch covers the DESIGN §2.12 command-line dispatch: the
-// rebuild-index subcommand runs through the real config/db/storage stack,
-// and unknown subcommands are rejected.
+// TestRunDispatch covers the command-line dispatch: the rebuild-index
+// subcommand runs through the real config/db/storage stack, and unknown
+// subcommands are rejected.
 func TestRunDispatch(t *testing.T) {
 	t.Run("rebuild-index via run", func(t *testing.T) {
 		dir := t.TempDir()
@@ -399,7 +397,7 @@ srcinfo_hash = "h9"
 }
 
 // ---------------------------------------------------------------------------
-// Recorder fakes (DETAIL §13.4)
+// Recorder fakes
 // ---------------------------------------------------------------------------
 
 // recorder collects ordered events from the fakes; safe for concurrent use

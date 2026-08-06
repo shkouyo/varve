@@ -1,75 +1,77 @@
 # /data/varve.toml
-# 管控机完整示例配置 (提案 §6.1 逐字段一致), 平铺风格 (无缩进), 便于修改。
-# 密码/口令类字段直接写在此文件中, 文件权限须为 0600 (提案 §6.1)。
-# 全部字段可用同名 VARVE_* 环境变量覆盖的部分: api.token、storage.s3 密钥、source.fetch_key。
+# Complete example configuration for the varve controller (the management
+# machine), in flat style (no indentation) so it is easy to edit.
+# Secrets are written directly in this file: keep its permissions at 0600.
+# Some fields can be overridden by an environment variable of the same
+# name: api.token, storage.s3 access_key/secret_key, source.fetch_key.
 
 [server]
-api_listen = ":31759" # worker API 监听地址 (默认 ":31759"; 仅 worker 通信)
-web_listen = ":31760" # Web UI 监听地址 (默认 ":31760"; 公开 + /admin)
-web_url = "https://varve.example.org" # Web UI 公开地址, 仅用于邮件中的构建日志链接; 与下载直链 (download_base_uri) 相互独立
+api_listen = ":31759" # worker API listen address (default ":31759"; used only by workers)
+web_listen = ":31760" # Web UI listen address (default ":31760"; public pages plus /admin)
+web_url = "https://varve.example.org" # public Web UI URL; used only for build-log links in mails, independent of download_base_uri
 
 [api]
-token = "change-me" # 共享 Bearer Token; 可用 VARVE_API_TOKEN 覆盖 (必填, 空则校验报错)
-token_file = "" # 可选: 从文件读取 token (容器 secret 挂载); 优先级 token_file > TOML, 低于环境变量
+token = "change-me" # shared Bearer Token; overridable via VARVE_API_TOKEN (required, empty fails validation)
+token_file = "" # optional: read the token from a file instead (e.g. a mounted container secret); precedence: token_file > TOML value, below environment variable
 
 [database]
-path = "/data/varve.db" # SQLite 数据库路径 (默认 "/data/varve.db")
+path = "/data/varve.db" # SQLite database path (default "/data/varve.db")
 
 [storage]
-backend = "local" # 文件接口后端 (默认 "local"; local | s3)
+backend = "local" # artifact storage backend (default "local"; "local" | "s3")
 
 [storage.local]
-root = "/data/repo" # 本地后端仓库根目录 (默认 "/data/repo"; 平铺仓库文件 + staging/ 上传暂存区)
+root = "/data/repo" # local backend repository root (default "/data/repo"; flat repo files plus the staging/ upload area)
 
 [storage.s3]
-endpoint = "https://s3.example.org" # S3 兼容端点地址
-bucket = "varve-repo" # 桶根平铺仓库文件; staging/ 前缀为上传暂存区
-region = "us-east-1" # S3 区域
-access_key = "" # 访问密钥; 可用 VARVE_S3_ACCESS_KEY 覆盖
-secret_key = "" # 秘密密钥; 可用 VARVE_S3_SECRET_KEY 覆盖
-path_style = true # 使用 path-style 寻址 (MinIO 等通常需要; 默认 true)
+endpoint = "https://s3.example.org" # S3-compatible endpoint URL
+bucket = "varve-repo" # bucket root holding flat repo files; the staging/ prefix is the upload area
+region = "us-east-1" # S3 region
+access_key = "" # access key; overridable via VARVE_S3_ACCESS_KEY
+secret_key = "" # secret key; overridable via VARVE_S3_SECRET_KEY
+path_style = true # use path-style addressing (usually required for MinIO and similar; default true)
 
 [repo]
-name = "varve" # 仓库名 (默认 "varve"); 生成 <name>.db.tar.gz / <name>.files.tar.gz
-work_dir = "/data/work" # repo-add 工作目录 (默认 "/data/work"; 仅 S3 后端时使用, 管控机本地)
-sign = "off" # 签名模式 (默认 "off"; off | packages | packages+db)
-keep_versions = 1 # 仓库内每包保留版本数 (默认 1; 当前仅支持 1 = 仅最新)
+name = "varve" # repository name (default "varve"); produces <name>.db.tar.gz / <name>.files.tar.gz
+work_dir = "/data/work" # repo-add working directory (default "/data/work"; used only with the S3 backend, on the controller machine)
+sign = "off" # signing mode (default "off"; "off" | "packages" | "packages+db")
+keep_versions = 1 # versions kept per package (default 1; currently only 1 = latest is supported)
 
 [gpg]
-key_id = "" # 签名密钥 ID (sign != off 时必填, 与 key_file 至少其一)
-key_file = "" # 可选: armored 私钥文件 (长期存放于管控机)
-passphrase = "" # 私钥口令; 直接写在配置中, 配置文件权限须为 0600
+key_id = "" # signing key ID (required when sign != "off"; at least one of key_id/key_file)
+key_file = "" # optional: armored private key file (kept long-term on the controller)
+passphrase = "" # private key passphrase; written directly in this file, so file permissions must be 0600
 
 [source]
-url = "git@git.example.org:pkgbuilds.git" # 源仓库地址 (必填; 每个分支 = 一个软件包)
-fetch_key = "" # 可选: SSH 私钥路径或 token (用于私有源仓库); 可用 VARVE_SOURCE_FETCH_KEY 覆盖
-poll_interval = "5m" # 更新检测轮询间隔 (默认 "5m")
-exclude_branches = ["main", "wip/*"] # glob 排除的分支 (默认排除 main)
+url = "git@git.example.org:pkgbuilds.git" # source repository URL (required; each branch is one package)
+fetch_key = "" # optional: SSH private key path or token (for private source repos); overridable via VARVE_SOURCE_FETCH_KEY
+poll_interval = "5m" # change-detection polling interval (default "5m")
+exclude_branches = ["main", "wip/*"] # branches excluded from polling (default excludes main)
 
 [worker]
-heartbeat_timeout = "90s" # 连续 N 秒未心跳判离线 (默认 "90s")
-stall_timeout = "10m" # 任务 N 秒无进度视为卡死, 回收重派 (默认 "10m")
-build_timeout = "30m" # 单任务超时上限 (默认 "30m")
-cpu_limit = 0 # 容器 CPU 限额 (默认 0 = 不限制; 如 4)
-memory_limit = 0 # 容器内存限额 (默认 0 = 不限制; 如 "8GiB")
+heartbeat_timeout = "90s" # a worker is marked offline after this many seconds without a heartbeat (default "90s")
+stall_timeout = "10m" # a task without progress for this long is reclaimed and reassigned (default "10m")
+build_timeout = "30m" # maximum duration of a single build task (default "30m")
+cpu_limit = 0 # container CPU limit (default 0 = unlimited; e.g. 4)
+memory_limit = 0 # container memory limit (default 0 = unlimited; e.g. "8GiB")
 
 [mail]
-enabled = false # 失败通知开关 (默认 false; 仅构建失败时发送)
-host = "" # SMTP 服务器地址
-port = 587 # SMTP 端口 (默认 587)
-username = "" # SMTP 用户名
-password = "" # SMTP 密码; 直接写在配置中, 配置文件权限须为 0600
-from = "varve@example.org" # 发件人地址 (默认 "varve@example.org")
-tls = "starttls" # TLS 模式 (默认 "starttls"; none | starttls | implicit)
+enabled = false # failure notifications (default false; only sent when a build fails)
+host = "" # SMTP server address
+port = 587 # SMTP port (default 587)
+username = "" # SMTP username
+password = "" # SMTP password; written directly in this file, so file permissions must be 0600
+from = "varve@example.org" # sender address (default "varve@example.org")
+tls = "starttls" # TLS mode (default "starttls"; "none" | "starttls" | "implicit")
 
 [web]
-download_enabled = true # 下载按钮显示开关 (默认 true; 开启但未配置 download_base_uri 时配置校验报错)
-download_base_uri = "" # 直链 URI 前缀 (如 CDN/公开桶地址; download_enabled 开启时必填)
-admin_user = "admin" # /admin Basic Auth 用户名 (默认 "admin")
-admin_password = "change-me" # /admin Basic Auth 密码 (必填, 空则校验报错); 直接写在配置中, 配置文件权限须为 0600
+download_enabled = true # show download buttons (default true); when true, download_base_uri below is required
+download_base_uri = "https://downloads.example.org/varve" # direct-link URI prefix (e.g. a CDN or public bucket); required when download_enabled is true
+admin_user = "admin" # /admin Basic Auth username (default "admin")
+admin_password = "change-me" # /admin Basic Auth password (required, empty fails validation); written directly in this file, so file permissions must be 0600
 
 [logs]
-dir = "/data/logs" # 构建日志目录 (默认 "/data/logs")
-retention = "90d" # 成功构建日志保留时长 (默认 "90d"; 滚动)
-max_builds = 1000 # 成功日志保留条数上限 (默认 1000; 滚动)
-# 失败日志永久保留, 不受上述限制
+dir = "/data/logs" # build log directory (default "/data/logs")
+retention = "90d" # retention of successful build logs (default "90d"; rolling)
+max_builds = 1000 # maximum number of successful logs kept (default 1000; rolling)
+# Failed build logs are kept forever, regardless of the settings above.

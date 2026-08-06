@@ -29,12 +29,11 @@ import (
 )
 
 // s3RepoUpdate runs repo-add / repo-remove on the controller host for an
-// s3-backed repository (PROPOSAL §8.5, DESIGN §7.6): the current database
-// (+ signature) and the new package files are downloaded into the local
-// work dir (cfg.Repo.WorkDir), the commands execute there, and the
-// regenerated database files and packages are uploaded back. The work dir
-// is cleared afterwards; a failed cleanup only warns and is overwritten by
-// the next ingest (DETAIL §6.4 step 4, §6.5).
+// s3-backed repository: the current database (+ signature) and the new
+// package files are downloaded into the local work dir (cfg.Repo.WorkDir),
+// the commands execute there, and the regenerated database files and
+// packages are uploaded back. The work dir is cleared afterwards; a failed
+// cleanup only warns and is overwritten by the next ingest.
 func (u *updater) s3RepoUpdate(ctx context.Context, removed []string, pkgs []Artifact) error {
 	dir := u.cfg.Repo.WorkDir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -55,7 +54,7 @@ func (u *updater) s3RepoUpdate(ctx context.Context, removed []string, pkgs []Art
 		}
 	}
 
-	// 2. Run the database commands locally (remove before add, A19).
+	// 2. Run the database commands locally (remove before add).
 	for _, name := range removed {
 		if err := u.runRepoRemove(ctx, dir, name); err != nil {
 			return err
@@ -84,7 +83,7 @@ func (u *updater) s3RepoUpdate(ctx context.Context, removed []string, pkgs []Art
 	}
 
 	// 4. Clear the work dir. Failure only warns: stale files are
-	// overwritten by the next ingest and never block it (DETAIL §6.5).
+	// overwritten by the next ingest and never block it.
 	if err := os.RemoveAll(dir); err != nil {
 		log.Printf("repo: warning: clear work dir %q: %v", dir, err)
 	}

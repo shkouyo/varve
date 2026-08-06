@@ -47,7 +47,7 @@ esac
 
 // TestRunPollsAndStops asserts Run keeps polling on a short interval,
 // survives a failing round and exits cleanly when the context is
-// cancelled (DETAIL §3.7 #10 / T3.7).
+// cancelled.
 func TestRunPollsAndStops(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "calls")
 	counter := filepath.Join(t.TempDir(), "count")
@@ -77,7 +77,7 @@ func TestRunPollsAndStops(t *testing.T) {
 
 // TestRunContinuesAfterRoundFailure asserts a failing round does not stop
 // the loop: the first clone fails, later rounds succeed and the package
-// is eventually submitted (DETAIL §3.4 #5).
+// is eventually submitted.
 func TestRunContinuesAfterRoundFailure(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "calls")
 	counter := filepath.Join(t.TempDir(), "count")
@@ -100,7 +100,7 @@ func TestRunContinuesAfterRoundFailure(t *testing.T) {
 	if clones < 2 {
 		t.Errorf("expected the loop to keep polling after the failed round, saw %d clones", clones)
 	}
-	// Each round re-enqueues the unrecorded package (decision A16), so
+	// Each round re-enqueues the unrecorded package, so
 	// the eventual submission count proves later rounds completed.
 	if got := sink.snapshot(); len(got) < 1 || got[0].Package.Pkgbase != "pkg" {
 		t.Errorf("submissions = %+v, want at least one change for pkg", got)

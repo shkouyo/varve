@@ -29,8 +29,7 @@ import (
 )
 
 // TestSignPackagesGpgArgs asserts the gpg invocations: one import into the
-// temporary GNUPGHOME and one loopback-pinentry detach-sign per package
-// (DESIGN §7.7).
+// temporary GNUPGHOME and one loopback-pinentry detach-sign per package.
 func TestSignPackagesGpgArgs(t *testing.T) {
 	f := &fakeClient{keyMaterial: &api.KeyMaterial{
 		KeyID:             "DEADBEEF",
@@ -87,7 +86,7 @@ func TestSignPackagesGpgArgs(t *testing.T) {
 }
 
 // TestSignKeyClaimFailureFailsTask asserts a GetSigningKey failure reports
-// failed(sign) (DETAIL §12.5).
+// failed(sign).
 func TestSignKeyClaimFailureFailsTask(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1"), keyErr: errors.New("claim denied")}
 	r := runOneShotRunner(t, f)

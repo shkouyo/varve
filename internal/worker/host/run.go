@@ -25,12 +25,11 @@ import (
 	"time"
 )
 
-// Run drives the host node (DETAIL §11.4): register with exponential
-// backoff (5s → 60s cap) until success or ctx cancellation, start the
-// capacity poll loops and the heartbeat loop, then on ctx cancellation
-// (SIGTERM) stop claiming new tasks, drain the running containers (each
-// monitor's per-task build timeout force-kills the stragglers, DETAIL
-// §11.4 item 5), deregister (decision A18: a normal exit always
+// Run drives the host node: register with exponential backoff (5s → 60s
+// cap) until success or ctx cancellation, start the capacity poll loops and
+// the heartbeat loop, then on ctx cancellation (SIGTERM) stop claiming new
+// tasks, drain the running containers (each monitor's per-task build
+// timeout force-kills the stragglers), deregister (a normal exit always
 // deregisters) and return nil.
 func (r *Runner) Run(ctx context.Context) error {
 	if ctx == nil {
@@ -71,7 +70,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 // register registers the node, retrying with exponential backoff from
 // registerBackoff up to registerBackoffMax until success or ctx
-// cancellation (DETAIL §11.4 item 1).
+// cancellation.
 func (r *Runner) register(ctx context.Context) error {
 	backoff := r.registerBackoff
 	for {
@@ -106,9 +105,9 @@ func (r *Runner) drain() {
 	}
 }
 
-// deregister marks the node offline (decision A18). The context is
-// detached from the cancelled shutdown context so the call can complete;
-// a failure is logged and left to the controller's offline sweep.
+// deregister marks the node offline. The context is detached from the
+// cancelled shutdown context so the call can complete; a failure is logged
+// and left to the controller's offline sweep.
 func (r *Runner) deregister() {
 	dctx, cancel := context.WithTimeout(context.Background(), r.deregisterTimeout)
 	defer cancel()

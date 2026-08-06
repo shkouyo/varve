@@ -29,16 +29,14 @@ import (
 )
 
 // trapScript builds a makepkg stand-in that records SIGTERM and keeps
-// running until SIGKILL — making the SIGTERM→SIGKILL escalation observable
-// (DETAIL §12.7 #5).
+// running until SIGKILL — making the SIGTERM→SIGKILL escalation observable.
 func trapScript(t *testing.T, record string) string {
 	t.Helper()
 	return writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\necho started\nwhile :; do sleep 0.5; echo tick; done", record))
 }
 
 // TestCancelViaLogAck asserts channel 2: a Cancelled=true log ack stops
-// makepkg with SIGTERM escalated to SIGKILL and reports cancelled
-// (DETAIL §12.4 #3, §12.7 #5).
+// makepkg with SIGTERM escalated to SIGKILL and reports cancelled.
 func TestCancelViaLogAck(t *testing.T) {
 	record := t.TempDir() + "/signals"
 	f := &fakeClient{taskDetail: taskFor("t-1")}
@@ -76,7 +74,7 @@ func TestCancelViaLogAck(t *testing.T) {
 }
 
 // TestCancelViaPoolHeartbeat asserts channel 1: heartbeat cancelled_task_ids
-// stops the running pool task and reports cancelled (DETAIL §12.7 #5).
+// stops the running pool task and reports cancelled.
 func TestCancelViaPoolHeartbeat(t *testing.T) {
 	record := t.TempDir() + "/signals"
 	f := &fakeClient{}
@@ -127,7 +125,7 @@ func TestCancelViaPoolHeartbeat(t *testing.T) {
 }
 
 // TestLateReportConflictIgnoredAfterCancel asserts a 409 on the cancelled
-// report is tolerated (DETAIL §12.5: late reports are ignored).
+// report is tolerated (late reports are ignored).
 func TestLateReportConflictIgnoredAfterCancel(t *testing.T) {
 	record := t.TempDir() + "/signals"
 	f := &fakeClient{taskDetail: taskFor("t-1")}

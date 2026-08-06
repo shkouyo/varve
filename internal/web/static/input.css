@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 /*
- * Tailwind input for the web UI (DESIGN §6.2, decision A14). The compiled
- * stylesheet lands in static/app.css, is embedded into the binary via
- * //go:embed and is gitignored; this input file is committed so `go
- * generate ./...` reproduces it.
+ * Tailwind input for the web UI. The compiled stylesheet lands in
+ * static/app.css, is embedded into the binary via //go:embed and is
+ * gitignored; this input file is committed so `go generate ./...`
+ * reproduces it.
  */
 
 @layer base {

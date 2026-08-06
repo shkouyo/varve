@@ -31,8 +31,8 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// runScheduler is the single periodic goroutine (DETAIL §4.3): a 30s scan
-// for stalled/timed-out/cancelled tasks and an hourly maintenance pass for
+// runScheduler is the single periodic goroutine: a 30s scan for
+// stalled/timed-out/cancelled tasks and an hourly maintenance pass for
 // log retention, node cleanup and stale staging sweep. It exits when its
 // context is cancelled (Stop). Tests invoke scanStalled and
 // hourlyMaintenance directly with an injected clock.
@@ -58,10 +58,10 @@ func (o *OrchestratorImpl) runScheduler(ctx context.Context) {
 	}
 }
 
-// scanStalled runs the 30s sweep (DETAIL §4.4 step 3):
+// scanStalled runs the 30s sweep:
 //
 //  1. stalled tasks (last_progress_at older than stall_timeout): tasks with
-//     a durable cancel request are finalized as cancelled (D4②, cancellation
+//     a durable cancel request are finalized as cancelled (cancellation
 //     wins and is never re-queued); first-time stalls (attempts < 1) are
 //     re-queued with created_at preserved; otherwise the task fails with
 //     stage "stalled" and a notification;
@@ -84,7 +84,7 @@ func (o *OrchestratorImpl) scanStalled(ctx context.Context) error {
 		t := &stalled[i]
 		switch {
 		case t.CancelRequested:
-			// D4②: cancellation wins over recovery.
+			// Cancellation wins over recovery.
 			o.finalizeCancelled(ctx, t)
 		case t.Attempts < 1:
 			if err := o.store.RequeueTask(ctx, t.ID); err != nil {
@@ -93,7 +93,7 @@ func (o *OrchestratorImpl) scanStalled(ctx context.Context) error {
 				}
 				continue
 			}
-			o.clearToken(t.ID) // the stale container's token dies (D4③)
+			o.clearToken(t.ID) // the stale container's token dies
 			log.Printf("dispatch: stalled task %s re-queued (attempt 2)", t.ID)
 		default:
 			o.finalizeFailed(ctx, t, "stalled", "no progress for "+o.cfg.Worker.StallTimeout.String())
@@ -148,10 +148,9 @@ func (o *OrchestratorImpl) finalizeFailed(ctx context.Context, t *db.Task, stage
 	o.clearSigner(t.ID)
 }
 
-// hourlyMaintenance runs the hourly pass (DETAIL §4.4 steps 8 and 9 plus
-// the stale-staging sweep): successful logs are rolled by retention and
-// max_builds, stale agents are removed, and staging directories older than
-// 24h are swept.
+// hourlyMaintenance runs the hourly pass: successful logs are rolled by
+// retention and max_builds, stale agents are removed, and staging
+// directories older than 24h are swept.
 func (o *OrchestratorImpl) hourlyMaintenance(ctx context.Context) error {
 	o.sweepLogs(ctx)
 	o.sweepWorkers(ctx)
@@ -161,8 +160,7 @@ func (o *OrchestratorImpl) hourlyMaintenance(ctx context.Context) error {
 
 // sweepLogs deletes logs of succeeded builds that exceed the retention
 // window or the max_builds cap (newest kept); failed/cancelled logs are
-// permanent (decision A6). Deletion is by build id; missing logs are
-// tolerated.
+// permanent. Deletion is by build id; missing logs are tolerated.
 func (o *OrchestratorImpl) sweepLogs(ctx context.Context) {
 	if o.logs == nil {
 		return
@@ -189,10 +187,10 @@ func (o *OrchestratorImpl) sweepLogs(ctx context.Context) {
 	}
 }
 
-// sweepWorkers marks nodes whose heartbeat is stale (heartbeat_timeout) as
-// offline, then deletes agent nodes offline for more than 24h (decision
-// A18). Host nodes are never auto-deleted. A worker referenced by build
-// history cannot be deleted (foreign key); the sweep logs and skips it.
+// sweepWorkers marks nodes whose heartbeat is stale (heartbeat_timeout)
+// as offline, then deletes agent nodes offline for more than 24h. Host
+// nodes are never auto-deleted. A worker referenced by build history
+// cannot be deleted (foreign key); the sweep logs and skips it.
 func (o *OrchestratorImpl) sweepWorkers(ctx context.Context) {
 	workers, err := o.store.ListWorkers(ctx)
 	if err != nil {

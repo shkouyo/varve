@@ -40,22 +40,22 @@ type objectInfo struct {
 	modTime time.Time
 }
 
-// objectListPage is one page of a paged object listing (DETAIL §5.4):
-// objects are keys that start with the requested prefix; nextToken is the
-// continuation token to pass to the next call, empty on the last page.
+// objectListPage is one page of a paged object listing: objects are keys
+// that start with the requested prefix; nextToken is the continuation token
+// to pass to the next call, empty on the last page.
 type objectListPage struct {
 	objects   []objectInfo
 	nextToken string
 }
 
-// objectAPI is the narrow object-store surface the s3 backend needs
-// (DETAIL §5.3). It narrows minio.Client to the five operations used here
-// and is the test double point: tests substitute an in-memory fake.
+// objectAPI is the narrow object-store surface the s3 backend needs. It
+// narrows minio.Client to the five operations used here and is the test
+// double point: tests substitute an in-memory fake.
 //
 // ListObjects deliberately deviates from minio.Client's channel API: it
 // returns one explicit page plus a continuation token so that pagination is
-// driven — and testable — in this package (DETAIL §5.4). The real adapter
-// drains minio-go's internally-paged ListObjectsV2 stream into one page.
+// driven — and testable — in this package. The real adapter drains
+// minio-go's internally-paged ListObjectsV2 stream into one page.
 type objectAPI interface {
 	// PutObject stores an object. size < 0 means the length is unknown and
 	// the reader is streamed until EOF.
@@ -125,17 +125,17 @@ func (s *s3Client) StatObject(ctx context.Context, bucket, key string) (objectIn
 
 // s3Backend implements Backend over an S3-compatible object store. Object
 // keys are the virtual paths; the bucket root corresponds to the repository
-// root (DESIGN §4.1).
+// root.
 type s3Backend struct {
 	client objectAPI
 	bucket string
 }
 
 // OpenS3 returns a Backend backed by an S3-compatible object store
-// (MinIO / SeaweedFS / Ceph RGW / Cloudflare R2, PROPOSAL §10). The client
-// is constructed from the controller's S3 configuration; no network I/O
-// happens until the first operation. Multipart uploads are handled
-// automatically by minio-go.
+// (MinIO / SeaweedFS / Ceph RGW / Cloudflare R2). The client is constructed
+// from the controller's S3 configuration; no network I/O happens until the
+// first operation. Multipart uploads are handled automatically by
+// minio-go.
 func OpenS3(cfg config.S3Config) (Backend, error) {
 	if cfg.Endpoint == "" || cfg.Bucket == "" {
 		return nil, errors.New("storage: s3 endpoint and bucket are required")
@@ -146,7 +146,7 @@ func OpenS3(cfg config.S3Config) (Backend, error) {
 	}
 	// minio-go builds the endpoint itself and selects the scheme via the
 	// Secure option, so the configured URL's scheme must be stripped first
-	// (PROPOSAL §6.1 writes it with a scheme, e.g. https://s3.example.org).
+	// (the config may write it with a scheme, e.g. https://s3.example.org).
 	endpoint, secure := splitEndpoint(cfg.Endpoint)
 	c, err := minio.New(endpoint, &minio.Options{
 		Creds:        credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
@@ -206,11 +206,10 @@ func (b *s3Backend) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-// List returns the flat-root names matching the glob prefix (DETAIL §5.4):
-// the server lists objects under the literal prefix extracted from the
-// glob, results are filtered client-side with path.Match, and staging
-// entries are never returned (DESIGN §4.1). Pagination follows the
-// continuation token until the last page.
+// List returns the flat-root names matching the glob prefix: the server
+// lists objects under the literal prefix extracted from the glob, results
+// are filtered client-side with path.Match, and staging entries are never
+// returned. Pagination follows the continuation token until the last page.
 func (b *s3Backend) List(ctx context.Context, prefix string) ([]string, error) {
 	literal := globLiteralPrefix(prefix)
 	var names []string
@@ -255,12 +254,11 @@ func (b *s3Backend) Stat(ctx context.Context, name string) (FileInfo, error) {
 	return FileInfo{Size: info.size, ModTime: info.modTime}, nil
 }
 
-// Move degrades to Get+Put+Delete (DETAIL §5.5): the move is non-atomic;
-// consistency is guaranteed by the caller's single-writer mutex. The source
-// handle is fetched synchronously first, then the content is streamed
-// through an io.Pipe into the destination object, so it is never buffered
-// whole in memory and the call order is deterministic (Get -> Put ->
-// Delete).
+// Move degrades to Get+Put+Delete: the move is non-atomic; consistency is
+// guaranteed by the caller's single-writer mutex. The source handle is
+// fetched synchronously first, then the content is streamed through an
+// io.Pipe into the destination object, so it is never buffered whole in
+// memory and the call order is deterministic (Get -> Put -> Delete).
 func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 	if !validName(src) || !validName(dst) {
 		return fmt.Errorf("storage: invalid move %q -> %q", src, dst)
@@ -297,11 +295,11 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 }
 
 // Append merges the stored object with r and re-uploads it under name
-// (Appender capability). This is the degraded resume path for s3 (DETAIL
-// §5.5): correctness is preserved, efficiency is lost — every chunk
-// re-uploads the whole object. The caller pre-checks offset == stored size;
-// the backend re-checks it defensively. The existing content is buffered in
-// memory (bounded by the staging object size).
+// (Appender capability). This is the degraded resume path for s3:
+// correctness is preserved, efficiency is lost — every chunk re-uploads the
+// whole object. The caller pre-checks offset == stored size; the backend
+// re-checks it defensively. The existing content is buffered in memory
+// (bounded by the staging object size).
 func (b *s3Backend) Append(ctx context.Context, name string, r io.Reader, offset int64) error {
 	if !validName(name) {
 		return fmt.Errorf("storage: invalid name %q", name)

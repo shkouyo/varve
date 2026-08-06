@@ -61,7 +61,7 @@ func pad3(n int) string {
 	})
 }
 
-// TestPackagesListSearch asserts ?q= filters by pkgbase (decision A8).
+// TestPackagesListSearch asserts ?q= filters by pkgbase.
 func TestPackagesListSearch(t *testing.T) {
 	store := newTestDB(t)
 	seedPackage(t, store, "alpha-tools", "first set of tools")
@@ -77,7 +77,7 @@ func TestPackagesListSearch(t *testing.T) {
 }
 
 // TestPackageDetailRenders asserts the package page shows version,
-// metadata, artifacts and the download button when enabled (A24).
+// metadata, artifacts and the download button when enabled.
 func TestPackageDetailRenders(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -95,14 +95,14 @@ func TestPackageDetailRenders(t *testing.T) {
 		"demo-pkg",
 		"1.2.3-1",                             // version
 		"demo-pkg-1.2.3-1-x86_64.pkg.tar.zst", // artifact file
-		"https://dl.example.org/pool/demo-pkg-1.2.3-1-x86_64.pkg.tar.zst", // download link (A24)
+		"https://dl.example.org/pool/demo-pkg-1.2.3-1-x86_64.pkg.tar.zst", // download link
 		"Build history",
 	)
 }
 
-// TestDownloadButtonMatrix drives download_enabled × artifact presence
-// (DETAIL §10.7 point 4): the button appears only when downloads are
-// enabled and the latest build carries an artifact.
+// TestDownloadButtonMatrix drives download_enabled × artifact presence:
+// the button appears only when downloads are enabled and the latest build
+// carries an artifact.
 func TestDownloadButtonMatrix(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -142,7 +142,7 @@ func TestDownloadButtonMatrix(t *testing.T) {
 }
 
 // TestPackageNotFound asserts a missing package renders the 404 error
-// page (DETAIL §10.4 point 4).
+// page.
 func TestPackageNotFound(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
 	rec := get(t, s, http.MethodGet, "/packages/nope", nil)

@@ -33,33 +33,32 @@ import (
 )
 
 // Updater orchestrates the ingest of validated build artifacts into the
-// pacman repository (DESIGN §2.6, §7.5-7.6; DETAIL §6): moving artifacts
-// from staging into the flat repository root, pruning old versions, writing
-// the authoritative side file and running repo-add / repo-remove.
+// pacman repository: moving artifacts from staging into the flat repository
+// root, pruning old versions, writing the authoritative side file and
+// running repo-add / repo-remove.
 //
 // All methods are caller-serialized: the caller (dispatch) holds the ingest
-// mutex, so no internal locking is performed (DETAIL §6.6).
+// mutex, so no internal locking is performed.
 type Updater interface {
 	// Ingest ingests one validated build result. Caller contract:
 	//
 	//   - manifest entries have already been verified by the caller
 	//     (existence, sha256 recomputation and, when signing is enabled,
-	//     detached-signature verification, DESIGN §7.5 step 1);
+	//     detached-signature verification);
 	//   - build is the task's build record with Branch set, Commit resolved
 	//     to the actually checked-out commit (result commit, falling back
-	//     to the dispatched source commit, D1) and UpstreamRef set (D2);
+	//     to the dispatched source commit) and UpstreamRef set;
 	//   - workerName is the display name of the node that executed the
 	//     build (host name for host mode, agent name for pool mode);
-	//   - calls are serialized by the caller (DETAIL §6.6).
+	//   - calls are serialized by the caller.
 	//
 	// Ingest is idempotent and safe to retry as a whole: every step is
-	// re-runnable, and staging is only ever consumed, never created
-	// (DESIGN §7.5 step 6 + 7, DETAIL §6.4 step 5).
+	// re-runnable, and staging is only ever consumed, never created.
 	Ingest(ctx context.Context, task *db.Task, build *db.Build, workerName string, manifest []Artifact) error
 }
 
 // updater implements Updater. The signer dependency is narrowed to the
-// minimum interface consumed here (DETAIL §0.3 rule 5).
+// minimum interface consumed here.
 type updater struct {
 	cfg         *config.ControllerConfig
 	backend     storage.Backend
@@ -83,9 +82,9 @@ func NewUpdater(cfg *config.ControllerConfig, backend storage.Backend, signer in
 	}
 }
 
-// Ingest executes the ingest orchestration in the order mandated by D7
-// (DETAIL §6.4): pkgbase resolution, artifact move, old-version cleanup,
-// side file write and finally repo-add / repo-remove.
+// Ingest executes the ingest orchestration in the documented order:
+// pkgbase resolution, artifact move, old-version cleanup, side file write
+// and finally repo-add / repo-remove.
 func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, workerName string, manifest []Artifact) error {
 	if task == nil {
 		return errors.New("repo: ingest: nil task")
@@ -102,7 +101,7 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 	// The side file is named after the pkgbase, which is not carried by
 	// the manifest fields; the uploaded .SRCINFO snapshot is the only
 	// authoritative source available without a db lookup. The agent always
-	// uploads it (DESIGN §5.5, §12.4).
+	// uploads it.
 	src := srcinfoEntry(manifest)
 	if src == nil {
 		return errors.New("repo: ingest: manifest has no srcinfo artifact, cannot determine pkgbase")
@@ -120,9 +119,9 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 	}
 
 	// 1. Move artifacts from the staging area into the flat repository
-	// root (DETAIL §6.4 step 1). The .SRCINFO snapshot is excluded: it is
-	// not persisted (decision A9, DESIGN §3.3) and only its hash is
-	// recorded; the caller cleans it up together with the staging area.
+	// root. The .SRCINFO snapshot is excluded: it is not persisted and only
+	// its hash is recorded; the caller cleans it up together with the
+	// staging area.
 	keep := manifestFileSet(manifest)
 	for _, a := range manifest {
 		if a.Kind == "srcinfo" {
@@ -133,11 +132,10 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 		}
 	}
 
-	// 2. Old-version cleanup (keep_versions=1, decision A19): files of the
-	// previous build that are not part of the new manifest are removed,
-	// together with their detached signatures. A missing or corrupt side
-	// file is only a warning and is treated as "no previous version"
-	// (DETAIL §6.5).
+	// 2. Old-version cleanup (keep_versions=1): files of the previous build
+	// that are not part of the new manifest are removed, together with their
+	// detached signatures. A missing or corrupt side file is only a warning
+	// and is treated as "no previous version".
 	sidecarName := pkgbase + ".meta.toml"
 	old, hadOld := u.readOldSidecar(ctx, sidecarName)
 	if hadOld {
@@ -154,9 +152,9 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 		}
 	}
 
-	// 3. Atomically rewrite the side file (DESIGN §3.2). The backend's Put
-	// is atomic on local storage (temp file + fsync + rename, DETAIL §5.4);
-	// on s3 the ingest mutex provides the atomicity (DETAIL §6.4 step 3).
+	// 3. Atomically rewrite the side file. The backend's Put is atomic on
+	// local storage (temp file + fsync + rename); on s3 the ingest mutex
+	// provides the atomicity.
 	vcs := ""
 	if hadOld {
 		vcs = old.VCS
@@ -186,7 +184,7 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 
 	// 4. Update the pacman database: every replaced pkgname (old side file
 	// minus new manifest) is removed first, then all new packages are added
-	// (remove-before-add, decision A19, DESIGN §7.6).
+	// (remove-before-add).
 	removed := removedPkgnames(old, pkgs)
 	if u.cfg.Storage.Backend == "s3" {
 		if err := u.s3RepoUpdate(ctx, removed, pkgs); err != nil {
@@ -212,8 +210,7 @@ func (u *updater) readStaged(ctx context.Context, taskID, file string) ([]byte, 
 
 // moveInto moves one object from the staging area into the repository root.
 // The move is idempotent: if the destination already exists (a previous
-// attempt of the same manifest), the entry is considered already ingested
-// (DETAIL §6.4 step 5).
+// attempt of the same manifest), the entry is considered already ingested.
 func (u *updater) moveInto(ctx context.Context, src, dst string) error {
 	if m, ok := u.backend.(storage.Mover); ok {
 		if err := m.Move(ctx, src, dst); err != nil {
@@ -243,7 +240,7 @@ func (u *updater) moveInto(ctx context.Context, src, dst string) error {
 
 // readOldSidecar loads the previous side file of pkgbase. A missing file
 // (ErrNotFound), a read failure or a parse failure is downgraded to a
-// warning and reported as "no previous version" (DETAIL §6.5).
+// warning and reported as "no previous version".
 func (u *updater) readOldSidecar(ctx context.Context, name string) (*Sidecar, bool) {
 	var buf bytes.Buffer
 	if err := u.backend.Get(ctx, name, &buf); err != nil {
@@ -263,7 +260,7 @@ func (u *updater) readOldSidecar(ctx context.Context, name string) (*Sidecar, bo
 
 // removedPkgnames returns the pkgnames present in the old side file but
 // absent from the new manifest package entries; each of them is removed
-// from the repository database before the new packages are added (A19).
+// from the repository database before the new packages are added.
 func removedPkgnames(old *Sidecar, pkgs []Artifact) []string {
 	if old == nil {
 		return nil
@@ -337,9 +334,9 @@ func extractPkgbase(data []byte) (string, error) {
 }
 
 // inferVCS derives the VCS kind of a package from its name suffix, mirroring
-// the automatic branch of detect.DetectKind (DESIGN §2.3, proposal §7.3):
-// "-git" / "-svn" suffixes mark VCS packages. It is only used on the first
-// ingest; later ingests keep the value recorded in the previous side file.
+// the automatic branch of detect.DetectKind: "-git" / "-svn" suffixes mark
+// VCS packages. It is only used on the first ingest; later ingests keep the
+// value recorded in the previous side file.
 func inferVCS(pkgbase string, pkgs []Artifact) string {
 	for _, name := range []string{pkgbase} {
 		if strings.HasSuffix(name, "-git") {

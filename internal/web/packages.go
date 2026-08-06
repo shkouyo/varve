@@ -26,9 +26,8 @@ import (
 // perPage is the page size for every paginated list (packages, builds).
 const perPage = 20
 
-// packagesData feeds packages.html (DESIGN §6.3): the searchable,
-// paginated package list. Search matches pkgbase and pkgdesc (decision
-// A8) via store.ListPackages.
+// packagesData feeds packages.html: the searchable, paginated package
+// list. Search matches pkgbase and pkgdesc via store.ListPackages.
 type packagesData struct {
 	base
 	Query    string

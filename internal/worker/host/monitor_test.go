@@ -28,7 +28,7 @@ import (
 )
 
 // TestHandleTaskEnvInjection verifies the one-shot env set: all five
-// required variables and no VARVE_TOKEN (H4, decision A10/A26).
+// required variables and no VARVE_TOKEN.
 func TestHandleTaskEnvInjection(t *testing.T) {
 	rt := newFakeRuntime()
 	c := newFakeClient()
@@ -79,7 +79,7 @@ func TestHandleTaskNoPullWhenDisabled(t *testing.T) {
 }
 
 // TestHandleTaskPullFailure verifies a failed pull is reported
-// failed(stage=container) and the slot is released (H5).
+// failed(stage=container) and the slot is released.
 func TestHandleTaskPullFailure(t *testing.T) {
 	rt := newFakeRuntime()
 	rt.pullErr = errors.New("pull blew up")
@@ -125,7 +125,7 @@ func TestHandleTaskRunFailure(t *testing.T) {
 	}
 }
 
-// TestMonitorExitCodeClassification covers the DETAIL §11.7 group 3 table:
+// TestMonitorExitCodeClassification covers the exit classification table:
 // exit 0 → no report; non-zero → failed with the exit code; signal-killed
 // → the signal in the summary; OOMKilled → "OOM" in the summary.
 func TestMonitorExitCodeClassification(t *testing.T) {
@@ -206,7 +206,7 @@ func TestMonitorInspectFailureFallback(t *testing.T) {
 }
 
 // TestMonitorBuildTimeout verifies the per-task timeout path: the
-// container is killed and failed(stage=timeout) is reported (H5).
+// container is killed and failed(stage=timeout) is reported.
 func TestMonitorBuildTimeout(t *testing.T) {
 	rt := newFakeRuntime()
 	rt.blocked = make(chan struct{}) // Wait never returns on its own
@@ -245,7 +245,7 @@ func TestMonitorBuildTimeout(t *testing.T) {
 }
 
 // TestMonitorReportConflictIgnored verifies a 409 from ReportResult is
-// ignored (the agent already reported; DETAIL §11.4 item 2).
+// ignored (the agent already reported).
 func TestMonitorReportConflictIgnored(t *testing.T) {
 	rt := newFakeRuntime()
 	rt.exitCodes["c1"] = 3

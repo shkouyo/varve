@@ -25,8 +25,8 @@ import (
 	"git.0x0f.dev/varve/internal/api"
 )
 
-// heartbeatLoop sends heartbeats every heartbeatInterval (30s, proposal
-// §19) until ctx is cancelled.
+// heartbeatLoop sends heartbeats every heartbeatInterval (30s) until ctx
+// is cancelled.
 func (r *Runner) heartbeatLoop(ctx context.Context) {
 	t := time.NewTicker(r.heartbeatInterval)
 	defer t.Stop()
@@ -42,9 +42,9 @@ func (r *Runner) heartbeatLoop(ctx context.Context) {
 
 // heartbeat sends one heartbeat: system metrics + tasks: [] (the host has
 // no own task progress; the in-container agent reports progress via log
-// segments, A10) + the running containers (DETAIL §11.4 item 3). The
-// response's cancelled_task_ids kill the matching containers (channel 1,
-// DESIGN §7.8); a 401/404 triggers re-registration (idempotent upsert).
+// segments) + the running containers. The response's cancelled_task_ids
+// kill the matching containers (channel 1); a 401/404 triggers
+// re-registration (idempotent upsert).
 func (r *Runner) heartbeat(ctx context.Context) {
 	resp, err := r.client.Heartbeat(ctx, api.HeartbeatReq{
 		Name:       r.name,
@@ -66,7 +66,7 @@ func (r *Runner) heartbeat(ctx context.Context) {
 }
 
 // cancelTasks kills the containers of the given tasks (cancellation
-// channel 1, D4): each one is flagged cancelled so the monitor reports
+// channel 1): each one is flagged cancelled so the monitor reports
 // cancelled instead of failed.
 func (r *Runner) cancelTasks(ctx context.Context, taskIDs []string) {
 	var ids []string
@@ -86,7 +86,7 @@ func (r *Runner) cancelTasks(ctx context.Context, taskIDs []string) {
 }
 
 // containerStates snapshots the running containers for the heartbeat
-// payload (DETAIL §11.4 item 3).
+// payload.
 func (r *Runner) containerStates() []api.ContainerState {
 	r.mu.Lock()
 	defer r.mu.Unlock()

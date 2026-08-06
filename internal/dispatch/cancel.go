@@ -25,13 +25,12 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// CancelTask cancels a task (admin, decision A3 / D4): a queued task is
-// finalized as cancelled immediately; an assigned or running task gets the
-// durable cancel_requested flag persisted, which the heartbeat/poll
-// responses (channel 1) and the log acknowledgements (channel 2) deliver to
-// the executing worker. Terminal tasks are a no-op. The signals are always
-// read from the database, so a controller restart never loses them.
-// Concurrently safe.
+// CancelTask cancels a task (admin): a queued task is finalized as
+// cancelled immediately; an assigned or running task gets the durable
+// cancel_requested flag persisted, which the heartbeat/poll responses and
+// the log acknowledgements deliver to the executing worker. Terminal
+// tasks are a no-op. The signals are always read from the database, so a
+// controller restart never loses them. Concurrently safe.
 func (o *OrchestratorImpl) CancelTask(ctx context.Context, taskID string) error {
 	task, err := o.store.GetTask(ctx, taskID)
 	if err != nil {

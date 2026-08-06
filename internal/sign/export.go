@@ -25,16 +25,15 @@ import (
 )
 
 // ErrAlreadyExported is returned by ExportForTask when the same task
-// already claimed its one-shot key material; the API maps it to HTTP 409
-// (DETAIL §0.3).
+// already claimed its one-shot key material; the API maps it to HTTP 409.
 var ErrAlreadyExported = errors.New("sign: key already exported for task")
 
 // ExportForTask returns the signing key material for a task and caches it
-// in memory; each task may claim the material only once (DESIGN §2.7,
-// DETAIL §7.4 step 2). The armored private key is exported from the
-// managed keyring with gpg --export-secret-keys --armor, and Passphrase is
-// the configured key passphrase. Repeated calls for the same task return
-// ErrAlreadyExported. Concurrently safe (DETAIL §7.6).
+// in memory; each task may claim the material only once. The armored
+// private key is exported from the managed keyring with
+// gpg --export-secret-keys --armor, and Passphrase is the configured key
+// passphrase. Repeated calls for the same task return ErrAlreadyExported.
+// Concurrently safe.
 func (s *Signer) ExportForTask(taskID string) (*KeyMaterial, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -59,10 +58,10 @@ func (s *Signer) ExportForTask(taskID string) (*KeyMaterial, error) {
 }
 
 // ClearTask removes the cached key material of a finished task (called by
-// dispatch when the task reaches a terminal state, DETAIL §7.3). It is
-// idempotent: clearing an unknown task succeeds. After a ClearTask, the
-// same task may be exported again as a fresh one-shot claim (the callers
-// never trigger this; documented at DETAIL §7.5). Concurrently safe.
+// dispatch when the task reaches a terminal state). It is idempotent:
+// clearing an unknown task succeeds. After a ClearTask, the same task may
+// be exported again as a fresh one-shot claim (the callers never trigger
+// this). Concurrently safe.
 func (s *Signer) ClearTask(taskID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

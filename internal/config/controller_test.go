@@ -42,8 +42,8 @@ download_base_uri = "https://dl.example.org"
 dir = "/data/logs"
 `
 
-// fullExample is the complete controller configuration example
-// (DESIGN §8.1, proposal §6.1), used for the field-by-field assertion test.
+// fullExample is the complete controller configuration example, used for the
+// field-by-field assertion test.
 const fullExample = `
 [server]
 api_listen = ":31759"
@@ -216,7 +216,7 @@ memory_limit = "8GiB"
 
 func TestLoadControllerDefaults(t *testing.T) {
 	// A minimal config: only the required fields. Every other section and
-	// key must fall back to its documented default (DETAIL §1.2).
+	// key must fall back to its documented default.
 	cfg, err := LoadController(writeConfig(t, minimalConfig))
 	if err != nil {
 		t.Fatalf("LoadController: %v", err)
@@ -578,7 +578,7 @@ func TestLoadControllerPermissionWarning(t *testing.T) {
 }
 
 func TestLoadControllerPasswordWipe(t *testing.T) {
-	// The exported helper must zero the buffer (DETAIL §1.3).
+	// The exported helper must zero the buffer.
 	b := []byte("hunter2")
 	WipeBytes(b)
 	for i, c := range b {

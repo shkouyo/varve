@@ -15,13 +15,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package dispatch implements the controller's orchestration core
-// (PROPOSAL §8, DESIGN §2.4, §7.4–7.9, DETAIL §4): the task queue and
-// scheduler, the task state machine, stall recovery, cancellation, worker
-// management, artifact verification and ingest orchestration, failure
-// notifications and build log storage. It is the single implementation of
-// detect.Sink and exposes the Orchestrator interface consumed by the API
-// server and the web UI.
+// Package dispatch implements the controller's orchestration core: the
+// task queue and scheduler, the task state machine, stall recovery,
+// cancellation, worker management, artifact verification and ingest
+// orchestration, failure notifications and build log storage. It is the
+// single implementation of detect.Sink and exposes the Orchestrator
+// interface consumed by the API server and the web UI.
 package dispatch
 
 import (
@@ -53,8 +52,8 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// Sentinel errors returned by the orchestrator; the API layer maps them to
-// HTTP 403/404/409 (DETAIL §0.3).
+// Sentinel errors returned by the orchestrator; the API layer maps them
+// to HTTP 403/404/409.
 var (
 	// ErrNotFound reports a missing task, worker, package or log.
 	ErrNotFound = errors.New("dispatch: not found")
@@ -65,9 +64,9 @@ var (
 	ErrConflict = errors.New("dispatch: conflict")
 )
 
-// OffsetError wraps ErrConflict with the current server-side offset so the
-// API layer can include it in the 409 body of resumable log and file
-// uploads (DESIGN §5.3: "附当前 offset").
+// OffsetError wraps ErrConflict with the current server-side offset so
+// the API layer can include it in the 409 body of resumable log and file
+// uploads.
 type OffsetError struct {
 	Current int64
 }
@@ -81,16 +80,16 @@ func (e *OffsetError) Error() string {
 func (e *OffsetError) Unwrap() error { return ErrConflict }
 
 // sourceArchiveName is the staged source snapshot produced by Enqueue in
-// archive mode (confirmed decision: "staging/<task-id>/source.tar.zst").
+// archive mode ("staging/<task-id>/source.tar.zst").
 const sourceArchiveName = "source.tar.zst"
 
-// sourceMirrorRoot is the controller-side mirror directory (decision A7);
-// it must match detect's own layout (detect sourceRoot, DESIGN §2.3).
+// sourceMirrorRoot is the controller-side mirror directory; it must
+// match detect's own layout (detect sourceRoot).
 const sourceMirrorRoot = "/data/source"
 
 // signVerifier is the minimum signing surface consumed by dispatch
-// (DETAIL §0.3 rule 5: interfaces are defined by the consumer). The
-// *sign.Signer satisfies it.
+// (interfaces are defined by the consumer). The *sign.Signer satisfies
+// it.
 type signVerifier interface {
 	VerifyDetached(sigPath, pkgPath string) error
 	ExportForTask(taskID string) (*sign.KeyMaterial, error)
@@ -106,18 +105,18 @@ var (
 )
 
 // Orchestrator is the controller's orchestration surface consumed by the
-// API server and the web UI (DESIGN §2.4, DETAIL §4.2). The detect module
-// consumes a narrower slice of it through detect.Sink (Submit). All
-// methods are safe for concurrent use: writes serialize on the store's
-// single write connection and the shared in-memory state (token cache,
-// ingest mutex, per-build log locks) is synchronized internally.
+// API server and the web UI. The detect module consumes a narrower slice
+// of it through detect.Sink (Submit). All methods are safe for concurrent
+// use: writes serialize on the store's single write connection and the
+// shared in-memory state (token cache, ingest mutex, per-build log locks)
+// is synchronized internally.
 type Orchestrator interface {
 	// detect → dispatch (implements detect.Sink).
-	Enqueue(ctx context.Context, c detect.Change, force bool) error // force=true skips the D6 name comparison (admin rebuild)
+	Enqueue(ctx context.Context, c detect.Change, force bool) error // force=true skips the name-conflict comparison (admin rebuild)
 	// worker protocol (api server calls).
 	Register(ctx context.Context, reg RegisterReq) (*RegisterResp, error)
-	Heartbeat(ctx context.Context, hb HeartbeatReq) (*HeartbeatResp, error) // response carries cancellation signals (channel 1)
-	Poll(ctx context.Context, poll PollReq) (*PollResp, error)              // FIFO claim; doubles as a heartbeat (O2)
+	Heartbeat(ctx context.Context, hb HeartbeatReq) (*HeartbeatResp, error) // response carries cancellation signals
+	Poll(ctx context.Context, poll PollReq) (*PollResp, error)              // FIFO claim; doubles as a heartbeat
 	GetTask(ctx context.Context, taskID, token string) (*TaskDetail, error)
 	AppendLog(ctx context.Context, taskID, token string, seg LogSegment) (*LogAck, error)
 	ReportResult(ctx context.Context, taskID, token string, res ResultReq) error
@@ -131,7 +130,7 @@ type Orchestrator interface {
 	DisableWorker(ctx context.Context, name string) error
 	RemoveWorker(ctx context.Context, name string) error
 	// dashboard and logs (web consumes; the log reader interface is
-	// defined by web and implemented here, DESIGN §1.4).
+	// defined by web and implemented here).
 	Stats(ctx context.Context) (*Stats, error)
 	ValidateConflicts(ctx context.Context) error
 	ReadLog(ctx context.Context, buildID string) ([]byte, error)
@@ -143,20 +142,18 @@ type Orchestrator interface {
 //   - now is the injectable clock (default time.Now) behind every timestamp
 //     decision (stall/timeout scans, requeue, finalization);
 //   - execCommand is the injectable command constructor (default
-//     exec.CommandContext) used for git mirror reads and source archives
-//     (DETAIL §0.3 rule 4);
+//     exec.CommandContext) used for git mirror reads and source archives;
 //   - mirrorDir is the source mirror directory, derived from cfg.Source.URL
-//     exactly like detect derives its own (DESIGN §2.3);
+//     exactly like detect derives its own;
 //   - ingestMu serializes the whole ingest orchestration (single-repo
-//     mutex, DESIGN §2.6 / DETAIL §6.6);
+//     mutex);
 //   - tokenCache holds taskID → claim token in memory; a controller restart
-//     clears it, orphaning running agents until stall recovery re-claims
-//     (decision A22 / D4③);
+//     clears it, orphaning running agents until stall recovery re-claims;
 //   - roundSet tracks the pkgbases enqueued in the current detection round
-//     for the D6 conflict check, pruned after cfg.Source.PollInterval.
+//     for the name-conflict check, pruned after cfg.Source.PollInterval.
 //
 // NewOrchestrator starts the periodic scheduler goroutine; Stop halts it
-// and drains the ingest mutex (optimization O2).
+// and drains the ingest mutex.
 type OrchestratorImpl struct {
 	cfg         *config.ControllerConfig
 	store       *db.Store
@@ -187,9 +184,9 @@ type OrchestratorImpl struct {
 // dereferenceable. A plain interface == nil comparison is defeated by a
 // typed nil stored inside the interface — e.g. a nil *sign.Signer passed
 // by a caller with repo.sign="off": the interface itself is non-nil and
-// the first method call would panic with a nil pointer dereference (bug
-// fix M4, V2 acceptance). Every nilable kind is handled so any future
-// concrete implementation type stays safe.
+// the first method call would panic with a nil pointer dereference. Every
+// nilable kind is handled so any future concrete implementation type
+// stays safe.
 func signerUsable(s signVerifier) bool {
 	if s == nil {
 		return false
@@ -207,7 +204,7 @@ func signerUsable(s signVerifier) bool {
 // except the config may be nil in tests that do not exercise them. The
 // signer is normalized: an interface wrapping a typed nil pointer (the
 // shape a caller produces with repo.sign="off") is stored as a true nil
-// so every later nil check is sound (bug fix M4).
+// so every later nil check is sound.
 func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
 	signer signVerifier, updater repo.Updater, notifier mail.Notifier, logs *Logs) *OrchestratorImpl {
 	if cfg == nil {
@@ -239,8 +236,8 @@ func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend stor
 	return o
 }
 
-// sourceMirrorDir derives the mirror directory from the source URL the same
-// way detect does (DESIGN §2.3): /data/source/<MirrorDir>.git.
+// sourceMirrorDir derives the mirror directory from the source URL the
+// same way detect does: /data/source/<MirrorDir>.git.
 func sourceMirrorDir(sourceURL string) string {
 	if sourceURL == "" {
 		return ""
@@ -248,8 +245,8 @@ func sourceMirrorDir(sourceURL string) string {
 	return filepath.Join(sourceMirrorRoot, detect.MirrorDir(sourceURL)+".git")
 }
 
-// Submit implements detect.Sink (DETAIL §3.2): every detected change is
-// enqueued for building. Concurrently safe.
+// Submit implements detect.Sink: every detected change is enqueued for
+// building. Concurrently safe.
 func (o *OrchestratorImpl) Submit(ctx context.Context, c detect.Change) error {
 	return o.Enqueue(ctx, c, false)
 }
@@ -271,7 +268,7 @@ func uuidV4() string {
 }
 
 // randomToken returns a 32-byte random value hex-encoded (64 chars): the
-// per-task claim token (DESIGN §5.3).
+// per-task claim token.
 func randomToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -290,9 +287,8 @@ func isTerminal(state string) bool {
 }
 
 // checkToken validates a claim token against the in-memory cache with a
-// constant-time comparison (DESIGN §5.7). Unknown tasks and tasks claimed
-// before a controller restart have no cached token and are forbidden
-// (decision A22 / D4③).
+// constant-time comparison. Unknown tasks and tasks claimed before a
+// controller restart have no cached token and are forbidden.
 func (o *OrchestratorImpl) checkToken(taskID, token string) error {
 	o.tokenMu.Lock()
 	got := o.tokenCache[taskID]
@@ -310,11 +306,11 @@ func (o *OrchestratorImpl) setToken(taskID, token string) {
 	o.tokenMu.Unlock()
 }
 
-// clearToken drops a claim token. Tokens of terminal tasks are deliberately
-// kept so a late report is classified as a state conflict (409) instead of
-// a forbidden token (403, DETAIL §4.2); the token is dropped on requeue
-// (D4③) so a re-claimed task can never be driven by the stale container's
-// token, and stale entries are replaced by the next claim.
+// clearToken drops a claim token. Tokens of terminal tasks are
+// deliberately kept so a late report is classified as a state conflict
+// (409) instead of a forbidden token (403); the token is dropped on
+// requeue so a re-claimed task can never be driven by the stale
+// container's token, and stale entries are replaced by the next claim.
 func (o *OrchestratorImpl) clearToken(taskID string) {
 	o.tokenMu.Lock()
 	delete(o.tokenCache, taskID)
@@ -332,8 +328,8 @@ func (o *OrchestratorImpl) finalizeTask(ctx context.Context, taskID, state, errM
 }
 
 // notifyFailure sends a failure notification to the package maintainers
-// snapshot (packages.maintainers, refreshed at enqueue, DESIGN §7.9). Send
-// failures are only logged: they never affect task state.
+// snapshot (packages.maintainers, refreshed at enqueue). Send failures
+// are only logged: they never affect task state.
 func (o *OrchestratorImpl) notifyFailure(ctx context.Context, task *db.Task, build *db.Build, stage, summary string) {
 	if o.notifier == nil {
 		return
@@ -391,15 +387,15 @@ func (o *OrchestratorImpl) stagedFiles(manifest []repo.Artifact) []string {
 }
 
 // archiveMode reports whether source delivery uses git-archive snapshots
-// (cfg.Source.FetchKey non-empty, confirmed decision) instead of cloning.
+// (cfg.Source.FetchKey non-empty) instead of cloning.
 func (o *OrchestratorImpl) archiveMode() bool {
 	return o.cfg.Source.FetchKey != ""
 }
 
 // workerName resolves the display name of the node that executed a task
 // (host name for host mode, agent name for pool mode). It feeds the side
-// file [build].worker through repo.Updater.Ingest (confirmed decision:
-// the workerName parameter).
+// file [build].worker through repo.Updater.Ingest via the workerName
+// parameter.
 func (o *OrchestratorImpl) workerName(ctx context.Context, workerID int64) string {
 	if workerID == 0 {
 		return ""
@@ -413,9 +409,8 @@ func (o *OrchestratorImpl) workerName(ctx context.Context, workerID int64) strin
 }
 
 // cancelledTaskIDs returns the ids of this worker's tasks that carry a
-// durable cancel request and are still active (cancellation channel 1,
-// DESIGN §7.8 / D4). Both signals are always read from the database: there
-// is no in-memory cancel state.
+// durable cancel request and are still active. Both signals are always
+// read from the database: there is no in-memory cancel state.
 func (o *OrchestratorImpl) cancelledTaskIDs(ctx context.Context, workerID int64) ([]string, error) {
 	tasks, err := o.store.ListTasksByWorker(ctx, workerID)
 	if err != nil {

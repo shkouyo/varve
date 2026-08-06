@@ -27,10 +27,10 @@ import (
 )
 
 // UploadFile streams one artifact segment into the task staging area
-// (decision A1: all artifacts pass through the controller). The client's
-// offset must equal the current staged size (ErrConflict carrying the
-// current offset otherwise, for resumable uploads, O1). Claim-token
-// protected. Concurrently safe.
+// (all artifacts pass through the controller). The client's offset must
+// equal the current staged size (ErrConflict carrying the current offset
+// otherwise, for resumable uploads). Claim-token protected. Concurrently
+// safe.
 func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name string, r io.Reader, size, offset int64) (*FileMeta, error) {
 	if err := o.checkToken(taskID, token); err != nil {
 		return nil, err
@@ -60,8 +60,8 @@ func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name s
 }
 
 // DownloadFile streams a staged file to the worker (source snapshot
-// fallback and artifact verification downloads, decision A1). ErrNotFound
-// when the file does not exist. Claim-token protected. Concurrently safe.
+// fallback and artifact verification downloads). ErrNotFound when the
+// file does not exist. Claim-token protected. Concurrently safe.
 func (o *OrchestratorImpl) DownloadFile(ctx context.Context, taskID, token, name string) (io.ReadCloser, error) {
 	if err := o.checkToken(taskID, token); err != nil {
 		return nil, err

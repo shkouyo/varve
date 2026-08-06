@@ -22,16 +22,16 @@ import (
 )
 
 // signingKeyWire is the on-the-wire form of the signing key material
-// (DESIGN §5.3: key_id / armored_private_key / passphrase). sign.KeyMaterial
-// itself has no JSON tags; the API owns the snake_case contract so worker
-// packages keep using the KeyMaterial alias (D3).
+// (key_id / armored_private_key / passphrase). sign.KeyMaterial itself
+// has no JSON tags; the API owns the snake_case contract so worker
+// packages keep using the KeyMaterial alias.
 type signingKeyWire struct {
 	KeyID             string `json:"key_id"`
 	ArmoredPrivateKey string `json:"armored_private_key"`
 	Passphrase        string `json:"passphrase"`
 }
 
-// resultResp is the POST /tasks/{id}/result success body (DESIGN §5.3).
+// resultResp is the POST /tasks/{id}/result success body.
 type resultResp struct {
 	Accepted bool `json:"accepted"`
 }
@@ -50,8 +50,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleHeartbeat implements POST /api/v1/heartbeat; the response carries
-// the cancellation signals (channel 1) and the server time.
+// handleHeartbeat implements POST /api/v1/heartbeat; the response
+// carries the cancellation signals and the server time.
 func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var req HeartbeatReq
 	if !decodeJSON(w, r, &req) {
@@ -133,7 +133,7 @@ func (s *Server) handleSigningKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeregister implements POST /api/v1/workers/{name}/deregister
-// (normal shutdown, decision A18).
+// (normal shutdown).
 func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
 	if err := s.orch.Deregister(r.Context(), r.PathValue("name")); err != nil {
 		s.writeOrchError(w, err)

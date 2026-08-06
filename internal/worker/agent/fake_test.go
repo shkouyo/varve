@@ -34,8 +34,8 @@ import (
 )
 
 // fakeClient implements the agent's client interface, recording every call
-// and offering programmable responses (DETAIL §12.7). All methods are safe
-// for concurrent use.
+// and offering programmable responses. All methods are safe for concurrent
+// use.
 type fakeClient struct {
 	mu    sync.Mutex
 	calls []string
@@ -269,7 +269,7 @@ type execCall struct {
 // fakeExec builds commands for the agent, recording every invocation and
 // dispatching programmable scripts (keyed by "name arg..."). Unknown
 // commands fall back to /bin/true (exit 0). With realGit set, git runs
-// for real (local file:// repos only, DETAIL §0.3 rule 7).
+// for real (local file:// repos only).
 type fakeExec struct {
 	mu      sync.Mutex
 	calls   []execCall
@@ -324,8 +324,8 @@ func writeScript(t *testing.T, content string) string {
 
 // taskFor builds the minimal TaskDetail used by the flow tests. It is
 // decoded from the JSON wire form so tests never name the nested dispatch
-// types (D3: worker packages depend only on api). Tests mutate the fields
-// they need afterwards.
+// types (worker packages depend only on api). Tests mutate the fields they
+// need afterwards.
 func taskFor(id string) *api.TaskDetail {
 	var task api.TaskDetail
 	if err := json.Unmarshal([]byte(`{
@@ -380,8 +380,8 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) bool {
 	return cond()
 }
 
-// makeRepo creates a local git repository (file:// protocol only, DETAIL
-// §0.3 rule 7) containing .SRCINFO and returns its URL and the HEAD commit.
+// makeRepo creates a local git repository (file:// protocol only)
+// containing .SRCINFO and returns its URL and the HEAD commit.
 func makeRepo(t *testing.T, srcinfo string) (url, commit string) {
 	t.Helper()
 	dir := t.TempDir()

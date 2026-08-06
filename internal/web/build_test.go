@@ -27,7 +27,7 @@ import (
 
 // TestBuildDetailRenders asserts the build page shows the summary, the
 // machine (or "not assigned"), the log history and the resource samples
-// as text (DETAIL §10.7 point 1, proposal §13.3).
+// as text.
 func TestBuildDetailRenders(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")

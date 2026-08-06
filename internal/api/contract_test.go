@@ -39,8 +39,8 @@ const (
 )
 
 // TestWireGoldenEndpoints pins each endpoint's request → response golden
-// sample byte-for-byte (DETAIL §9.7 item 1, DESIGN §5.3). Every case uses
-// a fresh fake and server so no state leaks between samples.
+// sample byte-for-byte. Every case uses a fresh fake and server so no
+// state leaks between samples.
 func TestWireGoldenEndpoints(t *testing.T) {
 	fixedTime := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
 
@@ -189,8 +189,8 @@ func TestWireGoldenEndpoints(t *testing.T) {
 }
 
 // TestContractTaskDetailAllFields verifies the full TaskDetail round trip
-// through the real client: every DESIGN §5.4 field survives, and the wire
-// encoding equals the golden byte-for-byte.
+// through the real client: every field survives, and the wire encoding
+// equals the golden byte-for-byte.
 func TestContractTaskDetailAllFields(t *testing.T) {
 	f := newFake()
 	f.tasks[testTaskID] = fullTaskDetail()
@@ -214,9 +214,9 @@ func TestContractTaskDetailAllFields(t *testing.T) {
 	}
 }
 
-// TestContractPollClaim verifies the poll → claim-token handoff (decision
-// A10): the client receives the task plus the token to inject into the
-// one-shot agent container.
+// TestContractPollClaim verifies the poll → claim-token handoff: the
+// client receives the task plus the token to inject into the one-shot
+// agent container.
 func TestContractPollClaim(t *testing.T) {
 	f := newFake()
 	f.nextTask = fullTaskDetail()
@@ -237,8 +237,8 @@ func TestContractPollClaim(t *testing.T) {
 }
 
 // TestContractLogOffsetAndCancel drives the log offset semantics through
-// the client (DETAIL §9.7 item 5): mismatched offsets surface as 409 with
-// the current offset, and the durable cancellation flag is passed through.
+// the client: mismatched offsets surface as 409 with the current offset,
+// and the durable cancellation flag is passed through.
 func TestContractLogOffsetAndCancel(t *testing.T) {
 	f := newFake()
 	f.claimToken = testClaimTok
@@ -265,7 +265,7 @@ func TestContractLogOffsetAndCancel(t *testing.T) {
 		t.Errorf("offset error = %#v, want 409 offset %d", apiErr, logDataLen)
 	}
 
-	// Cancel flag passthrough (channel 2, D4).
+	// Cancel flag passthrough.
 	f.mu.Lock()
 	f.cancelled = true
 	f.mu.Unlock()
@@ -283,8 +283,8 @@ func TestContractLogOffsetAndCancel(t *testing.T) {
 }
 
 // TestContractResultReport verifies the result report carries artifacts,
-// resource usage and the actual commit (D1), and that a late duplicate
-// report conflicts (decision A3).
+// resource usage and the actual commit, and that a late duplicate report
+// conflicts.
 func TestContractResultReport(t *testing.T) {
 	f := newFake()
 	f.claimToken = testClaimTok
@@ -317,8 +317,8 @@ func TestContractResultReport(t *testing.T) {
 	}
 }
 
-// TestContractSigningKeyOneTime verifies the one-shot signing key (DESIGN
-// §7.7): the material arrives exactly once, a repeat claim conflicts.
+// TestContractSigningKeyOneTime verifies the one-shot signing key: the
+// material arrives exactly once, a repeat claim conflicts.
 func TestContractSigningKeyOneTime(t *testing.T) {
 	f := newFake()
 	f.claimToken = testClaimTok
@@ -340,9 +340,9 @@ func TestContractSigningKeyOneTime(t *testing.T) {
 	}
 }
 
-// TestContractUploadResume drives the resumable upload through the client
-// (DETAIL §9.7 item 4): segment 1, a conflict carrying the current offset,
-// resume from that offset, overwrite rejected.
+// TestContractUploadResume drives the resumable upload through the
+// client: segment 1, a conflict carrying the current offset, resume from
+// that offset, overwrite rejected.
 func TestContractUploadResume(t *testing.T) {
 	f := newFake()
 	f.claimToken = testClaimTok
@@ -383,7 +383,7 @@ func TestContractUploadResume(t *testing.T) {
 }
 
 // TestContractHeartbeatCancelSignal verifies the heartbeat carries the
-// cancellation signals (channel 1, DESIGN §7.8 / D4) and the server time.
+// cancellation signals and the server time.
 func TestContractHeartbeatCancelSignal(t *testing.T) {
 	f := newFake()
 	f.hookHeartbeat = func(hb HeartbeatReq) (*HeartbeatResp, error) {

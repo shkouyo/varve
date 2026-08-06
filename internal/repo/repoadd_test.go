@@ -24,8 +24,8 @@ import (
 )
 
 // TestRepoCommandMatrix asserts the --sign switch and the GNUPGHOME
-// environment injection across the three repo.sign modes (DETAIL §6.7
-// case 1): only "packages+db" signs the database commands.
+// environment injection across the three repo.sign modes: only
+// "packages+db" signs the database commands.
 func TestRepoCommandMatrix(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -77,7 +77,7 @@ func TestRepoCommandMatrix(t *testing.T) {
 
 // TestRepoRemoveAllThenAdd asserts the remove-before-add sequence with two
 // replaced pkgnames: every repo-remove runs first, then a single repo-add
-// with all new package files (A19, DETAIL §6.7 case 2).
+// with all new package files.
 func TestRepoRemoveAllThenAdd(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	e.seedSidecar(&Sidecar{
@@ -114,8 +114,7 @@ func TestRepoRemoveAllThenAdd(t *testing.T) {
 }
 
 // TestRepoCommandNonZeroExit asserts a failed repo-add surfaces an error
-// whose summary carries the tail of stderr (last 200 characters, DETAIL
-// §6.4 step 4).
+// whose summary carries the tail of stderr (last 200 characters).
 func TestRepoCommandNonZeroExit(t *testing.T) {
 	head := "HEAD_MARKER_"
 	tail := "TAIL_MARKER"

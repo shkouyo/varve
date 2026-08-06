@@ -30,7 +30,7 @@ import (
 )
 
 // secret holds a password in a mutable []byte buffer so that it can be
-// scrubbed from memory after configuration validation (DETAIL §1.3).
+// scrubbed from memory after configuration validation.
 type secret []byte
 
 // UnmarshalText implements encoding.TextUnmarshaler.
@@ -42,7 +42,7 @@ func (s *secret) UnmarshalText(text []byte) error {
 // tomlDuration decodes TOML duration strings such as "90s", "5m" or "90d".
 // time.Duration itself does not implement encoding.TextUnmarshaler, and Go's
 // ParseDuration does not accept day units, so the decode layer uses this
-// adapter (DETAIL §1.4).
+// adapter.
 type tomlDuration time.Duration
 
 // UnmarshalText implements encoding.TextUnmarshaler.
@@ -56,7 +56,7 @@ func (d *tomlDuration) UnmarshalText(text []byte) error {
 }
 
 // parseDuration parses a duration string, additionally accepting a trailing
-// day unit such as "90d" (DESIGN §8.1).
+// day unit such as "90d".
 func parseDuration(s string) (time.Duration, error) {
 	if n := len(s); n > 1 && s[n-1] == 'd' {
 		if d, err := strconv.ParseFloat(s[:n-1], 64); err == nil {
@@ -67,8 +67,8 @@ func parseDuration(s string) (time.Duration, error) {
 }
 
 // tomlMemory decodes the worker.memory_limit field, which may be written
-// either as the integer 0 (no limit) or as a size string such as "8GiB"
-// (DESIGN §8.1). The integer form is normalized to the empty string.
+// either as the integer 0 (no limit) or as a size string such as "8GiB".
+// The integer form is normalized to the empty string.
 type tomlMemory string
 
 // UnmarshalText implements encoding.TextUnmarshaler; go-toml feeds the raw
@@ -85,7 +85,7 @@ func (m *tomlMemory) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// The raw* structs mirror the TOML schema (DESIGN §8.1) with decode-layer
+// The raw* structs mirror the TOML schema with decode-layer types. They
 // types. They are prefilled with defaults so that omitted sections and keys
 // keep their documented values, then exported into ControllerConfig.
 type rawConfig struct {
@@ -188,7 +188,7 @@ type rawLogs struct {
 }
 
 // defaultRawConfig returns the raw decode struct prefilled with the
-// documented defaults (DESIGN §8.1, DETAIL §1.2).
+// documented defaults.
 func defaultRawConfig() rawConfig {
 	return rawConfig{
 		Server: rawServer{
@@ -234,8 +234,8 @@ func defaultRawConfig() rawConfig {
 }
 
 // LoadController reads, parses and validates the controller configuration at
-// path (DETAIL §1.4). It is called once at startup and is safe for concurrent
-// use; the returned configuration must be treated as read-only.
+// path. It is called once at startup and is safe for concurrent use; the
+// returned configuration must be treated as read-only.
 //
 // Flow: read file -> warn if permissions are not 0600 (non-fatal) -> strict
 // TOML parse (unknown fields rejected) -> env overrides (VARVE_API_TOKEN >
@@ -287,8 +287,8 @@ func LoadController(path string) (*ControllerConfig, error) {
 	return cfg, nil
 }
 
-// applyEnvOverrides applies the documented environment overrides (DETAIL
-// §1.4): a set-and-non-empty environment variable wins over everything else;
+// applyEnvOverrides applies the documented environment overrides: a
+// set-and-non-empty environment variable wins over everything else;
 // token_file is only consulted when VARVE_API_TOKEN is absent. Password-class
 // fields (admin_password, mail.password, gpg.passphrase) are never overridden
 // from the environment.
@@ -316,7 +316,7 @@ func applyEnvOverrides(r *rawConfig) error {
 
 // export copies the decoded raw configuration into the exported
 // ControllerConfig. Password buffers are copied to immutable strings here so
-// that they can be wiped afterwards (DETAIL §1.3).
+// that they can be wiped afterwards.
 func (r *rawConfig) export() *ControllerConfig {
 	return &ControllerConfig{
 		Server: ServerConfig{
@@ -396,9 +396,8 @@ func (r *rawConfig) wipeSecrets() {
 }
 
 // WipeBytes zeroes the contents of b. It is exported so that password
-// buffers used during configuration parsing can be scrubbed from memory
-// (DETAIL §1.3); Go strings are immutable, so only the parse copies can be
-// wiped.
+// buffers used during configuration parsing can be scrubbed from memory; Go
+// strings are immutable, so only the parse copies can be wiped.
 func WipeBytes(b []byte) {
 	clear(b)
 }

@@ -30,7 +30,7 @@ import (
 
 // TestDashboardRender asserts the dashboard shows status counts, the
 // queue length, recent builds (package name + status) and the worker
-// overview (DETAIL §10.7 point 1).
+// overview.
 func TestDashboardRender(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")

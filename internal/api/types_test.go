@@ -29,10 +29,10 @@ import (
 	"git.0x0f.dev/varve/internal/sign"
 )
 
-// Compile-time: every worker-protocol type is re-exported by alias (T9.1,
-// decision D3), so worker packages get the whole surface from api alone.
-// The assignments are tautological by construction but pin the aliases:
-// dropping one breaks the build.
+// Compile-time: every worker-protocol type is re-exported by alias, so
+// worker packages get the whole surface from api alone. The assignments
+// are tautological by construction but pin the aliases: dropping one
+// breaks the build.
 var (
 	_ RegisterReq    = dispatch.RegisterReq{}
 	_ RegisterResp   = dispatch.RegisterResp{}
@@ -52,7 +52,7 @@ var (
 	_ KeyMaterial    = sign.KeyMaterial{}
 )
 
-// fullTaskDetail is the DESIGN §5.4 golden task with every field set.
+// fullTaskDetail is the golden task with every field set.
 func fullTaskDetail() *TaskDetail {
 	return &TaskDetail{
 		ID: "task-0001",
@@ -84,9 +84,9 @@ func fullTaskDetail() *TaskDetail {
 }
 
 // TestTypesJSONGolden pins the snake_case wire encoding of the protocol
-// types byte-for-byte (DESIGN §5.3, DETAIL §0.3 rule 8): marshal each
-// value and compare with the golden JSON, then unmarshal the golden back
-// and compare with the original value.
+// types byte-for-byte: marshal each value and compare with the golden
+// JSON, then unmarshal the golden back and compare with the original
+// value.
 func TestTypesJSONGolden(t *testing.T) {
 	at := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
 
@@ -219,8 +219,8 @@ func TestTypesJSONGolden(t *testing.T) {
 	}
 }
 
-// TestKeyMaterialAlias pins the sign.KeyMaterial re-export (D3): the alias
-// is the identical type, so a sign.KeyMaterial is usable as an api type.
+// TestKeyMaterialAlias pins the sign.KeyMaterial re-export: the alias is
+// the identical type, so a sign.KeyMaterial is usable as an api type.
 func TestKeyMaterialAlias(t *testing.T) {
 	km := &KeyMaterial{
 		KeyID:             "ABCD1234",
@@ -233,6 +233,6 @@ func TestKeyMaterialAlias(t *testing.T) {
 	}
 }
 
-// goldenTaskDetailJSON is the DESIGN §5.4 golden encoding of fullTaskDetail
-// (every field, snake_case, RFC3339 UTC timestamps).
+// goldenTaskDetailJSON is the golden encoding of fullTaskDetail (every
+// field, snake_case, RFC3339 UTC timestamps).
 const goldenTaskDetailJSON = `{"id":"task-0001","package":{"pkgbase":"foo","branch":"foo","vcs_kind":"git","arch":"x86_64"},"source":{"mode":"clone","url":"git@example.com:pkgbuilds.git","branch":"foo","commit":"abc123","archive":""},"pkgbuild_source":null,"hooks":{"pre_build":["scripts/pre.sh"],"post_build":["scripts/post.sh"],"on_success":null,"on_failure":null},"collect":{"exclude":["*-debug"]},"signing":{"required":true,"mode":"packages"},"build":{"timeout_seconds":1800,"deadline":"2026-08-05T10:30:00Z"}}`

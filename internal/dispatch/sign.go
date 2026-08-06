@@ -25,9 +25,9 @@ import (
 	"git.0x0f.dev/varve/internal/sign"
 )
 
-// IssueSigningKey hands out the one-shot signing key material of a task
-// (DESIGN §7.7). Each task may claim it exactly once; a second claim
-// returns sign.ErrAlreadyExported, which the API maps to 409. Claim-token
+// IssueSigningKey hands out the one-shot signing key material of a task.
+// Each task may claim it exactly once; a second claim returns
+// sign.ErrAlreadyExported, which the API maps to 409. Claim-token
 // protected. Concurrently safe.
 func (o *OrchestratorImpl) IssueSigningKey(ctx context.Context, taskID, token string) (*sign.KeyMaterial, error) {
 	if err := o.checkToken(taskID, token); err != nil {

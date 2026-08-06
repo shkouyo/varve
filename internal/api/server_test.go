@@ -27,8 +27,8 @@ import (
 
 const registerBody = `{"name":"n1","role":"host","mode":"host","arch":"x86_64","capacity":1,"version":"0.1.0"}`
 
-// TestAuthMatrixNodeLevel covers the node-level Bearer matrix (DETAIL §9.7
-// item 2): missing/wrong/correct tokens on register.
+// TestAuthMatrixNodeLevel covers the node-level Bearer matrix:
+// missing/wrong/correct tokens on register.
 func TestAuthMatrixNodeLevel(t *testing.T) {
 	f := newFake()
 	srv := newTestServer(t, f)
@@ -130,9 +130,9 @@ func TestAuthMatrixDualToken(t *testing.T) {
 	}
 }
 
-// TestUploadNameWhitelist drives the filename whitelist table
-// (DESIGN §5.7): valid basenames upload, anything outside
-// [A-Za-z0-9._+-] is rejected with 400, including path separators.
+// TestUploadNameWhitelist drives the filename whitelist table: valid
+// basenames upload, anything outside [A-Za-z0-9._+-] is rejected with
+// 400, including path separators.
 func TestUploadNameWhitelist(t *testing.T) {
 	f := newFake()
 	srv := newTestServer(t, f)

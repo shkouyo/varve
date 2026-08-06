@@ -23,9 +23,8 @@ import (
 	"time"
 )
 
-// TestStopDrainsIngest covers the graceful shutdown contract (O2): Stop
-// blocks while an ingest orchestration is in flight and returns once it
-// drains.
+// TestStopDrainsIngest covers the graceful shutdown contract: Stop blocks
+// while an ingest orchestration is in flight and returns once it drains.
 func TestStopDrainsIngest(t *testing.T) {
 	env := newTestEnv(t)
 	artifacts := testArtifacts("foo", "1.0-1")

@@ -16,14 +16,13 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package agent implements the worker agent that runs inside build
-// containers (DESIGN §2.11, DETAIL §12). It claims tasks, executes the
-// canonical 9-step build flow (hooks + makepkg → collect → sign → upload →
-// report), buffers build logs, samples container cgroup stats and handles
-// controller-requested cancellation. One-shot mode handles a single task
-// and exits; pool mode registers as a capacity-1 node, polls for tasks and
-// idles out after VARVE_POOL_IDLE_TIMEOUT (proposal §5.3). The agent never
-// parses dotfiles: the controller dispatches the resolved configuration in
-// TaskDetail (DESIGN §2.3).
+// containers. It claims tasks, executes the canonical 9-step build flow
+// (hooks + makepkg → collect → sign → upload → report), buffers build logs,
+// samples container cgroup stats and handles controller-requested
+// cancellation. One-shot mode handles a single task and exits; pool mode
+// registers as a capacity-1 node, polls for tasks and idles out after
+// VARVE_POOL_IDLE_TIMEOUT. The agent never parses dotfiles: the controller
+// dispatches the resolved configuration in TaskDetail.
 package agent
 
 import (
@@ -42,8 +41,8 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// Stage enumeration (DESIGN §7.4, §2.11): used in failure reports, build
-// logs and progress payloads.
+// Stage enumeration used in failure reports, build logs and progress
+// payloads.
 const (
 	stagePrepare   = "prepare"
 	stagePreBuild  = "hook:pre_build"
@@ -57,7 +56,7 @@ const (
 	stageOnSuccess = "hook:on_success"
 )
 
-// Result status values (DESIGN §5.3).
+// Result status values.
 const (
 	statusSucceeded = "succeeded"
 	statusFailed    = "failed"
@@ -73,10 +72,10 @@ const (
 // version is the worker version advertised at node registration.
 const version = "0.1.0"
 
-// client is the narrowed controller client consumed by the agent
-// (DETAIL §12.2). *api.Client satisfies it. The db import exists solely
-// for the db.Sample element type of api.ResultReq.ResourceUsage (the wire
-// payloads are defined in dispatch and re-exported by api, D3).
+// client is the narrowed controller client consumed by the agent.
+// *api.Client satisfies it. The db import exists solely for the db.Sample
+// element type of api.ResultReq.ResourceUsage (the wire payloads are
+// defined in dispatch and re-exported by api).
 type client interface {
 	Register(ctx context.Context, req api.RegisterReq) (*api.RegisterResp, error)
 	Heartbeat(ctx context.Context, req api.HeartbeatReq) (*api.HeartbeatResp, error)
@@ -92,7 +91,7 @@ type client interface {
 
 var _ client = (*api.Client)(nil)
 
-// mode selects the agent lifecycle (DETAIL §12.4 #1).
+// mode selects the agent lifecycle.
 type mode int
 
 const (
@@ -100,12 +99,11 @@ const (
 	modePool
 )
 
-// Runner drives the agent lifecycle (DETAIL §12.3). It is not safe for
-// concurrent use: Run must be called once per process.
+// Runner drives the agent lifecycle. It is not safe for concurrent use:
+// Run must be called once per process.
 //
 // execCommand, the log-buffer parameters, the sampler paths, the pool
-// intervals and the clock are injectable for same-package tests
-// (DETAIL §0.3 rules 3–4).
+// intervals and the clock are injectable for same-package tests.
 type Runner struct {
 	cfg       *config.WorkerConfig
 	client    client
@@ -127,8 +125,8 @@ type Runner struct {
 	// the pool heartbeat goroutine).
 	state *taskState
 
-	// Log-buffer tunables (DETAIL §12.3, injectable for tests): a batch
-	// is flushed on the earlier of logThreshold bytes or logInterval.
+	// Log-buffer tunables (injectable for tests): a batch is flushed on the
+	// earlier of logThreshold bytes or logInterval.
 	logThreshold int
 	logInterval  time.Duration
 
@@ -136,10 +134,10 @@ type Runner struct {
 	pollInterval      time.Duration
 	heartbeatInterval time.Duration
 	// killGrace is the SIGTERM→SIGKILL escalation delay for a running
-	// build command (DETAIL §12.4 #3).
+	// build command.
 	killGrace time.Duration
 	// registerBackoff computes the exponential backoff for a failed node
-	// registration (5s doubling to a 60s cap, DETAIL §11.4 #1).
+	// registration (5s doubling to a 60s cap).
 	registerBackoff func(failures int) time.Duration
 	// procDir is the /proc mount used for heartbeat system metrics
 	// (injectable for tests).
@@ -149,8 +147,7 @@ type Runner struct {
 
 // NewRunner builds a Runner for the given worker configuration. The mode
 // follows cfg.OneShot: one-shot agents claim their single task directly
-// without registering a node; pool agents register as a capacity-1 node
-// (decision A10, DETAIL §12.2).
+// without registering a node; pool agents register as a capacity-1 node.
 func NewRunner(cfg *config.WorkerConfig, client client) *Runner {
 	r := &Runner{
 		cfg:               cfg,
@@ -179,10 +176,9 @@ func NewRunner(cfg *config.WorkerConfig, client client) *Runner {
 }
 
 // Run drives the agent lifecycle. Task-level failures are reported to the
-// controller and never returned as errors (DETAIL §12.2); only fatal
-// errors surface (e.g. a one-shot GetTask failure, which leaves the
-// container with a non-zero exit so the host can report on our behalf,
-// D4③).
+// controller and never returned as errors; only fatal errors surface (e.g.
+// a one-shot GetTask failure, which leaves the container with a non-zero
+// exit so the host can report on our behalf).
 func (r *Runner) Run(ctx context.Context) error {
 	if r.mode == modeOneShot {
 		return r.runOneShot(ctx)
@@ -190,8 +186,8 @@ func (r *Runner) Run(ctx context.Context) error {
 	return r.runPool(ctx)
 }
 
-// runOneShot claims the configured task and executes it, then exits.
-// Nodes are never registered (decision A10).
+// runOneShot claims the configured task and executes it, then exits. Nodes
+// are never registered.
 func (r *Runner) runOneShot(ctx context.Context) error {
 	if r.taskID == "" || r.taskToken == "" {
 		return errors.New("agent: one-shot mode requires a task id and claim token")
@@ -199,8 +195,7 @@ func (r *Runner) runOneShot(ctx context.Context) error {
 	task, err := r.client.GetTask(ctx, r.taskID, r.taskToken)
 	if err != nil {
 		// Invalidated token (403/404) or any other claim failure is
-		// fatal: log it and exit non-zero, the host reports the failure
-		// (DETAIL §12.5).
+		// fatal: log it and exit non-zero, the host reports the failure.
 		log.Printf("agent: get task %s: %v", r.taskID, err)
 		return fmt.Errorf("agent: get task %s: %w", r.taskID, err)
 	}
@@ -312,8 +307,7 @@ func (s *taskState) heartbeatTasks(sampler *CgroupSampler) []api.TaskProgress {
 }
 
 // backoffDelay returns the exponential registration backoff for the given
-// number of consecutive failures: 5s doubling, capped at 60s (DETAIL
-// §11.4 #1).
+// number of consecutive failures: 5s doubling, capped at 60s.
 func backoffDelay(failures int) time.Duration {
 	d := 5 * time.Second
 	for i := 0; i < failures; i++ {
@@ -326,8 +320,7 @@ func backoffDelay(failures int) time.Duration {
 }
 
 // isTokenError reports whether err is an identity/token failure (401/403/
-// 404): the one-shot agent exits on them (D4③) and the pool agent
-// re-registers (DETAIL §11.4 #6).
+// 404): the one-shot agent exits on them and the pool agent re-registers.
 func isTokenError(err error) bool {
 	var apiErr *api.APIError
 	if !errors.As(err, &apiErr) {
@@ -341,14 +334,14 @@ func isTokenError(err error) bool {
 }
 
 // isConflict reports whether err is a 409 conflict (late duplicate
-// reports are ignored, DETAIL §12.5).
+// reports are ignored).
 func isConflict(err error) bool {
 	var apiErr *api.APIError
 	return errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict
 }
 
 // truncateSummary caps the failure summary at max characters, keeping the
-// tail (DETAIL §12.4: summary ≤ 2000 chars).
+// tail (summary ≤ 2000 chars).
 func truncateSummary(s string) string {
 	const max = 2000
 	if len(s) <= max {

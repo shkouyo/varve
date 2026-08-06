@@ -16,9 +16,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package srcinfo parses .SRCINFO files (the makepkg --printsrcinfo text
-// format) and hashes their raw bytes (DETAIL §3.2, M3a). The parser is
-// strict about the "key = value" line format but ignores unknown keys so
-// that future makepkg fields do not break detection.
+// format) and hashes their raw bytes. The parser is strict about the
+// "key = value" line format but ignores unknown keys so that future
+// makepkg fields do not break detection.
 package srcinfo
 
 import (
@@ -32,7 +32,7 @@ import (
 // Info is the parsed representation of a .SRCINFO file.
 //
 // Pkgname and Arch are multi-valued; Source holds every "source =" entry
-// (used by the detect pipeline to locate VCS upstream URLs, DETAIL §3.2).
+// (used by the detect pipeline to locate VCS upstream URLs).
 type Info struct {
 	Pkgbase string
 	Pkgver  string

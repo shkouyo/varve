@@ -24,11 +24,10 @@ import (
 )
 
 // VerifyDetached checks a detached signature over a package artifact using
-// the managed keyring (gpg --verify <sig> <pkg>, DETAIL §7.4 step 3). Any
-// non-zero gpg exit — a bad signature, a tampered artifact or a missing
-// key — is returned as an error so that dispatch can fail the task
-// (DESIGN §7.5). Concurrently safe: every call runs an isolated subprocess
-// (DETAIL §7.6).
+// the managed keyring (gpg --verify <sig> <pkg>). Any non-zero gpg exit — a
+// bad signature, a tampered artifact or a missing key — is returned as an
+// error so that dispatch can fail the task. Concurrently safe: every call
+// runs an isolated subprocess.
 func (s *Signer) VerifyDetached(sigPath, pkgPath string) error {
 	cmd := s.execCommand(context.Background(), "gpg", "--homedir", s.gnupgHome,
 		"--batch", "--verify", sigPath, pkgPath)
@@ -41,8 +40,8 @@ func (s *Signer) VerifyDetached(sigPath, pkgPath string) error {
 }
 
 // GnuPGEnv returns the environment fragment that points a child process at
-// the managed keyring, consumed by repo-add --sign (DETAIL §7.4 step 4).
-// Concurrently safe (read-only).
+// the managed keyring, consumed by repo-add --sign. Concurrently safe
+// (read-only).
 func (s *Signer) GnuPGEnv() []string {
 	return []string{"GNUPGHOME=" + s.gnupgHome}
 }

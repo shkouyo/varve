@@ -23,9 +23,9 @@ import (
 	"time"
 )
 
-// This file covers the methods added on behalf of the M4 dispatch module:
-// UpsertPackage, GetPackageByID, GetWorkerByName, GetWorkerByID,
-// RequeueTask, RequestTaskCancel and ListTimedOutTasks.
+// This file covers the task- and worker-lifecycle helpers shared with the
+// dispatch module: UpsertPackage, GetPackageByID, GetWorkerByName,
+// GetWorkerByID, RequeueTask, RequestTaskCancel and ListTimedOutTasks.
 
 // TestUpsertPackage covers insert-then-refresh semantics: a new pkgbase
 // creates a row, a second call refreshes the detection metadata but never

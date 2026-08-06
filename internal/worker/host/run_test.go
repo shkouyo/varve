@@ -27,7 +27,7 @@ import (
 )
 
 // TestRegisterRequestShape verifies the registration payload: role=host,
-// mode=host, capacity and the stable name (H7).
+// mode=host, capacity and the stable name.
 func TestRegisterRequestShape(t *testing.T) {
 	cfg := testCfg()
 	cfg.Concurrency = 3
@@ -45,7 +45,7 @@ func TestRegisterRequestShape(t *testing.T) {
 }
 
 // TestRegisterBackoffRetry verifies registration retries with exponential
-// backoff until success (H7, DETAIL §11.4 item 1).
+// backoff until success.
 func TestRegisterBackoffRetry(t *testing.T) {
 	c := newFakeClient()
 	c.registerErrs = 3 // fail the first three attempts
@@ -74,10 +74,9 @@ func TestRegisterCancelledDuringBackoff(t *testing.T) {
 	}
 }
 
-// TestRunShutdownDrainsAndDeregisters covers the graceful exit (H7,
-// DETAIL §11.7 group 6): on ctx cancellation the runner stops claiming new
-// tasks, waits for the running container, then deregisters and returns
-// nil.
+// TestRunShutdownDrainsAndDeregisters covers the graceful exit: on ctx
+// cancellation the runner stops claiming new tasks, waits for the running
+// container, then deregisters and returns nil.
 func TestRunShutdownDrainsAndDeregisters(t *testing.T) {
 	rt := newFakeRuntime()
 	rt.blocked = make(chan struct{}) // the container stays alive until released
@@ -127,7 +126,7 @@ func TestRunShutdownDrainsAndDeregisters(t *testing.T) {
 }
 
 // TestRunRegisterFailsPermanently verifies Run returns the error when
-// registration never succeeds and the context is cancelled (H7).
+// registration never succeeds and the context is cancelled.
 func TestRunRegisterFailsPermanently(t *testing.T) {
 	c := newFakeClient()
 	c.registerErrs = 100

@@ -6,11 +6,11 @@ jobs:
     worker:
         runs-on: ubuntu-latest
         container:
-            image: <registry>/varve-worker:latest # Forgejo Packages 发布的镜像
+            image: <registry>/varve-worker:latest # image published to Forgejo Packages
             env:
                 VARVE_CONTROLLER_URL: ${{ secrets.VARVE_CONTROLLER_URL }}
                 VARVE_TOKEN: ${{ secrets.VARVE_TOKEN }}
-                VARVE_ROLE: agent # 容器内以 agent 身份运行 (pool 模式)
-                # VARVE_WORKER_NAME: runner-1 # 可选: 手动指定节点名, 否则自动生成
+                VARVE_ROLE: agent # run as an agent inside the container (pool mode)
+                # VARVE_WORKER_NAME: runner-1 # optional: fixed node name; auto-generated when unset
         steps:
             - run: varve-worker

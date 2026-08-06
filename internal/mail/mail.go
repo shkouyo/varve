@@ -18,7 +18,7 @@
 // Package mail sends plain-text build failure notifications over SMTP
 // (RFC 5322). It is an optional component: when mail is disabled the
 // notifier is a no-op. The package depends only on internal/config and has
-// no dependencies on other internal modules (DESIGN §2.8, DETAIL §8.1).
+// no dependencies on other internal modules.
 package mail
 
 import (
@@ -32,7 +32,7 @@ import (
 
 // Notifier delivers build failure notifications. Dispatch snapshots the
 // dotfile maintainers at enqueue time and calls SendFailure for every
-// failed build (DESIGN §7.9).
+// failed build.
 type Notifier interface {
 	SendFailure(ctx context.Context, to []string, info FailureInfo) error
 }
@@ -49,7 +49,7 @@ type FailureInfo struct {
 
 // Mailer sends failure notifications over SMTP. It holds no mutable state,
 // so it is safe for concurrent use: every SendFailure opens its own
-// connection and there is no connection pooling (DETAIL §8.6).
+// connection and there is no connection pooling.
 type Mailer struct {
 	cfg       *config.MailConfig
 	tlsConfig *tls.Config // test hook; nil in production builds the default
@@ -64,10 +64,10 @@ func NewMailer(cfg *config.MailConfig) *Mailer {
 //
 // It is a no-op returning nil when mail is disabled or when no recipients
 // are given (a belt-and-braces guard; dispatch already checks before
-// calling, DETAIL §8.5). Each recipient is sent on its own SMTP connection,
-// so a failure for one recipient does not affect the others; all failures
-// are aggregated into the returned error. The caller only logs the error
-// and never lets it affect task state.
+// calling). Each recipient is sent on its own SMTP connection, so a
+// failure for one recipient does not affect the others; all failures are
+// aggregated into the returned error. The caller only logs the error and
+// never lets it affect task state.
 func (m *Mailer) SendFailure(ctx context.Context, to []string, info FailureInfo) error {
 	if m == nil || m.cfg == nil || !m.cfg.Enabled || len(to) == 0 {
 		return nil

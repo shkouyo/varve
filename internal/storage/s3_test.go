@@ -37,9 +37,9 @@ import (
 
 const fakeBucket = "test-bucket"
 
-// fakeObject implements objectAPI against an in-memory map (DETAIL §5.7).
-// It records every call so tests can assert keys, parameters and the
-// pagination sequence.
+// fakeObjectAPI implements objectAPI against an in-memory map. It records
+// every call so tests can assert keys, parameters and the pagination
+// sequence.
 type fakeObjectAPI struct {
 	objects  map[string]fakeObject
 	calls    []fakeCall
@@ -358,7 +358,7 @@ func TestS3MoveSequence(t *testing.T) {
 }
 
 // TestS3AppendMerge asserts the degraded Append: existing content is merged
-// with the chunk and re-uploaded (DETAIL §5.5).
+// with the chunk and re-uploaded.
 func TestS3AppendMerge(t *testing.T) {
 	b, _ := mustFakeBackend(t)
 	ctx := context.Background()

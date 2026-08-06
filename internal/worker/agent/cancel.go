@@ -23,10 +23,10 @@ import (
 	"time"
 )
 
-// terminate stops a running build command (DETAIL §12.4 #3, decision A3):
-// SIGTERM to the process group, escalated to SIGKILL after killGrace if it
-// has not exited. The command must have been started with Setpgid so the
-// whole process group is addressable. It blocks until the process is gone.
+// terminate stops a running build command: SIGTERM to the process group,
+// escalated to SIGKILL after killGrace if it has not exited. The command
+// must have been started with Setpgid so the whole process group is
+// addressable. It blocks until the process is gone.
 func (r *Runner) terminate(cmd *exec.Cmd, done <-chan struct{}) {
 	if cmd == nil || cmd.Process == nil {
 		return

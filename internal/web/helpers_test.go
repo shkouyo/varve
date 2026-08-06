@@ -37,7 +37,7 @@ import (
 var testCtx = context.Background()
 
 // fakeOrchestrator implements dispatch.Orchestrator with recorded admin
-// calls and a scripted Stats result (DETAIL §10.7).
+// calls and a scripted Stats result.
 type fakeOrchestrator struct {
 	mu sync.Mutex
 
@@ -124,8 +124,8 @@ func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset i
 	return offset, nil
 }
 
-// fakeLogReader implements LogReader over an in-memory log with scripted
-// errors (DETAIL §10.7).
+// fakeLogReader implements LogReader over an in-memory log with
+// scripted errors.
 type fakeLogReader struct {
 	mu sync.Mutex
 
@@ -167,7 +167,7 @@ func (f *fakeLogReader) TailLog(ctx context.Context, buildID string, offset int6
 }
 
 // testConfig returns a controller configuration with the web section
-// populated (DETAIL §10.2).
+// populated.
 func testConfig() *config.ControllerConfig {
 	return &config.ControllerConfig{
 		Web: config.WebConfig{

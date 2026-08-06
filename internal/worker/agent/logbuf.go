@@ -28,16 +28,15 @@ import (
 )
 
 // progressFn produces the optional one-shot progress sample attached to a
-// log segment (decision A10: one-shot agents report samples with their log
-// batches; pool agents report them with heartbeats instead).
+// log segment: one-shot agents report samples with their log batches; pool
+// agents report them with heartbeats instead.
 type progressFn func() *api.TaskProgress
 
-// LogBuffer batches build output into log segments (DETAIL §12.4 #4,
-// optimization O2): a batch is flushed on the earlier of the byte
-// threshold and the interval tick, and the final Close flushes whatever is
-// left. The controller acknowledges every segment with the next offset and
-// a durable cancellation flag (channel 2, DESIGN §7.8). Both parameters
-// are injectable so tests can trigger fast flushes.
+// LogBuffer batches build output into log segments: a batch is flushed on
+// the earlier of the byte threshold and the interval tick, and the final
+// Close flushes whatever is left. The controller acknowledges every segment
+// with the next offset and a durable cancellation flag (channel 2). Both
+// parameters are injectable so tests can trigger fast flushes.
 //
 // Write is safe for concurrent use (os/exec feeds stdout/stderr from its
 // own copy goroutine); the flushing goroutine is the single AppendLog
@@ -177,7 +176,7 @@ func (b *LogBuffer) flush() {
 }
 
 // tailBuffer keeps the last max bytes written; it feeds failure summaries
-// that include the tail of the build log (DETAIL §12.5).
+// that include the tail of the build log.
 type tailBuffer struct {
 	mu  sync.Mutex
 	buf []byte

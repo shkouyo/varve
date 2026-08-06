@@ -27,7 +27,7 @@ import (
 )
 
 // signDetached creates a detached signature of file into sigPath using the
-// keyring at home — the worker-side flow, gpg --detach-sign (DESIGN §7.7).
+// keyring at home — the worker-side flow, gpg --detach-sign.
 func signDetached(t *testing.T, home, keyID, passphrase, file, sigPath string) {
 	t.Helper()
 	cmd := exec.Command("gpg", "--homedir", home, "--batch", "--pinentry-mode", "loopback",
@@ -62,7 +62,7 @@ func newSignedSigner(t *testing.T) (*Signer, string, string) {
 }
 
 // TestVerifyDetachedValid asserts that a matching detached signature
-// verifies against the managed keyring (DETAIL §7.7 case 4).
+// verifies against the managed keyring.
 func TestVerifyDetachedValid(t *testing.T) {
 	requireGPG(t)
 	s, sig, pkg := newSignedSigner(t)
@@ -135,8 +135,7 @@ func TestVerifyDetachedMissingFiles(t *testing.T) {
 	}
 }
 
-// TestGnuPGEnv asserts the environment fragment points at the managed home
-// (DETAIL §7.7 case 5).
+// TestGnuPGEnv asserts the environment fragment points at the managed home.
 func TestGnuPGEnv(t *testing.T) {
 	requireGPG(t)
 	src := t.TempDir()

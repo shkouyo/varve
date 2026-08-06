@@ -30,8 +30,8 @@ import (
 )
 
 // RebuildPackage force-enqueues a rebuild of an existing package (admin,
-// reason "manual"). The D6 name comparison is skipped (force) but the
-// partial unique index still rejects a package with an active task.
+// reason "manual"). The name-conflict comparison is skipped (force) but
+// the partial unique index still rejects a package with an active task.
 // Concurrently safe.
 func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) error {
 	pkg, err := o.store.GetPackageByBase(ctx, pkgbase)
@@ -91,9 +91,8 @@ func (o *OrchestratorImpl) RemoveWorker(ctx context.Context, name string) error 
 	return o.store.DeleteWorker(ctx, name)
 }
 
-// Stats aggregates the dashboard data (DESIGN §2.4): queue length, build
-// counts by status, the newest builds and the worker list. Concurrently
-// safe.
+// Stats aggregates the dashboard data: queue length, build counts by
+// status, the newest builds and the worker list. Concurrently safe.
 func (o *OrchestratorImpl) Stats(ctx context.Context) (*Stats, error) {
 	active, err := o.store.ListActiveTasks(ctx)
 	if err != nil {
@@ -124,12 +123,11 @@ func (o *OrchestratorImpl) Stats(ctx context.Context) (*Stats, error) {
 	return &Stats{QueueLen: queueLen, ByStatus: byStatus, RecentBuilds: recent, Workers: workers}, nil
 }
 
-// ValidateConflicts scans the full packages and queue state for D6 name
-// collisions: a pkgbase that equals a pkgname produced by the last build of
-// another package. The first conflict aborts the scan, but the returned
-// error lists every conflict found. cmd/varve calls this at startup to
-// refuse to serve a conflicted repository (D6, proposal §7.5).
-// Concurrently safe.
+// ValidateConflicts scans the full packages and queue state for name
+// collisions: a pkgbase that equals a pkgname produced by the last build
+// of another package. The first conflict aborts the scan, but the
+// returned error lists every conflict found. cmd/varve calls this at
+// startup to refuse to serve a conflicted repository. Concurrently safe.
 func (o *OrchestratorImpl) ValidateConflicts(ctx context.Context) error {
 	produced, err := o.producedPkgnames(ctx)
 	if err != nil {

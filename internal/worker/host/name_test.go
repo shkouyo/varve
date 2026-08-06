@@ -27,11 +27,11 @@ import (
 )
 
 // namePattern is the auto-generated node-name format
-// (proposal §5.3: "proud-heron-7" style).
+// ("proud-heron-7" style).
 var namePattern = regexp.MustCompile(`^[a-z]+-[a-z]+-[0-9]+$`)
 
 // TestResolveNameManual verifies VARVE_WORKER_NAME wins and nothing is
-// persisted (H2).
+// persisted.
 func TestResolveNameManual(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.WorkerConfig{WorkerName: "my-node", DataDir: dir}
@@ -48,7 +48,7 @@ func TestResolveNameManual(t *testing.T) {
 }
 
 // TestPersistedName verifies the name is generated, stored and stable
-// across restarts (DETAIL §11.7 group 1).
+// across restarts.
 func TestPersistedName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, workerNameFile)
@@ -78,7 +78,7 @@ func TestPersistedName(t *testing.T) {
 }
 
 // TestGenerateNameFormat verifies the adjective-animal-number format over
-// many draws and that the word lists are non-empty (H2).
+// many draws and that the word lists are non-empty.
 func TestGenerateNameFormat(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		if !namePattern.MatchString(generateName()) {

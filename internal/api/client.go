@@ -30,7 +30,7 @@ import (
 	"time"
 )
 
-// Request policy (DETAIL §9.3): ordinary requests time out after 30s;
+// Request policy: ordinary requests time out after 30s;
 // uploads and downloads carry no per-request timeout and stream for as long
 // as the caller's context allows. Retries apply to idempotent requests only
 // (heartbeat / log append / upload): up to 3 retries with a fixed 1s
@@ -40,16 +40,14 @@ const (
 	maxRetries     = 3
 )
 
-// retryInterval is the fixed backoff between retry attempts (DETAIL §9.3,
-// derived: fixed backoff). It is a variable so same-package tests can
-// shorten it (DETAIL §0.3 rule 3: clock injection).
+// retryInterval is the fixed backoff between retry attempts. It is a
+// variable so same-package tests can shorten it.
 var retryInterval = time.Second
 
-// Client is the worker-side network entry point (DESIGN §2.9, DETAIL §9.2).
-// It is safe for concurrent use. baseURL is the controller origin without a
-// trailing slash; token is the shared Bearer token used by node-level
-// endpoints only (task-level endpoints carry the per-task claim token
-// instead, decision A26).
+// Client is the worker-side network entry point. It is safe for
+// concurrent use. baseURL is the controller origin without a trailing
+// slash; token is the shared Bearer token used by node-level endpoints
+// only (task-level endpoints carry the per-task claim token instead).
 type Client struct {
 	baseURL string
 	token   string
@@ -68,8 +66,8 @@ func NewClient(baseURL, token string) *Client {
 }
 
 // APIError is returned for every non-2xx response. Code and Message mirror
-// the wire error object (DESIGN §5.6); Offset is set when a 409 conflict
-// carries the current server-side offset (resumable log/file uploads).
+// the wire error object; Offset is set when a 409 conflict carries the
+// current server-side offset (resumable log/file uploads).
 type APIError struct {
 	Status  int
 	Code    string
@@ -107,7 +105,7 @@ func (c *Client) Heartbeat(ctx context.Context, req HeartbeatReq) (*HeartbeatRes
 
 // Poll claims one task for a host/pool node (POST /api/v1/poll). The
 // response carries the task detail plus the claim token to hand to the
-// one-shot agent container (decision A10).
+// one-shot agent container.
 func (c *Client) Poll(ctx context.Context, req PollReq) (*PollResp, error) {
 	var resp PollResp
 	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/poll", req, &resp, requestTimeout, false); err != nil {
@@ -189,9 +187,10 @@ func (c *Client) UploadFile(ctx context.Context, taskID, token, name string, r i
 	return &meta, nil
 }
 
-// DownloadFile streams a staged file back (GET /api/v1/tasks/{id}/files/
-// {name}); the caller reads and closes the returned body. No per-request
-// timeout (DETAIL §9.3).
+// DownloadFile streams a staged file back (GET
+// /api/v1/tasks/{id}/files/{name}); the caller reads and closes the
+// returned body. No per-request timeout: it streams for as long as the
+// caller's context allows.
 func (c *Client) DownloadFile(ctx context.Context, taskID, token, name string) (io.ReadCloser, error) {
 	path := "/api/v1/tasks/" + url.PathEscape(taskID) + "/files/" + url.PathEscape(name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
@@ -213,7 +212,7 @@ func (c *Client) DownloadFile(ctx context.Context, taskID, token, name string) (
 }
 
 // Deregister marks the node offline on normal shutdown (POST
-// /api/v1/workers/{name}/deregister, decision A18).
+// /api/v1/workers/{name}/deregister).
 func (c *Client) Deregister(ctx context.Context, name string) error {
 	return c.nodeRequest(ctx, http.MethodPost, "/api/v1/workers/"+url.PathEscape(name)+"/deregister",
 		nil, nil, requestTimeout, false)
@@ -227,7 +226,7 @@ func (c *Client) nodeRequest(ctx context.Context, method, path string, reqBody, 
 }
 
 // taskRequest issues a task-level request authenticated with the per-task
-// claim token (decision A26: no shared Bearer on task endpoints).
+// claim token (no shared Bearer on task endpoints).
 func (c *Client) taskRequest(ctx context.Context, method, path string, taskToken string,
 	reqBody, respBody any, timeout time.Duration, retryable bool) error {
 	return c.jsonRequest(ctx, method, path, reqBody, respBody, timeout, retryable, taskToken, false, nil)
@@ -318,8 +317,8 @@ func (c *Client) do(ctx context.Context, method, path, taskToken string, useBear
 	return nil
 }
 
-// decodeAPIError parses a non-2xx response into an APIError, extracting the
-// wire error object and the optional resume offset (DESIGN §5.6).
+// decodeAPIError parses a non-2xx response into an APIError, extracting
+// the wire error object and the optional resume offset.
 func decodeAPIError(resp *http.Response) error {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

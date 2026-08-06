@@ -31,7 +31,7 @@ const crlf = "\r\n"
 // buildMessage assembles a plain-text RFC 5322 failure notification. It is
 // a pure function of its inputs — no network access and no side effects —
 // apart from the wall-clock Date and the random Message-ID, which keeps it
-// trivially testable without a server (DETAIL §8.3).
+// trivially testable without a server.
 func (m *Mailer) buildMessage(info FailureInfo, to []string) []byte {
 	var b strings.Builder
 	b.Grow(512)
@@ -47,7 +47,7 @@ func (m *Mailer) buildMessage(info FailureInfo, to []string) []byte {
 
 // buildBody renders the plain-text body (no HTML) with every field the
 // notification must carry: package, branch, commit, failing stage, error
-// summary and the Web log link (DESIGN §2.8, DETAIL §8.4).
+// summary and the Web log link.
 func buildBody(info FailureInfo) string {
 	var b strings.Builder
 	b.WriteString("Build failed" + crlf)
@@ -64,7 +64,7 @@ func buildBody(info FailureInfo) string {
 // encodeSubject encodes the Subject header per RFC 2047 when it contains
 // non-ASCII characters (e.g. a Chinese package name) and folds long encoded
 // words onto continuation lines so that no physical header line exceeds 78
-// octets (RFC 5322 §2.2.3).
+// octets (RFC 5322, section 2.2.3).
 func encodeSubject(info FailureInfo) string {
 	subject := fmt.Sprintf("Build failed: %s (%s)",
 		sanitize(info.Pkgbase), sanitize(info.Branch))
@@ -74,7 +74,7 @@ func encodeSubject(info FailureInfo) string {
 	}
 	// The encoder splits long words into several adjacent encoded-words
 	// joined by a space; fold them onto continuation lines so no physical
-	// line overflows 78 octets (RFC 5322 §2.2.3). The "?= =?" boundary
+	// line overflows 78 octets (RFC 5322, section 2.2.3). The "?= =?" boundary
 	// cannot occur inside Q-encoded content.
 	return strings.ReplaceAll(enc, "?= =?", "?="+crlf+" =?")
 }

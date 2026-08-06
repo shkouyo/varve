@@ -17,12 +17,11 @@
 
 // Package detect polls the configured source repository mirror, computes
 // .SRCINFO hashes and VCS upstream references per enabled branch and
-// enqueues changes through the Sink interface (proposal §7, DESIGN §2.3,
-// DETAIL §3). It also owns dotfile parsing and merging (decision A6). The
-// database is read-only here: the packages.last_srcinfo_hash /
-// last_upstream_ref records are only updated after a successful build
-// (decision A16), which is what makes failed builds naturally re-queue on
-// the next round.
+// enqueues changes through the Sink interface. It also owns dotfile
+// parsing and merging. The database is read-only here: the
+// packages.last_srcinfo_hash / last_upstream_ref records are only updated
+// after a successful build, which is what makes failed builds naturally
+// re-queue on the next round.
 package detect
 
 import (
@@ -42,17 +41,17 @@ import (
 	"git.0x0f.dev/varve/internal/detect/vcs"
 )
 
-// dotfileName is the fixed per-branch dotfile name (proposal §7.2).
+// dotfileName is the fixed per-branch dotfile name.
 const dotfileName = ".varve.toml"
 
-// sourceRoot is the controller-side mirror directory (decision A7).
+// sourceRoot is the controller-side mirror directory.
 const sourceRoot = "/data/source"
 
 // vcsQueryConcurrency bounds the number of concurrent upstream queries
-// within one poll round (optimization O2, DETAIL §3.3).
+// within one poll round.
 const vcsQueryConcurrency = 4
 
-// Change reasons (DETAIL §3.2). ReasonManual is used by the admin rebuild
+// Change reasons. ReasonManual is used by the admin rebuild
 // path in dispatch, not by detect itself.
 const (
 	ReasonSrcinfo  = "srcinfo"
@@ -72,7 +71,7 @@ type Package struct {
 
 // Change is one detected package update handed to the Sink. UpstreamRef
 // carries the upstream reference queried at detection time for VCS
-// packages and is empty for plain packages (decision D2).
+// packages and is empty for plain packages.
 type Change struct {
 	Package     Package
 	Maintainers []string
@@ -82,15 +81,15 @@ type Change struct {
 	Reason      string
 }
 
-// Sink consumes detected changes; the dispatch module implements it
-// (DETAIL §3.2). Implementations must be safe for concurrent Submit calls.
+// Sink consumes detected changes; the dispatch module implements it.
+// Implementations must be safe for concurrent Submit calls.
 type Sink interface {
 	Submit(ctx context.Context, c Change) error
 }
 
 // Detector polls the source mirror and submits changes. Public methods
 // (Run, PollOnce, BranchSnapshot) are mutually exclusive: the caller must
-// not invoke them concurrently (DETAIL §3.6).
+// not invoke them concurrently.
 type Detector struct {
 	cfg         *config.SourceConfig
 	store       *db.Store
@@ -102,11 +101,11 @@ type Detector struct {
 }
 
 // execCommand is the command constructor used for every external git call;
-// same-package tests may replace it with a recorder (DETAIL §0.3).
+// same-package tests may replace it with a recorder.
 var execCommand = exec.CommandContext
 
 // NewDetector builds a Detector for cfg and derives its mirror directory
-// from the source URL. It performs no network operation (DETAIL §3.2).
+// from the source URL. It performs no network operation.
 func NewDetector(cfg *config.SourceConfig, store *db.Store, sink Sink) (*Detector, error) {
 	return newDetector(cfg, store, sink, sourceRoot)
 }
@@ -139,8 +138,8 @@ func newDetector(cfg *config.SourceConfig, store *db.Store, sink Sink, root stri
 // URL: the URL path part without the ".git" suffix, with "/" replaced by
 // "_". For example "git@git.example.org:pkgbuilds.git" yields
 // "pkgbuilds" and "https://git.example.org/pkgs/foo.git" yields
-// "pkgs_foo" (DETAIL §3.3). The dispatch module reuses this helper when
-// packaging source archives.
+// "pkgs_foo". The dispatch module reuses this helper when packaging source
+// archives.
 func MirrorDir(url string) string {
 	path := url
 	if i := strings.Index(url, "://"); i >= 0 {
@@ -159,9 +158,9 @@ func MirrorDir(url string) string {
 }
 
 // PollOnce runs one full detection round: mirror maintenance, branch
-// enumeration and the per-branch pipeline (DETAIL §3.4). A mirror fetch
-// failure aborts the round and is reported; per-branch problems only
-// produce warnings so one bad branch never blocks the others.
+// enumeration and the per-branch pipeline. A mirror fetch failure aborts
+// the round and is reported; per-branch problems only produce warnings so
+// one bad branch never blocks the others.
 func (d *Detector) PollOnce(ctx context.Context) error {
 	if err := d.ensureMirror(ctx); err != nil {
 		return err
@@ -198,9 +197,9 @@ type branchPlan struct {
 	upstreamErr error
 }
 
-// planBranch runs steps 1-3 of the per-branch pipeline (DETAIL §3.4): read
-// SRCINFO, hash it, parse the dotfile (with extras) and detect the VCS
-// kind. It returns nil when the branch must be skipped with a warning.
+// planBranch runs steps 1-3 of the per-branch pipeline: read SRCINFO, hash
+// it, parse the dotfile (with extras) and detect the VCS kind. It returns
+// nil when the branch must be skipped with a warning.
 func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
 	data, err := d.showFile(ctx, branch, "SRCINFO")
 	if err != nil {
@@ -236,7 +235,7 @@ func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
 
 // parseDotfile reads .varve.toml from the branch and merges its extras
 // through a git-show-backed get callback. A missing dotfile is not an
-// error: the branch is treated as a plain PKGBUILD branch (proposal §7.1).
+// error: the branch is treated as a plain PKGBUILD branch.
 func (d *Detector) parseDotfile(ctx context.Context, branch string) (*Dotfile, error) {
 	data, err := d.showFile(ctx, branch, dotfileName)
 	if err != nil {
@@ -248,9 +247,9 @@ func (d *Detector) parseDotfile(ctx context.Context, branch string) (*Dotfile, e
 }
 
 // queryUpstream runs step 4 of the pipeline: VCS packages resolve their
-// upstream reference, bounded to vcsQueryConcurrency concurrent queries
-// (DETAIL §3.4). Query errors are kept per plan so submitChange can skip
-// the branch without a false positive.
+// upstream reference, bounded to vcsQueryConcurrency concurrent queries.
+// Query errors are kept per plan so submitChange can skip the branch
+// without a false positive.
 func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, vcsQueryConcurrency)
@@ -274,9 +273,9 @@ func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 	wg.Wait()
 }
 
-// submitChange runs steps 5-6 of the pipeline (DETAIL §3.4): compare the
-// current hash and upstream ref against the last successful-build records
-// and submit a Change when either differs.
+// submitChange runs steps 5-6 of the pipeline: compare the current hash
+// and the upstream ref against the last successful-build records and
+// submit a Change when either differs.
 func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 	if p.upstreamErr != nil {
 		d.logger.Warn("detect: upstream query failed, skipping", "branch", p.branch,
@@ -355,7 +354,7 @@ func vcsKindName(k vcs.Kind) string {
 }
 
 // archOf picks the first architecture the package supports, defaulting to
-// the only implemented architecture (proposal §1.1).
+// the only implemented architecture.
 func archOf(arch []string) string {
 	for _, a := range arch {
 		if a != "" {

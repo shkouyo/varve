@@ -61,11 +61,12 @@ func (o *OrchestratorImpl) GetTask(ctx context.Context, taskID, token string) (*
 	return o.taskDetail(ctx, task)
 }
 
-// AppendLog appends one buffered log segment with strict offset semantics:
-// the client's offset must equal the current log size (ErrConflict with the
-// current offset otherwise). An optional progress report is applied and the
-// response carries the durable cancellation flag (channel 2, D4), read from
-// the database. Claim-token protected. Concurrently safe.
+// AppendLog appends one buffered log segment with strict offset
+// semantics: the client's offset must equal the current log size
+// (ErrConflict with the current offset otherwise). An optional progress
+// report is applied and the response carries the durable cancellation
+// flag, read from the database. Claim-token protected. Concurrently
+// safe.
 func (o *OrchestratorImpl) AppendLog(ctx context.Context, taskID, token string, seg LogSegment) (*LogAck, error) {
 	if err := o.checkToken(taskID, token); err != nil {
 		return nil, err
@@ -97,7 +98,7 @@ func (o *OrchestratorImpl) AppendLog(ctx context.Context, taskID, token string, 
 		}
 	}
 	// The cancel flag is always re-read from the database (no in-memory
-	// cancel state, D4).
+	// cancel state).
 	current, err := o.store.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
@@ -105,13 +106,13 @@ func (o *OrchestratorImpl) AppendLog(ctx context.Context, taskID, token string, 
 	return &LogAck{Offset: size + int64(len(seg.Data)), Cancelled: current.CancelRequested}, nil
 }
 
-// taskDetail assembles the full TaskDetail handed to a worker (DESIGN
-// §5.4). Hooks, collect rules and the pkgbuild_source are re-parsed from
-// the branch dotfile in the mirror (the database deliberately keeps no
-// per-task copy, so the detail stays reconstructable after a controller
-// restart, D4③); a missing or unparsable dotfile degrades to an empty
-// config with a warning. source.mode is "archive" when the private-source
-// snapshot is configured, "clone" otherwise.
+// taskDetail assembles the full TaskDetail handed to a worker. Hooks,
+// collect rules and the pkgbuild_source are re-parsed from the branch
+// dotfile in the mirror (the database deliberately keeps no per-task
+// copy, so the detail stays reconstructable after a controller restart);
+// a missing or unparsable dotfile degrades to an empty config with a
+// warning. source.mode is "archive" when the private-source snapshot is
+// configured, "clone" otherwise.
 func (o *OrchestratorImpl) taskDetail(ctx context.Context, t *db.Task) (*TaskDetail, error) {
 	pkg, err := o.store.GetPackageByID(ctx, t.PackageID)
 	if err != nil {
@@ -177,8 +178,8 @@ func (o *OrchestratorImpl) taskDetail(ctx context.Context, t *db.Task) (*TaskDet
 }
 
 // loadDotfile re-reads and re-parses the branch dotfile from the mirror
-// (the controller is the only dotfile parser, DESIGN §2.3). Extras are
-// resolved through git show of the same branch.
+// (the controller is the only dotfile parser). Extras are resolved
+// through git show of the same branch.
 func (o *OrchestratorImpl) loadDotfile(ctx context.Context, branch string) (*detect.Dotfile, error) {
 	data, err := o.gitShow(ctx, branch, ".varve.toml")
 	if err != nil {

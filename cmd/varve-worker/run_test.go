@@ -47,8 +47,7 @@ func clearWorkerEnv(t *testing.T) {
 }
 
 // fakeRunner records the context it was run with and returns a preset
-// error; it stands in for host.Runner and agent.Runner (DETAIL §14.3:
-// injected runner constructors).
+// error; it stands in for host.Runner and agent.Runner.
 type fakeRunner struct {
 	ctx context.Context
 	err error
@@ -99,9 +98,9 @@ func clientFields(t *testing.T, c *api.Client) (baseURL, token string) {
 	return v.FieldByName("baseURL").String(), v.FieldByName("token").String()
 }
 
-// TestRunDispatch covers the distribution matrix of DETAIL §14.3 #1:
-// every (role, one-shot) combination dispatches to the correct runner
-// constructor with the loaded configuration and the matching client.
+// TestRunDispatch covers the role dispatch matrix: every (role,
+// one-shot) combination dispatches to the correct runner constructor
+// with the loaded configuration and the matching client.
 func TestRunDispatch(t *testing.T) {
 	tests := []struct {
 		name string
@@ -189,9 +188,9 @@ func TestRunDispatch(t *testing.T) {
 	}
 }
 
-// TestRunValidationErrors covers the required-field validation of DETAIL
-// §14.3 #2: a missing controller URL or a missing required field fails
-// startup with an error, before any runner is constructed.
+// TestRunValidationErrors covers required-field validation: a missing
+// controller URL or a missing required field fails startup with an
+// error, before any runner is constructed.
 func TestRunValidationErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -256,9 +255,9 @@ func TestRunValidationErrors(t *testing.T) {
 	}
 }
 
-// TestRunOneShotWithoutToken asserts decision A26 (DETAIL §14.3 #3): a
-// one-shot agent starts without VARVE_TOKEN, carrying only the task
-// credentials, and the shared token never reaches the client.
+// TestRunOneShotWithoutToken asserts that a one-shot agent starts
+// without VARVE_TOKEN, carrying only the task credentials, and that the
+// shared token never reaches the client.
 func TestRunOneShotWithoutToken(t *testing.T) {
 	hostRec, agentRec := stubConstructors(t)
 	clearWorkerEnv(t)
@@ -281,16 +280,16 @@ func TestRunOneShotWithoutToken(t *testing.T) {
 		t.Errorf("cfg.Token = %q, want empty for one-shot", agentRec.cfg.Token)
 	}
 	if _, token := clientFields(t, agentRec.client); token != "" {
-		t.Errorf("client token = %q, want empty (decision A26)", token)
+		t.Errorf("client token = %q, want empty for one-shot", token)
 	}
 	if agentRec.cfg.TaskID != "42" || agentRec.cfg.TaskToken != "claim" {
 		t.Errorf("cfg.TaskID/TaskToken = %q/%q", agentRec.cfg.TaskID, agentRec.cfg.TaskToken)
 	}
 }
 
-// TestRunDotenv covers .env loading (DETAIL §14.3 #4): a .env file in
-// the working directory supplies the configuration when the variables
-// are not exported.
+// TestRunDotenv covers .env loading: a .env file in the working
+// directory supplies the configuration when the variables are not
+// exported.
 func TestRunDotenv(t *testing.T) {
 	_, agentRec := stubConstructors(t)
 	clearWorkerEnv(t)
@@ -337,7 +336,7 @@ func TestRunErrorPropagation(t *testing.T) {
 		t.Setenv("VARVE_WORKER_IMAGE", "img")
 
 		// Fail the injected constructor like host.NewRunner does when
-		// no container runtime is available (DETAIL §11.5).
+		// no container runtime is available.
 		prev := newHostRunner
 		newHostRunner = func(cfg *config.WorkerConfig, client *api.Client) (runner, error) {
 			hostRec.ran = true

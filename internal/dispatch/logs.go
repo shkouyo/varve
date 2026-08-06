@@ -26,12 +26,11 @@ import (
 	"sync"
 )
 
-// Logs stores one build log per build as "<dir>/<buildID>.log"
-// (decision A6, DESIGN §2.4). Append uses O_APPEND under a per-build mutex
-// so concurrent appends never lose bytes; Read/TailFrom/Size surface the
-// full history for the web UI. Logs of failed builds are kept forever by
-// the retention policy (scheduler.go), so this structure is never asked to
-// age them out.
+// Logs stores one build log per build as "<dir>/<buildID>.log". Append
+// uses O_APPEND under a per-build mutex so concurrent appends never lose
+// bytes; Read/TailFrom/Size surface the full history for the web UI. Logs
+// of failed builds are kept forever by the retention policy
+// (scheduler.go), so this structure is never asked to age them out.
 type Logs struct {
 	dir string
 	mu  sync.Mutex
@@ -66,7 +65,7 @@ func (l *Logs) path(buildID string) string {
 }
 
 // Path renders the logical log path recorded on the builds row
-// ("logs/<buildID>.log", DESIGN §2.4).
+// ("logs/<buildID>.log").
 func (l *Logs) Path(buildID string) string {
 	return filepath.Join("logs", buildID+".log")
 }

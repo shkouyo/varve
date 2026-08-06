@@ -33,9 +33,9 @@ import (
 	"git.0x0f.dev/varve/internal/config"
 )
 
-// fakeRuntime is the runtime substitute (DETAIL §11.7): it records every
-// call and lets tests program exit codes, OOM flags, errors and blocking
-// behavior. When blocked is non-nil, Wait blocks until it is closed.
+// fakeRuntime is the runtime substitute: it records every call and lets
+// tests program exit codes, OOM flags, errors and blocking behavior. When
+// blocked is non-nil, Wait blocks until it is closed.
 type fakeRuntime struct {
 	mu sync.Mutex
 
@@ -148,9 +148,8 @@ func (f *fakeRuntime) killed(i int) string {
 	return f.kills[i]
 }
 
-// fakeClient implements the narrowed client interface (DETAIL §11.7). It
-// records every call; pollQueue is consumed in order, pollRepeat (when
-// set) is returned for every poll.
+// fakeClient implements the narrowed client interface. It records every
+// call; pollQueue is consumed in order, pollRepeat (when set) is returned for every poll.
 type fakeClient struct {
 	mu sync.Mutex
 
@@ -273,7 +272,7 @@ func testTask(id string) *api.TaskDetail {
 }
 
 // testCfg builds the default host WorkerConfig used by testRunner; it
-// mirrors the production defaults of LoadWorker (DETAIL §1.2).
+// mirrors the production defaults of LoadWorker.
 func testCfg() *config.WorkerConfig {
 	return &config.WorkerConfig{
 		Role:          "host",
@@ -347,7 +346,7 @@ func assertEnvExact(t *testing.T, env, want []string) {
 	}
 }
 
-// assertNoToken asserts env contains no VARVE_TOKEN entry (A10/A26).
+// assertNoToken asserts env contains no VARVE_TOKEN entry.
 func assertNoToken(t *testing.T, env []string) {
 	t.Helper()
 	for _, kv := range env {

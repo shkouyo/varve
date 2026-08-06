@@ -22,9 +22,9 @@ import (
 	"testing"
 )
 
-// TestParseValid covers the accepted .SRCINFO layout (DETAIL §3.7 #1):
-// scalar top-level pkgbase, indented scalars, multi-value indented keys
-// (arch, source) and multiple pkgname blocks.
+// TestParseValid covers the accepted .SRCINFO layout: scalar top-level
+// pkgbase, indented scalars, multi-value indented keys (arch, source) and
+// multiple pkgname blocks.
 func TestParseValid(t *testing.T) {
 	data := []byte(`pkgbase = foo
 	pkgdesc = Foo bar
@@ -89,8 +89,7 @@ func TestParseEmptyPkgbase(t *testing.T) {
 }
 
 // TestHashGoldVector pins the digest of a known input (computed
-// independently with sha256sum) so accidental format changes are caught
-// (DETAIL §3.7 #2).
+// independently with sha256sum) so accidental format changes are caught.
 func TestHashGoldVector(t *testing.T) {
 	in := []byte("pkgbase = gold\n\tpkgver = 1.0\n\tpkgrel = 1\npkgname = gold\n")
 	const want = "0bdd692a61e6fa0d381ab3a693959e31c9aa092a79bb39e1831016ed9f210df4"
@@ -101,7 +100,7 @@ func TestHashGoldVector(t *testing.T) {
 
 // TestHashByteSensitive asserts that byte-level differences change the
 // digest: a newline difference and a trailing-newline difference must not
-// collide (DETAIL §3.7 #2).
+// collide.
 func TestHashByteSensitive(t *testing.T) {
 	pairs := [][2]string{
 		{"pkgbase = a\n\tpkgrel = 1\n", "pkgbase = a\n\tpkgrel = 2\n"},

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# svn PATH shim used by the vcs and detect pipeline tests (DETAIL §3.7 #6).
+# svn PATH shim used by the vcs and detect pipeline tests.
 # It only accepts "svn info --xml" invocations -- anything else fails, so a
 # passing test implicitly asserts the --xml flag was passed. The emitted
 # last-changed-revision defaults to 41 and can be overridden for pipeline

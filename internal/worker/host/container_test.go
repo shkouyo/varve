@@ -26,7 +26,7 @@ import (
 )
 
 // TestRunArgsMatrix verifies the "run -d" argument construction across the
-// --cpus/--memory matrix: 0/"" → no flag; --rm is always present (H4).
+// --cpus/--memory matrix: 0/"" → no flag; --rm is always present.
 func TestRunArgsMatrix(t *testing.T) {
 	env := []string{"VARVE_ROLE=agent", "VARVE_TASK_ID=t1"}
 	cases := []struct {
@@ -134,7 +134,7 @@ func probeExec(available map[string]bool, probes *[]string) func(context.Context
 }
 
 // TestDetectRuntimeOrder verifies the docker → podman probe order and the
-// VARVE_CONTAINER_RUNTIME override (H1).
+// VARVE_CONTAINER_RUNTIME override.
 func TestDetectRuntimeOrder(t *testing.T) {
 	old := execCommand
 	t.Cleanup(func() { execCommand = old })

@@ -36,9 +36,9 @@ import (
 
 // uploadFiles streams every collected file (packages, signatures, the
 // .SRCINFO snapshot) into the task staging area and builds the manifest
-// entries (DETAIL §12.4 #2): name, kind, package identity from the
-// .SRCINFO, size and a streaming sha256. Upload order is preserved. Any
-// upload failure after retry exhaustion fails the task (stage=upload).
+// entries: name, kind, package identity from the .SRCINFO, size and a
+// streaming sha256. Upload order is preserved. Any upload failure after
+// retry exhaustion fails the task (stage=upload).
 func (r *Runner) uploadFiles(ctx context.Context, task *api.TaskDetail, token string,
 	files []string, src *srcInfo) ([]repo.Artifact, error) {
 	manifest := make([]repo.Artifact, 0, len(files))
@@ -69,9 +69,8 @@ func (r *Runner) uploadFiles(ctx context.Context, task *api.TaskDetail, token st
 	return manifest, nil
 }
 
-// uploadWithResume streams one file with resumable offsets: a 409
-// conflict carrying the server-side offset resumes from there, up to 3
-// attempts (DETAIL §12.4 #2, #5).
+// uploadWithResume streams one file with resumable offsets: a 409 conflict
+// carrying the server-side offset resumes from there, up to 3 attempts.
 func (r *Runner) uploadWithResume(ctx context.Context, taskID, token, name, path string, size int64) error {
 	f, err := os.Open(path)
 	if err != nil {

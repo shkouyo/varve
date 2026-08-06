@@ -32,16 +32,16 @@ import (
 )
 
 // errorBody is the decoded shape of an error response plus the optional
-// resume offset (DESIGN §5.6, §5.3).
+// resume offset.
 type errorBody struct {
 	Error  errorDetail `json:"error"`
 	Offset *int64      `json:"offset"`
 }
 
-// TestSentinelErrorMapping drives the full sentinel → HTTP table
-// (DETAIL §0.3 rule 1, DESIGN §5.6) through the register endpoint: each
-// error returned by the orchestrator must surface as the mapped status with
-// the {"error":{"code","message"}} body.
+// TestSentinelErrorMapping drives the full sentinel → HTTP table through
+// the register endpoint: each error returned by the orchestrator must
+// surface as the mapped status with the {"error":{"code","message"}}
+// body.
 func TestSentinelErrorMapping(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -88,9 +88,9 @@ func TestSentinelErrorMapping(t *testing.T) {
 	}
 }
 
-// TestOffsetConflictCarriesOffset verifies a 409 from dispatch.OffsetError
-// carries the current server-side offset for resumable uploads (DESIGN
-// §5.3: "附当前 offset").
+// TestOffsetConflictCarriesOffset verifies a 409 from
+// dispatch.OffsetError carries the current server-side offset for
+// resumable uploads.
 func TestOffsetConflictCarriesOffset(t *testing.T) {
 	f := newFake()
 	f.hookUpload = func(taskID, token, name string, r io.Reader, size, offset int64) (*FileMeta, error) {
@@ -115,9 +115,9 @@ func TestOffsetConflictCarriesOffset(t *testing.T) {
 	}
 }
 
-// TestDecodeErrors400 drives the 400 invalid_request paths (DETAIL §9.5):
-// malformed JSON, unknown fields (with the field name in the message),
-// type mismatches and empty bodies.
+// TestDecodeErrors400 drives the 400 invalid_request paths: malformed
+// JSON, unknown fields (with the field name in the message), type
+// mismatches and empty bodies.
 func TestDecodeErrors400(t *testing.T) {
 	cases := []struct {
 		name      string

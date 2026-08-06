@@ -27,10 +27,10 @@ import (
 
 // RebuildPackage is one authoritative package record fed to RebuildIndex.
 // cmd/varve derives it from the storage side file of the package plus the
-// previous packages row (DETAIL §13.3): the side file carries the branch,
-// the VCS kind, the latest build metadata and the artifact manifest, while
-// pkgdesc and maintainers — detection metadata absent from the side file —
-// are preserved from the row being replaced.
+// previous packages row: the side file carries the branch, the VCS kind, the
+// latest build metadata and the artifact manifest, while pkgdesc and
+// maintainers — detection metadata absent from the side file — are preserved
+// from the row being replaced.
 type RebuildPackage struct {
 	Pkgbase         string
 	Branch          string
@@ -52,18 +52,17 @@ type RebuildPackage struct {
 }
 
 // RebuildIndex clears the task queue and rebuilds the packages and builds
-// tables from the authoritative side-file records in one write transaction
-// (DETAIL §13.3, decision D5): tasks are emptied (in-flight and queued work
-// is voided and naturally re-enqueued by the next detection round, A16),
-// the packages table is recreated from the records, exactly one build row
-// per record is created (the latest build per package, decision A20) and
-// the workers table is left untouched. Any package not represented in the
-// records is dropped together with its build history.
+// tables from the authoritative side-file records in one write transaction:
+// tasks are emptied (in-flight and queued work is voided and naturally
+// re-enqueued by the next detection round), the packages table is recreated
+// from the records, exactly one build row per record is created (the latest
+// build per package) and the workers table is left untouched. Any package not
+// represented in the records is dropped together with its build history.
 //
 // The records must carry distinct, non-empty Pkgbases; the caller (the
-// rebuild-index subcommand) is responsible for deduplicating side files.
-// An empty record list still clears the index: a repository without side
-// files must not retain stale packages. Added by the M12 cmd/varve module.
+// rebuild-index subcommand) is responsible for deduplicating side files. An
+// empty record list still clears the index: a repository without side files
+// must not retain stale packages.
 func (s *Store) RebuildIndex(ctx context.Context, pkgs []RebuildPackage) error {
 	seen := make(map[string]bool, len(pkgs))
 	for i := range pkgs {
@@ -135,9 +134,9 @@ func (s *Store) insertRebuiltPackage(ctx context.Context, tx *sql.Tx, p *Rebuild
 
 // insertRebuiltBuild inserts the single latest build row of a package and
 // returns its id. The status is "succeeded" (a side file only exists after
-// a successful ingest, DESIGN §3.2) and the log path is the conventional
-// "logs/<build-id>.log" (DETAIL §2.4); the new id cannot point at the old
-// on-disk log, which is an accepted consequence of A20.
+// a successful ingest) and the log path is the conventional
+// "logs/<build-id>.log"; the new id cannot point at the old on-disk log,
+// which is an accepted consequence of the rebuild.
 func (s *Store) insertRebuiltBuild(ctx context.Context, tx *sql.Tx, p *RebuildPackage, packageID int64) (int64, error) {
 	artifacts, err := encodeJSON(p.Artifacts)
 	if err != nil {

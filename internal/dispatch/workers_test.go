@@ -26,8 +26,8 @@ import (
 
 func ctx() context.Context { return context.Background() }
 
-// TestRegisterUpsert covers the decision A21 semantics: the name is the
-// stable key, a second registration keeps the id and refreshes the fields.
+// TestRegisterUpsert covers the upsert semantics: the name is the stable
+// key, a second registration keeps the id and refreshes the fields.
 func TestRegisterUpsert(t *testing.T) {
 	env := newTestEnv(t)
 	r1, err := env.o.Register(ctx(), RegisterReq{Name: "node-1", Role: "host", Mode: "host", Arch: "x86_64", Capacity: 2, Version: "0.1.0"})
@@ -54,7 +54,7 @@ func TestRegisterUpsert(t *testing.T) {
 }
 
 // TestPollClaimsFIFOAndHeartbeat covers the claim path: FIFO order, the
-// poll-doubles-as-heartbeat refresh (O2) and the token cache.
+// poll-doubles-as-heartbeat refresh and the token cache.
 func TestPollClaimsFIFOAndHeartbeat(t *testing.T) {
 	env := newTestEnv(t)
 	env.enqueue(t, "a", "a")
@@ -76,7 +76,7 @@ func TestPollClaimsFIFOAndHeartbeat(t *testing.T) {
 			t.Errorf("cached token rejected: %v", err)
 		}
 	}
-	// Heartbeat was refreshed by the polls (O2).
+	// Heartbeat was refreshed by the polls.
 	w, err := env.store.GetWorkerByName(ctx(), "w1")
 	if err != nil {
 		t.Fatalf("GetWorkerByName: %v", err)
@@ -162,7 +162,7 @@ func TestPollNotForOfflineOrDisabled(t *testing.T) {
 }
 
 // TestHeartbeatProgressAndCancel covers progress application and the
-// cancellation signal channel 1.
+// cancellation signal delivery.
 func TestHeartbeatProgressAndCancel(t *testing.T) {
 	env := newTestEnv(t)
 	taskID := env.enqueue(t, "foo", "foo", "maint@example.org")

@@ -26,15 +26,15 @@ import (
 	"git.0x0f.dev/varve/internal/sign"
 )
 
-// TestTypedNilSignerNoPanic reproduces bug fix M4 (V2 acceptance): a
-// typed nil *sign.Signer threaded through the signVerifier interface —
-// exactly the shape cmd/varve/serve.go produced with repo.sign="off" —
-// must be treated as "no signer" instead of crashing task finalization.
-// Every terminal transition runs clearSigner: failed via the scheduler
-// scan (the V2 crash stack scanStalled -> finalizeFailed -> clearSigner),
-// succeeded via ingest, and cancelled via admin cancel; IssueSigningKey
-// must report the disabled state. Before the fix each of these panicked
-// with a nil pointer dereference in (*Signer).ClearTask.
+// TestTypedNilSignerNoPanic reproduces the typed-nil signer bug: a typed
+// nil *sign.Signer threaded through the signVerifier interface — exactly
+// the shape cmd/varve/serve.go produced with repo.sign="off" — must be
+// treated as "no signer" instead of crashing task finalization. Every
+// terminal transition runs clearSigner: failed via the scheduler scan
+// (scanStalled -> finalizeFailed -> clearSigner), succeeded via ingest,
+// and cancelled via admin cancel; IssueSigningKey must report the
+// disabled state. Before the fix each of these panicked with a nil
+// pointer dereference in (*Signer).ClearTask.
 func TestTypedNilSignerNoPanic(t *testing.T) {
 	env := newTestEnv(t)
 	env.o.Stop() // halt the fakeSigner-backed scheduler before replacing it
@@ -56,9 +56,9 @@ func TestTypedNilSignerNoPanic(t *testing.T) {
 
 	env.registerWorker(t, "w1", "host", "host", 1)
 
-	// -- failed terminalization: scanStalled -> finalizeFailed -> clearSigner
-	// (the V2 crash stack). The first stall re-queues (attempts 0 -> 1);
-	// the second stall finalizes failed.
+	// -- failed terminalization: scanStalled -> finalizeFailed ->
+	// clearSigner. The first stall re-queues (attempts 0 -> 1); the
+	// second stall finalizes failed.
 	failTask := env.enqueue(t, "fail", "fail", "maint@example.org")
 	claimed, token := env.claim(t, "w1")
 	if claimed != failTask {

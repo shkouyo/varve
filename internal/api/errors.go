@@ -30,7 +30,7 @@ import (
 	"git.0x0f.dev/varve/internal/sign"
 )
 
-// Error codes carried by the wire error object (DESIGN §5.6).
+// Error codes carried by the wire error object.
 const (
 	codeInvalidRequest = "invalid_request"
 	codeUnauthorized   = "unauthorized"
@@ -46,15 +46,15 @@ type errorDetail struct {
 	Message string `json:"message"`
 }
 
-// errorResponse is the standard error body (DESIGN §5.6):
+// errorResponse is the standard error body:
 // {"error":{"code":...,"message":...}}.
 type errorResponse struct {
 	Error errorDetail `json:"error"`
 }
 
-// conflictResponse extends errorResponse with the current server-side offset
-// so resumable log/file uploads can be continued (DESIGN §5.3: "附当前
-// offset"). The offset is only rendered when non-nil.
+// conflictResponse extends errorResponse with the current server-side
+// offset so resumable log/file uploads can be continued. The offset is
+// only rendered when non-nil.
 type conflictResponse struct {
 	Error  errorDetail `json:"error"`
 	Offset *int64      `json:"offset,omitempty"`
@@ -116,7 +116,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 // writeDecodeError maps a json decode failure to 400 invalid_request,
-// including the field name when available (DETAIL §9.5).
+// including the field name when available.
 func writeDecodeError(w http.ResponseWriter, err error) {
 	var typeErr *json.UnmarshalTypeError
 	if errors.As(err, &typeErr) {
@@ -131,10 +131,9 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
 }
 
-// writeOrchError maps an orchestrator (or sign) error to the wire contract
-// (DETAIL §0.3 rule 1, DESIGN §5.6): 404/403/409 for the sentinels, 500 for
-// anything else. Unknown errors are logged server-side without leaking
-// internals to the client.
+// writeOrchError maps an orchestrator (or sign) error to the wire
+// contract: 404/403/409 for the sentinels, 500 for anything else. Unknown
+// errors are logged server-side without leaking internals to the client.
 func (s *Server) writeOrchError(w http.ResponseWriter, err error) {
 	var offErr *dispatch.OffsetError
 	if errors.As(err, &offErr) {

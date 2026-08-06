@@ -36,7 +36,7 @@ import (
 )
 
 // fakeSink records submitted changes and can be told to fail the first
-// Submit (conflict simulation, DETAIL §3.7 #8).
+// Submit (conflict simulation).
 type fakeSink struct {
 	mu      sync.Mutex
 	changes []Change
@@ -71,7 +71,7 @@ func (f *fakeSink) snapshot() []Change {
 // fakeExecScript builds a fake exec.Command constructor backed by a real
 // shell script. The script receives the intended command name in $1 and
 // its arguments in $2... and may emit canned output, record calls or
-// fail (DETAIL §0.3).
+// fail.
 func fakeExecScript(t *testing.T, body string) func(ctx context.Context, name string, arg ...string) *exec.Cmd {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "fakeexec")
@@ -100,7 +100,7 @@ func openStore(t *testing.T) (*db.Store, string) {
 
 // seedPackageRow inserts one packages row with the given last successful
 // build records. detect never writes the database itself; tests seed it
-// the same way a successful build would have updated it (decision A16).
+// the same way a successful build would have updated it.
 func seedPackageRow(t *testing.T, dbPath, pkgbase, srcinfoHash, upstreamRef string) {
 	t.Helper()
 	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")

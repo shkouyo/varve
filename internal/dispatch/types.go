@@ -24,12 +24,12 @@ import (
 	"git.0x0f.dev/varve/internal/repo"
 )
 
-// This file defines the worker ↔ controller wire protocol types
-// (DESIGN §5.3, §5.4; DETAIL §0.3 rule 8). JSON fields are snake_case to
-// match the contract byte-for-byte. The API module re-exports these types
-// by alias so the worker packages depend only on api (decision D3).
+// This file defines the worker ↔ controller wire protocol types. JSON
+// fields are snake_case to match the contract byte-for-byte. The API
+// module re-exports these types by alias so the worker packages depend
+// only on api.
 
-// RegisterReq is the POST /register payload (DESIGN §5.3).
+// RegisterReq is the POST /register payload.
 type RegisterReq struct {
 	Name     string `json:"name"`
 	Role     string `json:"role"`
@@ -45,7 +45,7 @@ type RegisterResp struct {
 	Name string `json:"name"`
 }
 
-// Metrics carries node-level system metrics (DESIGN §5.3).
+// Metrics carries node-level system metrics.
 type Metrics struct {
 	CPUPercent    float64 `json:"cpu_percent"`
 	MemUsedBytes  int64   `json:"mem_used_bytes"`
@@ -53,8 +53,8 @@ type Metrics struct {
 	UptimeSecs    int64   `json:"uptime_secs"`
 }
 
-// TaskProgress is one running task's progress plus a resource sample
-// (DESIGN §5.3; decision A10 makes it the one-shot agent's sample channel).
+// TaskProgress is one running task's progress plus a resource sample; it
+// doubles as the one-shot agent's sample channel.
 type TaskProgress struct {
 	TaskID      string    `json:"task_id"`
 	Stage       string    `json:"stage"`
@@ -63,16 +63,16 @@ type TaskProgress struct {
 	At          time.Time `json:"at"`
 }
 
-// ContainerState describes one container tracked by a host node
-// (DESIGN §5.3). The controller stores nothing from it; it is
-// informational for the web dashboard.
+// ContainerState describes one container tracked by a host node. The
+// controller stores nothing from it; it is informational for the web
+// dashboard.
 type ContainerState struct {
 	TaskID   string `json:"task_id"`
 	Status   string `json:"status"`
 	ExitCode *int   `json:"exit_code"`
 }
 
-// HeartbeatReq is the POST /heartbeat payload (DESIGN §5.3).
+// HeartbeatReq is the POST /heartbeat payload.
 type HeartbeatReq struct {
 	Name       string           `json:"name"`
 	Metrics    Metrics          `json:"metrics"`
@@ -80,8 +80,8 @@ type HeartbeatReq struct {
 	Containers []ContainerState `json:"containers"`
 }
 
-// HeartbeatResp carries the cancellation signal list (channel 1, D4) and
-// the server time.
+// HeartbeatResp carries the cancellation signal list and the server
+// time.
 type HeartbeatResp struct {
 	CancelledTaskIDs []string  `json:"cancelled_task_ids"`
 	ServerTime       time.Time `json:"server_time"`
@@ -101,7 +101,7 @@ type PollResp struct {
 	CancelledTaskIDs []string    `json:"cancelled_task_ids"`
 }
 
-// TaskPackage mirrors the "package" block of TaskDetail (DESIGN §5.4).
+// TaskPackage mirrors the "package" block of TaskDetail.
 type TaskPackage struct {
 	Pkgbase string `json:"pkgbase"`
 	Branch  string `json:"branch"`
@@ -109,8 +109,8 @@ type TaskPackage struct {
 	Arch    string `json:"arch"`
 }
 
-// SourceInfo mirrors the "source" block of TaskDetail (DESIGN §5.4):
-// mode is "clone" or "archive"; archive carries the staged snapshot path.
+// SourceInfo mirrors the "source" block of TaskDetail: mode is "clone"
+// or "archive"; archive carries the staged snapshot path.
 type SourceInfo struct {
 	Mode    string `json:"mode"`
 	URL     string `json:"url"`
@@ -120,7 +120,7 @@ type SourceInfo struct {
 }
 
 // PkgbuildSource mirrors the optional external PKGBUILD source
-// (detect.PkgbuildSource with snake_case JSON, DESIGN §5.4).
+// (detect.PkgbuildSource with snake_case JSON).
 type PkgbuildSource struct {
 	URL       string `json:"url"`
 	Branch    string `json:"branch"`
@@ -153,8 +153,8 @@ type BuildInfo struct {
 	Deadline       time.Time `json:"deadline"`
 }
 
-// TaskDetail is the full task description handed to a worker at claim time
-// (DESIGN §5.4, every field).
+// TaskDetail is the full task description handed to a worker at claim
+// time (every field).
 type TaskDetail struct {
 	ID             string          `json:"id"`
 	Package        TaskPackage     `json:"package"`
@@ -166,8 +166,8 @@ type TaskDetail struct {
 	Build          BuildInfo       `json:"build"`
 }
 
-// LogSegment is one buffered log batch (DESIGN §5.3). Progress is optional
-// and carries the one-shot agent's resource sample (decision A10).
+// LogSegment is one buffered log batch. Progress is optional and carries
+// the one-shot agent's resource sample.
 type LogSegment struct {
 	Offset   int64         `json:"offset"`
 	Data     string        `json:"data"`
@@ -175,22 +175,22 @@ type LogSegment struct {
 }
 
 // LogAck acknowledges a log segment and reports the new offset plus the
-// durable cancellation flag (channel 2, D4).
+// durable cancellation flag.
 type LogAck struct {
 	Offset    int64 `json:"offset"`
 	Cancelled bool  `json:"cancelled"`
 }
 
-// ResultError describes a failed build (stage + short summary, DESIGN
-// §5.3). Stage uses the canonical enumeration (DESIGN §7.4 + controller
-// side values verify/ingest/stalled/timeout/container, DETAIL §4.4).
+// ResultError describes a failed build (stage + short summary). Stage
+// uses the canonical enumeration, including the controller-side values
+// verify/ingest/stalled/timeout/container.
 type ResultError struct {
 	Stage   string `json:"stage"`
 	Summary string `json:"summary"`
 }
 
 // ResultReq is the POST result payload. Status is one of "succeeded" /
-// "failed" / "cancelled". Commit is the actually checked-out commit (D1);
+// "failed" / "cancelled". Commit is the actually checked-out commit;
 // when empty the controller falls back to the dispatched source commit.
 type ResultReq struct {
 	Status        string          `json:"status"`
@@ -206,8 +206,8 @@ type FileMeta struct {
 	Offset int64  `json:"offset"`
 }
 
-// Stats aggregates dashboard data (DESIGN §2.4, DETAIL §4.2). It is
-// consumed by the web module, not serialized on the wire protocol.
+// Stats aggregates dashboard data. It is consumed by the web module, not
+// serialized on the wire protocol.
 type Stats struct {
 	QueueLen     int
 	ByStatus     map[string]int

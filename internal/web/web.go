@@ -15,14 +15,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package web serves the varve web UI (DESIGN §6, DETAIL §10): server-side
-// rendered templates over html/template, a build-time Tailwind stylesheet
-// embedded into the binary (decision A14), a Basic Auth protected /admin
-// area (no cookies, naturally CSRF-free, proposal §18), and an SSE log
-// stream on GET /builds/{id}/log with a no-JavaScript meta-refresh
-// fallback. The UI is fully usable without JavaScript: every admin action
-// is a plain form POST and every page renders semantic, keyboard
-// navigable markup (WCAG 2.2 AA, proposal §13.3).
+// Package web serves the varve web UI: server-side rendered templates
+// over html/template, a build-time Tailwind stylesheet embedded into the
+// binary, a Basic Auth protected /admin area (no cookies, naturally
+// CSRF-free), and an SSE log stream on GET /builds/{id}/log with a
+// no-JavaScript meta-refresh fallback. The UI is fully usable without
+// JavaScript: every admin action is a plain form POST and every page
+// renders semantic, keyboard navigable markup (WCAG 2.2 AA).
 package web
 
 import (
@@ -41,7 +40,7 @@ import (
 )
 
 // LogReader is the build-log interface consumed by the web UI and
-// implemented by dispatch.OrchestratorImpl (DESIGN §1.4, DETAIL §10.2).
+// implemented by dispatch.OrchestratorImpl.
 type LogReader interface {
 	// ReadLog returns the full log of a build. ErrNotFound when the log
 	// does not exist.
@@ -52,9 +51,9 @@ type LogReader interface {
 }
 
 // The stylesheet is compiled from static/input.css at generate time
-// (tailwindcss 4.3.3 on this machine). app.css is a build artifact and is
-// gitignored (decision A14); it must exist before the package compiles,
-// which `go generate ./...` guarantees in CI.
+// (tailwindcss 4.3.3 on this machine). app.css is a build artifact and
+// is gitignored; it must exist before the package compiles, which `go
+// generate ./...` guarantees in CI.
 //go:generate tailwindcss -i static/input.css -o static/app.css --minify
 
 //go:embed templates
@@ -77,7 +76,7 @@ func sanitizeCSS(css []byte) []byte {
 
 // Server hosts the whole web UI. Handlers are stateless and safe for
 // concurrent use; the template set and the compiled stylesheet are
-// read-only after New (DETAIL §10.6).
+// read-only after New.
 type Server struct {
 	cfg   *config.ControllerConfig
 	orch  dispatch.Orchestrator
@@ -87,8 +86,8 @@ type Server struct {
 	tmpl *template.Template
 	css  []byte
 
-	// pingInterval is the SSE keep-alive comment interval (2s per
-	// DETAIL §10.4). Tests shorten it to keep SSE runs fast.
+	// pingInterval is the SSE keep-alive comment interval (2s). Tests
+	// shorten it to keep SSE runs fast.
 	pingInterval time.Duration
 }
 
@@ -106,9 +105,9 @@ func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store *db.Sto
 	}
 }
 
-// Handler returns the full web route table (DESIGN §6.1). The /admin
-// subtree is gated by Basic Auth; every admin action is a plain form POST
-// so the UI works without JavaScript.
+// Handler returns the full web route table. The /admin subtree is gated
+// by Basic Auth; every admin action is a plain form POST so the UI works
+// without JavaScript.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
@@ -126,9 +125,9 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// base carries the fields every page template renders (DETAIL §10.3):
-// the page title, the inlined compiled stylesheet and an optional
-// redirect-back flash message (admin actions, DETAIL §10.4 point 3).
+// base carries the fields every page template renders: the page title,
+// the inlined compiled stylesheet and an optional redirect-back flash
+// message (admin actions).
 type base struct {
 	Title string
 	CSS   template.CSS
@@ -152,7 +151,7 @@ func (s *Server) page(title string, f *flash) base {
 
 // render executes a named template with the page data. The stylesheet is
 // inlined via the base struct, so the page issues no external requests
-// and the fixed route table (DESIGN §6.1) needs no /static route.
+// and the fixed route table needs no /static route.
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
@@ -161,7 +160,7 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	}
 }
 
-// errorData feeds error.html (404/401/500 pages, DETAIL §10.4 point 4).
+// errorData feeds error.html (404/401/500 pages).
 type errorData struct {
 	base
 	Status  int
@@ -201,7 +200,7 @@ func parsePage(raw string) int {
 }
 
 // isTerminalStatus reports whether a build status is final. Terminal
-// builds have no more log increments coming (DETAIL §10.4 point 2).
+// builds have no more log increments coming.
 func isTerminalStatus(status string) bool {
 	switch status {
 	case "succeeded", "failed", "cancelled":
