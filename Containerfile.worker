@@ -1,8 +1,22 @@
-# Build container image for the varve worker (PURPOSAL 5.4, DESIGN 9.1).
-# Both worker forms (host-launched one-shot containers and Actions pool
-# containers) run this image; the agent binary inside performs builds.
+# Build container image for the varve worker. Both worker forms
+# (host-launched one-shot containers and Actions pool containers) run this
+# image; the agent binary inside performs builds.
 
 FROM archlinux/archlinux:multilib-devel
+
+# Carry our own OCI metadata instead of inheriting the base image's.
+# version/revision/created/documentation are cleared so no Arch Linux
+# information leaks into the published image.
+LABEL org.opencontainers.image.title="Varve Worker" \
+      org.opencontainers.image.description="Build worker image of the Varve automated packaging system" \
+      org.opencontainers.image.authors="ShinKouyo <i@0x0f.dev>" \
+      org.opencontainers.image.source="https://git.0x0f.dev/shkouyo/varve" \
+      org.opencontainers.image.url="https://git.0x0f.dev/shkouyo/varve" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.created="" \
+      org.opencontainers.image.revision="" \
+      org.opencontainers.image.version="" \
+      org.opencontainers.image.documentation=""
 
 # Pin the official default pacman.conf kept in the repository (archiso
 # mode) so the image and repository stay in lockstep; add custom repos
@@ -20,8 +34,8 @@ RUN pacman -S --noconfirm git subversion sudo
 # Agent binary. Build it beforehand with `go build ./cmd/varve-worker`.
 COPY varve-worker /usr/bin/varve-worker
 
-# Non-root build user; the agent runs entirely as builder (DESIGN 9.1,
-# decision A11) and makepkg refuses to run as root.
+# Non-root build user; the agent runs entirely as builder and makepkg
+# refuses to run as root.
 RUN useradd -m builder \
     && printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder \
     && chmod 440 /etc/sudoers.d/builder

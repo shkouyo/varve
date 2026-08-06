@@ -1,7 +1,21 @@
-# Controller image for the varve management machine (PURPOSAL 5.5,
-# DESIGN 9.2). Runs the varve binary against the /data volume.
+# Controller image for the varve management machine. Runs the varve binary
+# against the /data volume.
 
 FROM archlinux/archlinux:latest
+
+# Carry our own OCI metadata instead of inheriting the base image's.
+# version/revision/created/documentation are cleared so no Arch Linux
+# information leaks into the published image.
+LABEL org.opencontainers.image.title="Varve Controller" \
+      org.opencontainers.image.description="Control plane of the Varve automated packaging system" \
+      org.opencontainers.image.authors="ShinKouyo <i@0x0f.dev>" \
+      org.opencontainers.image.source="https://git.0x0f.dev/shkouyo/varve" \
+      org.opencontainers.image.url="https://git.0x0f.dev/shkouyo/varve" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.created="" \
+      org.opencontainers.image.revision="" \
+      org.opencontainers.image.version="" \
+      org.opencontainers.image.documentation=""
 
 # The base image ships no package database: refresh it before
 # installing anything.
