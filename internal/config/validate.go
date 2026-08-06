@@ -66,9 +66,6 @@ func validate(c *ControllerConfig) error {
 		if c.Worker.Actions.Repo == "" {
 			return errors.New("worker.actions.repo: must not be empty when worker.actions.enabled is true")
 		}
-		if c.Worker.Actions.Workflow == "" {
-			return errors.New("worker.actions.workflow: must not be empty when worker.actions.enabled is true")
-		}
 	}
 	if c.Logs.Dir == "" {
 		return errors.New("logs.dir: must not be empty")

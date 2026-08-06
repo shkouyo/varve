@@ -98,7 +98,7 @@ memory_limit = 0
 [worker.actions]
 enabled = true
 token = "ghp-example"
-repo = "shkouyo/varve-runner"
+repo = "owner/varve-runner"
 workflow = "worker-actions.yml"
 ref = "main"
 cooldown = "5m"
@@ -195,7 +195,7 @@ func TestLoadControllerFullExample(t *testing.T) {
 		t.Errorf("Worker limits = %d/%q", cfg.Worker.CPULimit, cfg.Worker.MemoryLimit)
 	}
 	if !cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "ghp-example" ||
-		cfg.Worker.Actions.Repo != "shkouyo/varve-runner" ||
+		cfg.Worker.Actions.Repo != "owner/varve-runner" ||
 		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
 		cfg.Worker.Actions.Ref != "main" ||
 		cfg.Worker.Actions.Cooldown != 5*time.Minute {
@@ -261,7 +261,7 @@ func TestLoadControllerDefaults(t *testing.T) {
 		t.Errorf("Worker defaults = %+v", cfg.Worker)
 	}
 	if cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "" ||
-		cfg.Worker.Actions.Repo != "shkouyo/varve-runner" ||
+		cfg.Worker.Actions.Repo != "" ||
 		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
 		cfg.Worker.Actions.Ref != "main" ||
 		cfg.Worker.Actions.Cooldown != 3*time.Minute {
@@ -632,6 +632,7 @@ download_base_uri = "https://dl.example.org"
 [worker.actions]
 enabled = true
 token = "actions-pass"
+repo = "owner/varve-runner"
 
 [logs]
 dir = "/data/logs"

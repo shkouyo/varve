@@ -226,7 +226,6 @@ func defaultRawConfig() rawConfig {
 			StallTimeout:     tomlDuration(10 * time.Minute),
 			BuildTimeout:     tomlDuration(30 * time.Minute),
 			Actions: rawActions{
-				Repo:     "shkouyo/varve-runner",
 				Workflow: "worker-actions.yml",
 				Ref:      "main",
 				Cooldown: tomlDuration(3 * time.Minute),

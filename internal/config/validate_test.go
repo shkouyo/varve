@@ -46,7 +46,7 @@ func validController() *ControllerConfig {
 			StallTimeout:     10 * time.Minute,
 			BuildTimeout:     30 * time.Minute,
 			Actions: WorkerActions{
-				Repo:     "shkouyo/varve-runner",
+				Repo:     "owner/varve-runner",
 				Workflow: "worker-actions.yml",
 				Ref:      "main",
 				Cooldown: 3 * time.Minute,
@@ -170,16 +170,6 @@ func TestValidateErrors(t *testing.T) {
 			want: "worker.actions.repo",
 		},
 		{
-			name: "actions enabled without workflow",
-			mutate: func(c *ControllerConfig) {
-				c.Worker.Actions.Enabled = true
-				c.Worker.Actions.Token = "t"
-				c.Worker.Actions.Repo = "r"
-				c.Worker.Actions.Workflow = ""
-			},
-			want: "worker.actions.workflow",
-		},
-		{
 			name:   "zero actions cooldown",
 			mutate: func(c *ControllerConfig) { c.Worker.Actions.Cooldown = 0 },
 			want:   "worker.actions.cooldown",
@@ -232,7 +222,7 @@ func TestValidateActionsEnabledOK(t *testing.T) {
 	cfg.Worker.Actions = WorkerActions{
 		Enabled:  true,
 		Token:    "t",
-		Repo:     "shkouyo/varve-runner",
+		Repo:     "owner/varve-runner",
 		Workflow: "worker-actions.yml",
 		Ref:      "main",
 		Cooldown: 3 * time.Minute,

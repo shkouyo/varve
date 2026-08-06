@@ -126,7 +126,7 @@ type WorkerLimits struct {
 type WorkerActions struct {
 	Enabled  bool          // trigger the runner workflow when work waits, false
 	Token    string        // GitHub PAT with actions:write permission on the runner repo
-	Repo     string        // owner/repo slug of the runner repository, "shkouyo/varve-runner"
+	Repo     string        // owner/repo slug of the runner repository (required when enabled)
 	Workflow string        // workflow file name, "worker-actions.yml"
 	Ref      string        // git ref to dispatch on, "main"
 	Cooldown time.Duration // minimum interval between dispatches, "3m"
