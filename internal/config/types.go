@@ -107,13 +107,29 @@ type SourceConfig struct {
 	ExcludeBranches []string      // branches excluded from polling, ["main"]
 }
 
-// WorkerLimits configures worker-side timeouts and resource limits.
+// WorkerLimits configures worker-side timeouts and resource limits plus
+// the actions-based autostart policy ([worker.actions]).
 type WorkerLimits struct {
 	HeartbeatTimeout time.Duration // seconds without heartbeat before a worker is offline, "90s"
 	StallTimeout     time.Duration // task without progress considered stalled, "10m"
 	BuildTimeout     time.Duration // per-task build timeout, "30m"
 	CPULimit         int           // container CPU limit, 0 = unlimited
 	MemoryLimit      string        // container memory limit (e.g. "8GiB"), "" = unlimited
+	Actions          WorkerActions // autostart the runner workflow when work waits
+}
+
+// WorkerActions configures the automatic start of build workers through
+// the GitHub Actions workflow_dispatch API: when tasks are queued and no
+// worker is online, the controller triggers the configured runner
+// workflow so a worker can pick the queue up. The token is a password
+// class field (TOML only, no environment override).
+type WorkerActions struct {
+	Enabled  bool          // trigger the runner workflow when work waits, false
+	Token    string        // GitHub PAT with actions:write permission on the runner repo
+	Repo     string        // owner/repo slug of the runner repository, "shkouyo/varve-runner"
+	Workflow string        // workflow file name, "worker-actions.yml"
+	Ref      string        // git ref to dispatch on, "main"
+	Cooldown time.Duration // minimum interval between dispatches, "3m"
 }
 
 // MailConfig configures SMTP failure notifications.

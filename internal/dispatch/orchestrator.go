@@ -176,6 +176,13 @@ type OrchestratorImpl struct {
 	roundMu    sync.Mutex
 	roundSet   map[string]time.Time
 
+	// actions autoscaling (worker.actions): the dispatcher is built at
+	// construction and the last dispatch attempt is tracked under a lock
+	// (the scheduler reads and writes it).
+	actions        workflowDispatcher
+	actionsMu      sync.Mutex
+	lastDispatchAt time.Time
+
 	// scheduler lifecycle (started by NewOrchestrator, stopped by Stop).
 	stopOnce       sync.Once
 	schedCancel    context.CancelFunc
@@ -232,6 +239,7 @@ func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend stor
 		roundSet:       make(map[string]time.Time),
 		stallInterval:  30 * time.Second,
 		hourlyInterval: time.Hour,
+		actions:        newActionsDispatcher(&cfg.Worker.Actions),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	o.schedCancel = cancel

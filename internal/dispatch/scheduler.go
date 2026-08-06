@@ -50,6 +50,7 @@ func (o *OrchestratorImpl) runScheduler(ctx context.Context) {
 			if err := o.scanStalled(ctx); err != nil {
 				log.Printf("dispatch: scheduler scan: %v", err)
 			}
+			o.autoscaleWorkers(ctx)
 		case <-hourly.C:
 			if err := o.hourlyMaintenance(ctx); err != nil {
 				log.Printf("dispatch: hourly maintenance: %v", err)

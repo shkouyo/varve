@@ -55,6 +55,14 @@ build_timeout = "30m" # maximum duration of a single build task (default "30m")
 cpu_limit = 0 # container CPU limit (default 0 = unlimited; e.g. 4)
 memory_limit = 0 # container memory limit (default 0 = unlimited; e.g. "8GiB")
 
+[worker.actions]
+enabled = false # auto-start the runner workflow when tasks are queued and no worker is online (default false)
+token = "" # GitHub PAT with actions:write permission on the runner repo; written directly in this file, so file permissions must be 0600
+repo = "shkouyo/varve-runner" # repository hosting the worker workflow (default "shkouyo/varve-runner")
+workflow = "worker-actions.yml" # workflow file to dispatch (default "worker-actions.yml")
+ref = "main" # git ref to dispatch on (default "main")
+cooldown = "3m" # minimum interval between dispatches (default "3m"; must be greater than zero)
+
 [mail]
 enabled = false # failure notifications (default false; only sent when a build fails)
 host = "" # SMTP server address

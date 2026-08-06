@@ -162,6 +162,16 @@ type rawWorker struct {
 	BuildTimeout     tomlDuration `toml:"build_timeout"`
 	CPULimit         int          `toml:"cpu_limit"`
 	MemoryLimit      tomlMemory   `toml:"memory_limit"`
+	Actions          rawActions   `toml:"actions"`
+}
+
+type rawActions struct {
+	Enabled  bool         `toml:"enabled"`
+	Token    secret       `toml:"token"`
+	Repo     string       `toml:"repo"`
+	Workflow string       `toml:"workflow"`
+	Ref      string       `toml:"ref"`
+	Cooldown tomlDuration `toml:"cooldown"`
 }
 
 type rawMail struct {
@@ -215,6 +225,12 @@ func defaultRawConfig() rawConfig {
 			HeartbeatTimeout: tomlDuration(90 * time.Second),
 			StallTimeout:     tomlDuration(10 * time.Minute),
 			BuildTimeout:     tomlDuration(30 * time.Minute),
+			Actions: rawActions{
+				Repo:     "shkouyo/varve-runner",
+				Workflow: "worker-actions.yml",
+				Ref:      "main",
+				Cooldown: tomlDuration(3 * time.Minute),
+			},
 		},
 		Mail: rawMail{
 			Port: 587,
@@ -364,6 +380,14 @@ func (r *rawConfig) export() *ControllerConfig {
 			BuildTimeout:     time.Duration(r.Worker.BuildTimeout),
 			CPULimit:         r.Worker.CPULimit,
 			MemoryLimit:      string(r.Worker.MemoryLimit),
+			Actions: WorkerActions{
+				Enabled:  r.Worker.Actions.Enabled,
+				Token:    string(r.Worker.Actions.Token),
+				Repo:     r.Worker.Actions.Repo,
+				Workflow: r.Worker.Actions.Workflow,
+				Ref:      r.Worker.Actions.Ref,
+				Cooldown: time.Duration(r.Worker.Actions.Cooldown),
+			},
 		},
 		Mail: MailConfig{
 			Enabled:  r.Mail.Enabled,
@@ -393,6 +417,7 @@ func (r *rawConfig) wipeSecrets() {
 	WipeBytes(r.GPG.Passphrase)
 	WipeBytes(r.Mail.Password)
 	WipeBytes(r.Web.AdminPassword)
+	WipeBytes(r.Worker.Actions.Token)
 }
 
 // WipeBytes zeroes the contents of b. It is exported so that password

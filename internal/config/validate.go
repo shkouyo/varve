@@ -59,6 +59,17 @@ func validate(c *ControllerConfig) error {
 	if c.Source.URL == "" {
 		return errors.New("source.url: must not be empty")
 	}
+	if c.Worker.Actions.Enabled {
+		if c.Worker.Actions.Token == "" {
+			return errors.New("worker.actions.token: must not be empty when worker.actions.enabled is true")
+		}
+		if c.Worker.Actions.Repo == "" {
+			return errors.New("worker.actions.repo: must not be empty when worker.actions.enabled is true")
+		}
+		if c.Worker.Actions.Workflow == "" {
+			return errors.New("worker.actions.workflow: must not be empty when worker.actions.enabled is true")
+		}
+	}
 	if c.Logs.Dir == "" {
 		return errors.New("logs.dir: must not be empty")
 	}
@@ -70,6 +81,7 @@ func validate(c *ControllerConfig) error {
 		{"worker.heartbeat_timeout", c.Worker.HeartbeatTimeout},
 		{"worker.stall_timeout", c.Worker.StallTimeout},
 		{"worker.build_timeout", c.Worker.BuildTimeout},
+		{"worker.actions.cooldown", c.Worker.Actions.Cooldown},
 		{"logs.retention", c.Logs.Retention},
 	} {
 		if d.val <= 0 {

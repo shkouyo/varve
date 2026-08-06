@@ -45,6 +45,12 @@ func validController() *ControllerConfig {
 			HeartbeatTimeout: 90 * time.Second,
 			StallTimeout:     10 * time.Minute,
 			BuildTimeout:     30 * time.Minute,
+			Actions: WorkerActions{
+				Repo:     "shkouyo/varve-runner",
+				Workflow: "worker-actions.yml",
+				Ref:      "main",
+				Cooldown: 3 * time.Minute,
+			},
 		},
 		Mail: MailConfig{Port: 587, From: "varve@example.org", TLS: "starttls"},
 		Web:  WebConfig{DownloadEnabled: true, DownloadBaseURI: "https://dl.example.org", AdminUser: "admin", AdminPassword: "p"},
@@ -149,6 +155,40 @@ func TestValidateErrors(t *testing.T) {
 			mutate: func(c *ControllerConfig) { c.Source.PollInterval = -time.Minute },
 			want:   "source.poll_interval",
 		},
+		{
+			name:   "actions enabled without token",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.Enabled = true },
+			want:   "worker.actions.token",
+		},
+		{
+			name: "actions enabled without repo",
+			mutate: func(c *ControllerConfig) {
+				c.Worker.Actions.Enabled = true
+				c.Worker.Actions.Token = "t"
+				c.Worker.Actions.Repo = ""
+			},
+			want: "worker.actions.repo",
+		},
+		{
+			name: "actions enabled without workflow",
+			mutate: func(c *ControllerConfig) {
+				c.Worker.Actions.Enabled = true
+				c.Worker.Actions.Token = "t"
+				c.Worker.Actions.Repo = "r"
+				c.Worker.Actions.Workflow = ""
+			},
+			want: "worker.actions.workflow",
+		},
+		{
+			name:   "zero actions cooldown",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.Cooldown = 0 },
+			want:   "worker.actions.cooldown",
+		},
+		{
+			name:   "negative actions cooldown",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.Cooldown = -time.Minute },
+			want:   "worker.actions.cooldown",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -181,5 +221,23 @@ func TestValidateSignWithKeyFile(t *testing.T) {
 		if err := validate(cfg); err != nil {
 			t.Errorf("validate() with keyID=%q keyFile=%q: %v", tc.keyID, tc.keyFile, err)
 		}
+	}
+}
+
+// TestValidateActionsEnabledOK covers the happy path of the actions
+// section: enabled with a token, a repo and a workflow passes, also with
+// an explicit ref.
+func TestValidateActionsEnabledOK(t *testing.T) {
+	cfg := validController()
+	cfg.Worker.Actions = WorkerActions{
+		Enabled:  true,
+		Token:    "t",
+		Repo:     "shkouyo/varve-runner",
+		Workflow: "worker-actions.yml",
+		Ref:      "main",
+		Cooldown: 3 * time.Minute,
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("validate() = %v, want nil", err)
 	}
 }

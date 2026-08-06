@@ -95,6 +95,14 @@ build_timeout = "30m"
 cpu_limit = 0
 memory_limit = 0
 
+[worker.actions]
+enabled = true
+token = "ghp-example"
+repo = "shkouyo/varve-runner"
+workflow = "worker-actions.yml"
+ref = "main"
+cooldown = "5m"
+
 [mail]
 enabled = false
 host = ""
@@ -186,6 +194,13 @@ func TestLoadControllerFullExample(t *testing.T) {
 	if cfg.Worker.CPULimit != 0 || cfg.Worker.MemoryLimit != "" {
 		t.Errorf("Worker limits = %d/%q", cfg.Worker.CPULimit, cfg.Worker.MemoryLimit)
 	}
+	if !cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "ghp-example" ||
+		cfg.Worker.Actions.Repo != "shkouyo/varve-runner" ||
+		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
+		cfg.Worker.Actions.Ref != "main" ||
+		cfg.Worker.Actions.Cooldown != 5*time.Minute {
+		t.Errorf("Worker.Actions = %+v", cfg.Worker.Actions)
+	}
 	if cfg.Mail.Enabled || cfg.Mail.Host != "" || cfg.Mail.Port != 587 ||
 		cfg.Mail.Username != "" || cfg.Mail.Password != "" ||
 		cfg.Mail.From != "varve@example.org" || cfg.Mail.TLS != "starttls" {
@@ -244,6 +259,13 @@ func TestLoadControllerDefaults(t *testing.T) {
 		cfg.Worker.BuildTimeout != 30*time.Minute ||
 		cfg.Worker.CPULimit != 0 || cfg.Worker.MemoryLimit != "" {
 		t.Errorf("Worker defaults = %+v", cfg.Worker)
+	}
+	if cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "" ||
+		cfg.Worker.Actions.Repo != "shkouyo/varve-runner" ||
+		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
+		cfg.Worker.Actions.Ref != "main" ||
+		cfg.Worker.Actions.Cooldown != 3*time.Minute {
+		t.Errorf("Worker.Actions defaults = %+v", cfg.Worker.Actions)
 	}
 	if cfg.Mail.Enabled || cfg.Mail.Port != 587 || cfg.Mail.TLS != "starttls" ||
 		cfg.Mail.From != "varve@example.org" {
@@ -607,6 +629,10 @@ password = "mail-pass"
 admin_password = "admin-pass"
 download_base_uri = "https://dl.example.org"
 
+[worker.actions]
+enabled = true
+token = "actions-pass"
+
 [logs]
 dir = "/data/logs"
 `
@@ -616,6 +642,9 @@ dir = "/data/logs"
 	}
 	if cfg.GPG.Passphrase != "gpg-pass" || cfg.Mail.Password != "mail-pass" || cfg.Web.AdminPassword != "admin-pass" {
 		t.Errorf("passwords not preserved: %+v %+v %+v", cfg.GPG, cfg.Mail, cfg.Web)
+	}
+	if cfg.Worker.Actions.Token != "actions-pass" {
+		t.Errorf("actions token not preserved: %q", cfg.Worker.Actions.Token)
 	}
 }
 
