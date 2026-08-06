@@ -403,12 +403,12 @@ jobs:
   # the registry is the instance host (e.g. git.0x0f.dev) and the owner is
   # the repository owner namespace (github.repository_owner). The registry
   # host is derived from the instance server URL unless the optional
-  # FORGEJO_REGISTRY secret overrides it (needed only when the registry is
+  # PACKAGES_REGISTRY secret overrides it (needed only when the registry is
   # not served on the instance host).
   # Credentials: the Actions GITHUB_TOKEN cannot push packages: it
   # authenticates as the special forgejo-actions user, for which package
   # write access is not implemented, and the workflow `permissions` key is
-  # ignored by Forgejo. Configure the FORGEJO_PACKAGES_TOKEN secret with a
+  # ignored by Forgejo. Configure the PACKAGES_TOKEN secret with a
   # personal access token scoped to write:package, owned by the triggering
   # user (github.actor).
   # Like Stage 3, this job runs in a job container without a docker
@@ -446,17 +446,17 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
-      # Resolve the registry host: an explicit FORGEJO_REGISTRY secret wins,
+      # Resolve the registry host: an explicit PACKAGES_REGISTRY secret wins,
       # otherwise derive the instance host from the server URL (stripping
       # the scheme). GITHUB_SERVER_URL is the instance URL, e.g.
       # https://git.0x0f.dev -> git.0x0f.dev.
       - name: Resolve registry
         id: registry
         env:
-          FORGEJO_REGISTRY: ${{ secrets.FORGEJO_REGISTRY }}
+          PACKAGES_REGISTRY: ${{ secrets.PACKAGES_REGISTRY }}
         run: |
           set -euo pipefail
-          registry="${FORGEJO_REGISTRY:-}"
+          registry="${PACKAGES_REGISTRY:-}"
           if [ -z "$registry" ]; then
             registry="$(printf '%s' "$GITHUB_SERVER_URL" | sed -E 's#^https?://##; s#/$##')"
           fi
@@ -472,7 +472,7 @@ jobs:
         run: |
           set -euo pipefail
           auth="$(printf '%s:%s' \
-            "${{ github.actor }}" "${{ secrets.FORGEJO_PACKAGES_TOKEN }}" \
+            "${{ github.actor }}" "${{ secrets.PACKAGES_TOKEN }}" \
             | base64 -w0)"
           mkdir -p "$GITHUB_WORKSPACE/.docker"
           chmod 700 "$GITHUB_WORKSPACE/.docker"
