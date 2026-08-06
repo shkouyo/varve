@@ -83,10 +83,10 @@ jobs:
             varve
             varve-worker
 
-  # Stage 2: Web standards compliance.
-  # Templates are Go html/template files ({{...}} actions); if the web
-  # module needs validators to run against rendered pages instead of raw
-  # templates, refine this job there.
+  # Stage 2: Web standards compliance. Raw templates are linted with
+  # html-validate; W3C Nu and axe-core validate real rendered pages, so
+  # this job starts the controller with sample data and captures the
+  # server output before running the checkers.
   web-quality:
     name: Web standards compliance
     needs: test
@@ -98,20 +98,211 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y default-jre-headless chromium
+          # @axe-core/cli drives Chrome through chromedriver, which must
+          # match the installed chromium build. The Ubuntu package name
+          # changed between releases (chromium-chromedriver ->
+          # chromium-driver); install whichever exists. If neither does,
+          # the axe step falls back to the npm-bundled chromedriver.
+          sudo apt-get install -y chromium-chromedriver || sudo apt-get install -y chromium-driver || true
           npm install -g html-validate @axe-core/cli
           pip3 install --break-system-packages html5validator
 
       - name: html-validate
         run: html-validate "internal/web/templates/**/*.html"
 
-      - name: W3C Nu HTML Checker
-        run: html5validator --root internal/web --skip-non-html
+      # v3, not v4+: v4+ fails on Forgejo with GHESNotSupportedError
+      # (see the Upload binaries step for the rationale).
+      - uses: actions/download-artifact@v3
+        with:
+          name: varve-binaries
+          path: .
 
+      - name: Render sample pages
+        run: |
+          set -euo pipefail
+          # Start the controller with a minimal configuration and sample
+          # repository data, then capture every rendered page for the
+          # checkers below. Artifacts need not exist on disk: the index is
+          # rebuilt by the product's own rebuild-index subcommand.
+          ROOT=/tmp/varve-web-quality
+          PAGES="$ROOT/pages"
+          WORK="$ROOT/work"
+          CONF="$ROOT/varve.toml"
+          API=127.0.0.1:33759
+          WEB=127.0.0.1:33760
+          AUTH="admin:sim-admin-pass"
+
+          rm -rf "$ROOT"
+          mkdir -p "$WORK/repo" "$WORK/logs" "$PAGES"
+
+          # Minimal valid controller configuration (config validation rules).
+          cat > "$CONF" <<EOF
+          [server]
+          api_listen = "$API"
+          web_listen = "$WEB"
+
+          [api]
+          token = "sim-token"
+
+          [database]
+          path = "$WORK/varve.db"
+
+          [storage]
+          backend = "local"
+
+          [storage.local]
+          root = "$WORK/repo"
+
+          [repo]
+          name = "simrepo"
+          sign = "off"
+
+          [source]
+          url = "file://$WORK/empty-source"
+          poll_interval = "24h"
+
+          [web]
+          download_enabled = true
+          download_base_uri = "https://repo.example.invalid/varve"
+          admin_user = "admin"
+          admin_password = "sim-admin-pass"
+
+          [logs]
+          dir = "$WORK/logs"
+          EOF
+          chmod 600 "$CONF" # the file carries a password
+
+          # Sample repository records (repo.Sidecar TOML layout).
+          cat > "$WORK/repo/hello.meta.toml" <<'EOF'
+          pkgbase = "hello"
+          branch = "main"
+          vcs = ""
+
+          [[artifacts]]
+          file = "hello-2.12.1-1-x86_64.pkg.tar.zst"
+          kind = "package"
+          pkgname = "hello"
+          version = "2.12.1-1"
+          arch = "x86_64"
+          size = 104448
+          sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+          [build]
+          commit = "deadbeef0123456789abcdef0123456789abcdef"
+          upstream_ref = ""
+          srcinfo_hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+          time = 2026-01-15T10:00:00Z
+          worker = "builder-1"
+          EOF
+          cat > "$WORK/repo/zlib.meta.toml" <<'EOF'
+          pkgbase = "zlib"
+          branch = "main"
+          vcs = ""
+
+          [[artifacts]]
+          file = "zlib-1.3.1-2-x86_64.pkg.tar.zst"
+          kind = "package"
+          pkgname = "zlib"
+          version = "1.3.1-2"
+          arch = "x86_64"
+          size = 188416
+          sha256 = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+
+          [build]
+          commit = "cafebabe0123456789abcdef0123456789abcdef"
+          upstream_ref = ""
+          srcinfo_hash = "1111111111111111111111111111111111111111111111111111111111111111"
+          time = 2026-01-16T11:30:00Z
+          worker = "builder-2"
+          EOF
+          cat > "$WORK/repo/gcc.meta.toml" <<'EOF'
+          pkgbase = "gcc"
+          branch = "main"
+          vcs = ""
+
+          [[artifacts]]
+          file = "gcc-14.2.1-2-x86_64.pkg.tar.zst"
+          kind = "package"
+          pkgname = "gcc"
+          version = "14.2.1-2"
+          arch = "x86_64"
+          size = 67829760
+          sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+
+          [build]
+          commit = "0123456789abcdef0123456789abcdef0123456789"
+          upstream_ref = ""
+          srcinfo_hash = "3333333333333333333333333333333333333333333333333333333333333333"
+          time = 2026-01-17T09:00:00Z
+          worker = "builder-1"
+          EOF
+
+          # Build logs: builds 1 and 2 have logs; gcc (build 3) has none,
+          # so the missing-log error page is covered too.
+          printf '==> hello: checking build env\n==> make -j8\n==> packaging\n' > "$WORK/logs/1.log"
+          printf '==> zlib: ./configure --prefix=/usr\n==> make -j8\n==> packaging\n' > "$WORK/logs/2.log"
+
+          # Rebuild the SQLite index from the side files.
+          "$PWD/varve" rebuild-index --config "$CONF"
+
+          # Start the controller (default serve subcommand) and wait for
+          # the web port; the trap stops it on failure as well.
+          "$PWD/varve" --config "$CONF" > "$ROOT/serve.log" 2>&1 &
+          SRV=$!
+          trap 'kill -TERM "$SRV" 2>/dev/null || true; wait "$SRV" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -s -o /dev/null "$WEB/"; then ready=1; break; fi
+            sleep 0.5
+          done
+          [ "$ready" = 1 ] || { cat "$ROOT/serve.log"; exit 1; }
+
+          # Save every rendered page; admin routes need Basic Auth (-u is
+          # ignored on public routes). The 404 pages are saved too: they
+          # are valid error-template renders.
+          fetch() { # <url> <file> [expected status]
+            code=$(curl -s -u "$AUTH" -o "$PAGES/$2" -w '%{http_code}' "$1")
+            [ "$code" = "${3:-200}" ] || { echo "unexpected status $code for $1" >&2; return 1; }
+          }
+          fetch "$WEB/"                          index.html
+          fetch "$WEB/packages"                  packages.html
+          fetch "$WEB/packages/hello"            package-hello.html
+          fetch "$WEB/builds/1"                  build-1.html
+          fetch "$WEB/builds/1/log"              build-1-log.html
+          fetch "$WEB/builds/3"                  build-3.html
+          fetch "$WEB/builds/3/log"              build-3-log.html 404
+          fetch "$WEB/admin"                     admin.html
+          fetch "$WEB/admin/builds?failed=1"     admin-builds.html
+          fetch "$WEB/packages/__nope__"         404.html 404
+
+          # Graceful shutdown (SIGTERM); the trap above is the backstop.
+          kill -TERM "$SRV"
+          wait "$SRV" 2>/dev/null || true
+          trap - EXIT
+
+      # The rendered pages inline the compiled Tailwind v4 stylesheet. The
+      # W3C Nu CSS engine does not know its modern at-rules (@layer,
+      # @property) and flags them as CSS errors; only those CSS-scoped
+      # messages are ignored, so any genuine HTML structure error still
+      # fails the step.
+      - name: W3C Nu HTML Checker
+        run: html5validator --root /tmp/varve-web-quality/pages --skip-non-html --ignore-re "CSS:"
+
+      # Run against the saved pages (no external resources, CSS inline, so
+      # file:// works). Prefer a system chromedriver that matches the apt
+      # chromium; otherwise let @axe-core/cli use its npm-bundled driver.
       - name: axe-core audit (headless browser)
         run: |
-          for page in internal/web/templates/*.html; do
-            npx @axe-core/cli "file://$PWD/$page" \
-              --chrome-path /usr/bin/chromium --exit || exit 1
+          CHROMEDRIVER="$(command -v chromedriver 2>/dev/null || true)"
+          for page in /tmp/varve-web-quality/pages/*.html; do
+            if [ -n "$CHROMEDRIVER" ]; then
+              npx @axe-core/cli "file://$page" --chrome-path /usr/bin/chromium \
+                --chromedriver-path "$CHROMEDRIVER" --exit || exit 1
+            else
+              npx @axe-core/cli "file://$page" --chrome-path /usr/bin/chromium \
+                --exit || exit 1
+            fi
           done
 
   # Stage 3: build both container images from the stage 1 binaries.
