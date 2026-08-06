@@ -238,7 +238,7 @@ func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskD
 		if err := f.Close(); err != nil {
 			return "", fmt.Errorf("write source archive: %w", err)
 		}
-		exit, err := runCmd(ctx, r.execCommand, taskDir, w, nil, "tar", "--zstd", "-xf", archivePath)
+		exit, err := runCmd(ctx, r.command, taskDir, w, nil, "tar", "--zstd", "-xf", archivePath)
 		if err != nil || exit != 0 {
 			return "", fmt.Errorf("extract source archive: exit %d: %w", exit, err)
 		}
@@ -251,7 +251,7 @@ func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskD
 			args = append(args, "--branch", task.Source.Branch)
 		}
 		args = append(args, task.Source.URL, taskDir)
-		exit, err := runCmd(ctx, r.execCommand, taskDir, w, nil, "git", args...)
+		exit, err := runCmd(ctx, r.command, taskDir, w, nil, "git", args...)
 		if err != nil || exit != 0 {
 			return "", fmt.Errorf("clone source: exit %d: %w", exit, err)
 		}
@@ -263,7 +263,7 @@ func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskD
 		return "", errors.New("checkout has no .SRCINFO")
 	}
 
-	out, err := captureCmd(ctx, r.execCommand, taskDir, "git", "rev-parse", "HEAD")
+	out, err := captureCmd(ctx, r.command, taskDir, "git", "rev-parse", "HEAD")
 	if err != nil {
 		// No git metadata (archive mode) or rev-parse failure: the commit
 		// stays empty and the controller falls back.
@@ -279,7 +279,7 @@ func (r *Runner) runHooks(ctx context.Context, taskDir string, hooks []string, w
 		if strings.TrimSpace(hook) == "" {
 			continue
 		}
-		exit, err := runCmd(ctx, r.execCommand, taskDir, w, nil, "sh", "-c", hook)
+		exit, err := runCmd(ctx, r.command, taskDir, w, nil, "sh", "-c", hook)
 		if err != nil {
 			return fmt.Errorf("hook %q: %w", hook, err)
 		}
@@ -296,7 +296,7 @@ func (r *Runner) runHooks(ctx context.Context, taskDir string, hooks []string, w
 // after killGrace. kind is empty on a normal exit, or
 // outcomeCancelled/outcomeTimeout when the watcher had to stop the build.
 func (r *Runner) runMakepkg(taskCtx context.Context, taskDir string, w io.Writer, cancelCh <-chan struct{}) (kind string, exit int, err error) {
-	cmd := r.execCommand(context.Background(), "makepkg", "-s", "--noconfirm")
+	cmd := r.command(context.Background(), "makepkg", "-s", "--noconfirm")
 	cmd.Dir = taskDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = w

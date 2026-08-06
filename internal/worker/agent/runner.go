@@ -114,6 +114,12 @@ type Runner struct {
 	// execCommand constructs every external command (git/makepkg/hooks/
 	// gpg/tar); tests replace it with a recorder.
 	execCommand func(ctx context.Context, name string, arg ...string) *exec.Cmd
+	// envOnce/env cache the environment handed to build commands: HOME
+	// redirected to a writable directory when the inherited one is
+	// unusable, nil otherwise (children inherit). Resolved once on the
+	// first command.
+	envOnce sync.Once
+	env     []string
 	// workDir is <VARVE_DATA_DIR>/work; each task gets work/<task-id>/.
 	workDir string
 	// sampler reads container cgroup v2 stats on demand.

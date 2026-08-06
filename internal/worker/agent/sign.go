@@ -49,16 +49,16 @@ func (r *Runner) signPackages(ctx context.Context, task *api.TaskDetail, token s
 	if err := os.WriteFile(keyFile, []byte(km.ArmoredPrivateKey), 0o600); err != nil {
 		return nil, fmt.Errorf("write signing key: %w", err)
 	}
-	env := append(os.Environ(), "GNUPGHOME="+gnupgHome)
+	env := withEnv(r.childEnv(), "GNUPGHOME", gnupgHome)
 
-	exit, err := runCmd(ctx, r.execCommand, "", w, env, "gpg", "--batch", "--import", keyFile)
+	exit, err := runCmd(ctx, r.command, "", w, env, "gpg", "--batch", "--import", keyFile)
 	if err != nil || exit != 0 {
 		return nil, fmt.Errorf("gpg import: exit %d: %w", exit, err)
 	}
 
 	sigs := make([]string, 0, len(pkgs))
 	for _, pkg := range pkgs {
-		exit, err := runCmd(ctx, r.execCommand, "", w, env, "gpg",
+		exit, err := runCmd(ctx, r.command, "", w, env, "gpg",
 			"--batch", "--pinentry-mode", "loopback",
 			"--passphrase", km.Passphrase, "--detach-sign", pkg)
 		if err != nil || exit != 0 {

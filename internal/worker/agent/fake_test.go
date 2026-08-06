@@ -260,10 +260,13 @@ func (f *fakeClient) regCount() int {
 	return f.regCalls
 }
 
-// execCall records one external command invocation.
+// execCall records one external command invocation. cmd keeps the
+// built *exec.Cmd so tests can assert the environment the command
+// actually ran with (the agent injects it after the recorder returns).
 type execCall struct {
 	name string
 	args []string
+	cmd  *exec.Cmd
 }
 
 // fakeExec builds commands for the agent, recording every invocation and
@@ -282,21 +285,39 @@ func newFakeExec() *fakeExec {
 }
 
 func (f *fakeExec) command(ctx context.Context, name string, arg ...string) *exec.Cmd {
-	f.mu.Lock()
-	f.calls = append(f.calls, execCall{name: name, args: append([]string(nil), arg...)})
-	f.mu.Unlock()
+	var cmd *exec.Cmd
 	if f.realGit && name == "git" {
-		return exec.CommandContext(ctx, name, arg...)
+		cmd = exec.CommandContext(ctx, name, arg...)
+	} else {
+		key := strings.Join(append([]string{name}, arg...), " ")
+		if script, ok := f.scripts[key]; ok {
+			cmd = exec.Command(script)
+			// Pass the recorded args through so scripts can act on them
+			// (e.g. the gpg signer touches "$last.sig").
+			cmd.Args = append([]string{script}, arg...)
+		} else {
+			cmd = exec.Command("/bin/true")
+		}
 	}
-	key := strings.Join(append([]string{name}, arg...), " ")
-	if script, ok := f.scripts[key]; ok {
-		cmd := exec.Command(script)
-		// Pass the recorded args through so scripts can act on them
-		// (e.g. the gpg signer touches "$last.sig").
-		cmd.Args = append([]string{script}, arg...)
-		return cmd
+	f.mu.Lock()
+	f.calls = append(f.calls, execCall{name: name, args: append([]string(nil), arg...), cmd: cmd})
+	f.mu.Unlock()
+	return cmd
+}
+
+// callEnv returns the environment of the last recorded invocation of
+// name (nil when the command inherits the process environment). The
+// recorder keeps the *exec.Cmd pointer, so the value reflects the
+// environment the command ran with, including the agent's injection.
+func (f *fakeExec) callEnv(name string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.calls) - 1; i >= 0; i-- {
+		if f.calls[i].name == name && f.calls[i].cmd != nil {
+			return f.calls[i].cmd.Env
+		}
 	}
-	return exec.Command("/bin/true")
+	return nil
 }
 
 // callArgs returns the recorded arguments of the n-th invocation of name.
