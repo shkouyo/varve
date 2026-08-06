@@ -28,6 +28,9 @@ import (
 // ClaimTask atomically claims the FIFO head task for a worker: the task
 // must be queued, match the worker's architecture, have no other active
 // task for the same package, and the worker must have spare capacity. The
+// architecture match covers every element of the package's arch set: an
+// "any" package (or an "any" worker) matches everything, otherwise the
+// worker's architecture must be one of the "|"-joined elements. The
 // task is moved to assigned and the mirrored build row to assigned in the
 // same BEGIN IMMEDIATE transaction, which serializes concurrent polls.
 // ErrNoTask when nothing is claimable, ErrNotFound when the worker does
@@ -60,7 +63,9 @@ func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, tok
 			FROM tasks t
 			JOIN packages p ON p.id = t.package_id
 			WHERE t.state = 'queued'
-			  AND p.arch = ?
+			  AND (p.arch = 'any'
+			       OR ? = 'any'
+			       OR instr('|' || p.arch || '|', '|' || ? || '|') > 0)
 			  AND NOT EXISTS (
 				SELECT 1 FROM tasks a
 				WHERE a.package_id = t.package_id
@@ -68,7 +73,7 @@ func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, tok
 				  AND a.state IN ('queued', 'assigned', 'running')
 			  )
 			ORDER BY t.created_at, t.id
-			LIMIT 1`, arch).Scan(&id)
+			LIMIT 1`, arch, arch).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNoTask
 		}

@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"git.0x0f.dev/varve/internal/db"
+	"git.0x0f.dev/varve/internal/detect"
 	"git.0x0f.dev/varve/internal/repo"
 	"git.0x0f.dev/varve/internal/storage"
 )
@@ -69,6 +70,59 @@ func TestEnqueueDedupActive(t *testing.T) {
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("force Enqueue while active = %v, want ErrConflict", err)
 	}
+}
+
+// TestEnqueueSkipUnsupportedArch covers the architecture queue gate: a
+// change whose declared architectures have no intersection with what the
+// deployment can build (static baseline + registered workers, any status)
+// is rejected with ErrArchUnsupported and creates neither a package row
+// nor a task, so nothing sits in the queue unclaimable forever. "any"
+// packages and packages with at least one supported element pass, and the
+// baseline default alone (no workers registered) accepts x86_64.
+func TestEnqueueSkipUnsupportedArch(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("no intersection skips without side effects", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.registerWorkerArch(t, "x86-w", "x86_64", 1)
+
+		for _, c := range []detect.Change{
+			detectChangeArch("exotic", "exotic", "armv7h"),
+			detectChangeArch("multi-exotic", "multi-exotic", "armv7h|riscv64"),
+		} {
+			err := env.o.Enqueue(ctx, c, false)
+			if !errors.Is(err, ErrArchUnsupported) {
+				t.Fatalf("Enqueue(%s) = %v, want ErrArchUnsupported", c.Package.Pkgbase, err)
+			}
+			if _, gerr := env.store.GetPackageByBase(ctx, c.Package.Pkgbase); !errors.Is(gerr, db.ErrNotFound) {
+				t.Errorf("%s: package row created (err = %v), want none", c.Package.Pkgbase, gerr)
+			}
+		}
+	})
+
+	t.Run("unsupported also rejects forced admin rebuild", func(t *testing.T) {
+		env := newTestEnv(t)
+		if err := env.o.Enqueue(ctx, detectChangeArch("exotic", "exotic", "armv7h"), true); !errors.Is(err, ErrArchUnsupported) {
+			t.Fatalf("force Enqueue = %v, want ErrArchUnsupported", err)
+		}
+	})
+
+	t.Run("any package always passes", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.registerWorkerArch(t, "x86-w", "x86_64", 1)
+		env.enqueueArch(t, "archless", "archless", "any")
+	})
+
+	t.Run("multi-arch passes when one element is supported", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.registerWorkerArch(t, "x86-w", "x86_64", 1)
+		env.enqueueArch(t, "both", "both", "aarch64|x86_64")
+	})
+
+	t.Run("fresh deployment with no workers accepts baseline", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.enqueue(t, "plain", "plain") // default change arch x86_64
+	})
 }
 
 // TestEnqueueRoundDedup covers the round set: the same pkgbase enqueued

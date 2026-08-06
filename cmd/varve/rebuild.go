@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
@@ -176,10 +177,16 @@ func listAllPackages(ctx context.Context, store *db.Store) (map[string]db.Packag
 
 // toRebuildPackage maps one side file onto the database's authoritative
 // package record. Detection metadata absent from the side file (pkgdesc,
-// maintainers) is preserved from the previous row; the version and arch
-// come from the first package artifact.
+// maintainers) is preserved from the previous row; the version comes from
+// the first package artifact and the arch from the full artifact set
+// ("|"-joined, the same canonical form the live pipeline stores).
 func toRebuildPackage(sc *repo.Sidecar, old db.Package, workerID map[string]int64) db.RebuildPackage {
 	version, arch := "", ""
+	// Collect every distinct architecture of the package artifacts (a
+	// multi-arch build ships one file per architecture), stored in the
+	// same "|"-joined canonical form the live pipeline uses.
+	archSeen := map[string]bool{}
+	var archs []string
 	for _, a := range sc.Artifacts {
 		if a.Kind != "package" {
 			continue
@@ -187,9 +194,22 @@ func toRebuildPackage(sc *repo.Sidecar, old db.Package, workerID map[string]int6
 		if version == "" {
 			version = a.Version
 		}
-		if arch == "" {
-			arch = a.Arch
+		if a.Arch == "" || archSeen[a.Arch] {
+			continue
 		}
+		archSeen[a.Arch] = true
+		if a.Arch == "any" {
+			arch = "any"
+			archs = nil
+			continue
+		}
+		if arch != "any" {
+			archs = append(archs, a.Arch)
+		}
+	}
+	if len(archs) > 0 {
+		sort.Strings(archs)
+		arch = strings.Join(archs, "|")
 	}
 	if arch == "" {
 		arch = "x86_64"

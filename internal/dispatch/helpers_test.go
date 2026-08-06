@@ -462,6 +462,16 @@ func (e *testEnv) enqueue(t *testing.T, pkgbase, branch string, maintainers ...s
 	return e.activeTaskFor(t, pkgbase)
 }
 
+// enqueueArch is enqueue with an explicit canonical architecture set.
+func (e *testEnv) enqueueArch(t *testing.T, pkgbase, branch, arch string) string {
+	t.Helper()
+	c := detectChangeArch(pkgbase, branch, arch)
+	if err := e.o.Enqueue(context.Background(), c, false); err != nil {
+		t.Fatalf("Enqueue %s: %v", pkgbase, err)
+	}
+	return e.activeTaskFor(t, pkgbase)
+}
+
 // activeTaskFor resolves the active task id of a pkgbase.
 func (e *testEnv) activeTaskFor(t *testing.T, pkgbase string) string {
 	t.Helper()
@@ -524,6 +534,14 @@ func detectChange(pkgbase, branch string, maintainers ...string) detect.Change {
 		Maintainers: maintainers,
 		Reason:      detect.ReasonSrcinfo,
 	}
+}
+
+// detectChangeArch builds a detect.Change with an explicit architecture
+// set (canonical "any" or "|"-joined form).
+func detectChangeArch(pkgbase, branch, arch string) detect.Change {
+	c := detectChange(pkgbase, branch)
+	c.Package.Arch = arch
+	return c
 }
 
 // stagedContent returns the deterministic content a file is staged with, so

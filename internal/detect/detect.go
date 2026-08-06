@@ -31,6 +31,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -61,7 +62,10 @@ const (
 )
 
 // Package identifies one detected package within a source branch.
-// VCSKind is "" for plain packages, "git" or "svn" otherwise.
+// VCSKind is "" for plain packages, "git" or "svn" otherwise. Arch is the
+// canonical architecture set: "any" for architecture-independent
+// packages, otherwise every .SRCINFO arch joined with "|" (claim matching
+// treats any element as a match).
 type Package struct {
 	Pkgbase string
 	Branch  string
@@ -317,7 +321,7 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 			Pkgbase: p.info.Pkgbase,
 			Branch:  p.branch,
 			VCSKind: vcsKindName(p.kind),
-			Arch:    archOf(p.info.Arch),
+			Arch:    archSet(p.info.Arch),
 		},
 		Maintainers: p.dotfile.Maintainers,
 		Hooks:       p.dotfile.Hooks,
@@ -353,13 +357,29 @@ func vcsKindName(k vcs.Kind) string {
 	}
 }
 
-// archOf picks the first architecture the package supports, defaulting to
-// the only implemented architecture.
-func archOf(arch []string) string {
+// archSet canonically renders the declared .SRCINFO architecture list
+// into the packages.arch storage format: "any" (architecture-independent)
+// dominates the set, otherwise the deduplicated elements are sorted and
+// joined with "|" so every declared architecture is stored and matched at
+// claim time — never just the first element. An empty declaration keeps
+// the x86_64 deployment baseline.
+func archSet(arch []string) string {
+	seen := make(map[string]bool, len(arch))
+	elems := make([]string, 0, len(arch))
 	for _, a := range arch {
-		if a != "" {
-			return a
+		a = strings.TrimSpace(a)
+		if a == "" || seen[a] {
+			continue
 		}
+		seen[a] = true
+		if a == "any" {
+			return "any"
+		}
+		elems = append(elems, a)
 	}
-	return "x86_64"
+	if len(elems) == 0 {
+		return "x86_64"
+	}
+	sort.Strings(elems)
+	return strings.Join(elems, "|")
 }

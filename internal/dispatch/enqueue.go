@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"git.0x0f.dev/varve/internal/db"
@@ -56,6 +57,13 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 		if err := o.checkNameConflict(ctx, c); err != nil {
 			return err
 		}
+	}
+	// Queue gate: a package whose declared architectures have no
+	// intersection with the architectures this deployment can build is
+	// skipped (with a warning from the detect pipeline) instead of being
+	// queued where no worker could ever claim it.
+	if err := o.checkSupportedArch(ctx, c.Package.Arch); err != nil {
+		return err
 	}
 	commit, err := o.branchHead(ctx, c.Package.Branch)
 	if err != nil {
@@ -112,6 +120,49 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 	o.roundSet[c.Package.Pkgbase] = now
 	o.roundMu.Unlock()
 	return nil
+}
+
+// archBaseline is the architecture every varve deployment is built around
+// (it mirrors the packages/workers column defaults and the worker config
+// default). Keeping it in the supported set means a fresh deployment with
+// no registered workers still accepts baseline-arch packages instead of
+// skipping everything.
+const archBaseline = "x86_64"
+
+// checkSupportedArch rejects a change whose declared architecture set has
+// no intersection with the architectures the deployment can build: the
+// static baseline plus every architecture registered by a worker
+// (registration alone — any status — makes an architecture buildable, so
+// this never depends on whether a worker happens to be online). "any"
+// (architecture-independent) packages are always supported. Skipping
+// unsupported packages keeps them from sitting in the queue forever with
+// no worker able to claim them.
+func (o *OrchestratorImpl) checkSupportedArch(ctx context.Context, arch string) error {
+	if arch == "" || arch == "any" {
+		return nil
+	}
+	supported, err := o.store.DistinctWorkerArches(ctx)
+	if err != nil {
+		return err
+	}
+	known := map[string]bool{archBaseline: true}
+	for _, a := range supported {
+		if a != "" {
+			known[a] = true
+		}
+	}
+	for _, elem := range strings.Split(arch, "|") {
+		if known[elem] {
+			return nil
+		}
+	}
+	list := make([]string, 0, len(known))
+	for a := range known {
+		list = append(list, a)
+	}
+	sort.Strings(list)
+	return fmt.Errorf("%w: package architectures %q not buildable (supported: %s)",
+		ErrArchUnsupported, arch, strings.Join(list, ", "))
 }
 
 // checkNameConflict implements the pre-check for one change: the incoming

@@ -128,6 +128,86 @@ func TestClaimArchFilter(t *testing.T) {
 	}
 }
 
+// TestClaimAnyArchMatrix asserts the arch-independent contract: a package
+// declaring arch=any is claimable by every worker architecture, and an
+// "any" worker claims packages of every architecture. The old exact-match
+// claim (p.arch = ?) never matched an "any" package against a concrete
+// worker, leaving such tasks in the queue forever.
+func TestClaimAnyArchMatrix(t *testing.T) {
+	tests := []struct {
+		name    string
+		pkgArch string
+		wkArch  string
+		want    bool // whether the queued task must be claimable
+	}{
+		{name: "any package by x86_64 worker", pkgArch: "any", wkArch: "x86_64", want: true},
+		{name: "any package by aarch64 worker", pkgArch: "any", wkArch: "aarch64", want: true},
+		{name: "any package by riscv64 worker", pkgArch: "any", wkArch: "riscv64", want: true},
+		{name: "any package by any worker", pkgArch: "any", wkArch: "any", want: true},
+		{name: "x86_64 package by any worker", pkgArch: "x86_64", wkArch: "any", want: true},
+		{name: "multi package by any worker", pkgArch: "aarch64|x86_64", wkArch: "any", want: true},
+		{name: "x86_64 package by x86_64 worker", pkgArch: "x86_64", wkArch: "x86_64", want: true},
+		{name: "x86_64 package by aarch64 worker", pkgArch: "x86_64", wkArch: "aarch64", want: false},
+		// Legacy single-value rows (pre-multi-arch storage) stay claimable.
+		{name: "legacy aarch64 row by aarch64 worker", pkgArch: "aarch64", wkArch: "aarch64", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestStore(t)
+			pkg := seedPackage(t, s, Package{Pkgbase: "p", Branch: "main", Arch: tt.pkgArch, Enabled: true})
+			createTask(t, s, "p-1", "queued", pkg, at(0))
+			w := registerWorkerArch(t, s, "w", tt.wkArch, 1)
+
+			task, err := s.ClaimTask(testCtx, w.ID, 1, "tok")
+			if tt.want {
+				if err != nil {
+					t.Fatalf("claim = %v, want a claimed task", err)
+				}
+				if task == nil || task.ID != "p-1" {
+					t.Fatalf("claimed %+v, want p-1", task)
+				}
+			} else if !errors.Is(err, ErrNoTask) {
+				t.Fatalf("claim = %v, want ErrNoTask", err)
+			}
+		})
+	}
+}
+
+// TestClaimMultiArch asserts every element of a package's declared arch
+// set is matched at claim time: a worker matches when its architecture is
+// any element, and a set sharing no element with the worker is filtered.
+// The old code stored and matched only the first element.
+func TestClaimMultiArch(t *testing.T) {
+	s := newTestStore(t)
+	multi := seedPackage(t, s, Package{Pkgbase: "multi", Branch: "main", Arch: "aarch64|x86_64", Enabled: true})
+	createTask(t, s, "multi-1", "queued", multi, at(time.Second))
+	armOnly := seedPackage(t, s, Package{Pkgbase: "arm", Branch: "main", Arch: "aarch64|riscv64", Enabled: true})
+	createTask(t, s, "arm-1", "queued", armOnly, at(2*time.Second))
+
+	// x86_64 worker: matches multi (second element), filters arm-only.
+	xw := registerWorkerArch(t, s, "xw", "x86_64", 1)
+	task, err := s.ClaimTask(testCtx, xw.ID, 1, "tok")
+	if err != nil {
+		t.Fatalf("x86_64 worker claim: %v", err)
+	}
+	if task.ID != "multi-1" {
+		t.Fatalf("x86_64 worker got %q, want multi-1", task.ID)
+	}
+	if _, err := s.ClaimTask(testCtx, xw.ID, 1, "tok2"); !errors.Is(err, ErrNoTask) {
+		t.Fatalf("x86_64 worker second claim = %v, want ErrNoTask (arm-1 filtered)", err)
+	}
+
+	// aarch64 worker: matches arm-1 (first element).
+	aw := registerWorkerArch(t, s, "aw", "aarch64", 1)
+	task, err = s.ClaimTask(testCtx, aw.ID, 1, "tok3")
+	if err != nil {
+		t.Fatalf("aarch64 worker claim: %v", err)
+	}
+	if task.ID != "arm-1" {
+		t.Fatalf("aarch64 worker got %q, want arm-1", task.ID)
+	}
+}
+
 // TestClaimUnknownWorker asserts ErrNotFound for an unregistered worker.
 func TestClaimUnknownWorker(t *testing.T) {
 	s := newTestStore(t)

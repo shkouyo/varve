@@ -131,6 +131,32 @@ func (s *Store) ListWorkers(ctx context.Context) ([]Worker, error) {
 	return out, nil
 }
 
+// DistinctWorkerArches returns the distinct architectures of all
+// registered workers regardless of status. Registration alone — not
+// current online state — is what makes an architecture buildable, so
+// offline and disabled workers still contribute to the supported set used
+// by the enqueue gate.
+func (s *Store) DistinctWorkerArches(ctx context.Context) ([]string, error) {
+	rows, err := s.read.QueryContext(ctx,
+		`SELECT DISTINCT arch FROM workers WHERE arch <> ''`)
+	if err != nil {
+		return nil, fmt.Errorf("db: distinct worker arches: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, fmt.Errorf("db: scan worker arch: %w", err)
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("db: distinct worker arches: %w", err)
+	}
+	return out, nil
+}
+
 // DeleteWorker removes a worker by name without cascading. ErrNotFound
 // when the worker is not registered. A worker referenced by builds or
 // tasks rows fails with a foreign-key error (dispatch pre-checks active

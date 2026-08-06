@@ -403,6 +403,60 @@ func assertChangeCount(t *testing.T, sink *fakeSink, want int) []Change {
 	return got
 }
 
+// TestPollOnceMultiArch asserts that every declared .SRCINFO architecture
+// is carried into the submitted change — the old archOf picked only the
+// first element, losing the rest before they reached storage and matching.
+func TestPollOnceMultiArch(t *testing.T) {
+	body := "pkgbase = foo\n" +
+		"\tpkgdesc = test package\n" +
+		"\tpkgver = 1.0\n" +
+		"\tpkgrel = 1\n" +
+		"\tarch = x86_64\n" +
+		"\tarch = aarch64\n" +
+		"pkgname = foo\n"
+	src := newSourceRepo(t, "foo", map[string]string{".SRCINFO": body})
+	store, _ := openStore(t)
+	sink := &fakeSink{}
+	d := newTestDetector(t, "file://"+src, store, sink)
+
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	changes := assertChangeCount(t, sink, 1)
+	if changes[0].Package.Arch != "aarch64|x86_64" {
+		t.Errorf("change arch = %q, want %q (every declared arch preserved)",
+			changes[0].Package.Arch, "aarch64|x86_64")
+	}
+}
+
+// TestArchSet canonically normalizes the declared .SRCINFO architecture
+// list into the packages.arch storage format: "any" dominates, the rest is
+// deduplicated, sorted and joined with "|" so matching covers every
+// element. An empty declaration keeps the x86_64 baseline default.
+func TestArchSet(t *testing.T) {
+	tests := []struct {
+		name string
+		arch []string
+		want string
+	}{
+		{name: "single", arch: []string{"x86_64"}, want: "x86_64"},
+		{name: "multi preserved in full", arch: []string{"x86_64", "aarch64"}, want: "aarch64|x86_64"},
+		{name: "multi order-insensitive", arch: []string{"aarch64", "x86_64"}, want: "aarch64|x86_64"},
+		{name: "any alone", arch: []string{"any"}, want: "any"},
+		{name: "any dominates a set", arch: []string{"x86_64", "any"}, want: "any"},
+		{name: "duplicates deduplicated", arch: []string{"x86_64", "x86_64"}, want: "x86_64"},
+		{name: "blank entries skipped", arch: []string{"", "x86_64"}, want: "x86_64"},
+		{name: "empty defaults to baseline", arch: nil, want: "x86_64"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := archSet(tt.arch); got != tt.want {
+				t.Errorf("archSet(%v) = %q, want %q", tt.arch, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPlanBranchSrcinfoPath is the regression guard for the leading-dot
 // bug: planBranch must read the dotted ".SRCINFO" from the branch tree
 // (git show <branch>:.SRCINFO), so a branch carrying .SRCINFO is planned

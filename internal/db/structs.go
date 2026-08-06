@@ -38,13 +38,16 @@ var (
 	ErrConflict = errors.New("db: conflict")
 )
 
-// Package mirrors one packages row.
+// Package mirrors one packages row. Arch is the canonical architecture
+// set: "any" for architecture-independent packages, otherwise every
+// declared architecture joined with "|" (e.g. "aarch64|x86_64"). Claim
+// matching treats any element as a match.
 type Package struct {
 	ID              int64
 	Pkgbase         string
 	Branch          string
 	VCSKind         string
-	Arch            string
+	Arch            string // "any" or "|"-joined architecture set
 	Enabled         bool
 	CurrentVersion  string
 	Pkgdesc         string

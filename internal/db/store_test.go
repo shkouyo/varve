@@ -127,11 +127,17 @@ func createTask(t *testing.T, s *Store, id, state string, pkg Package, at time.T
 // registerWorker registers a worker and returns it with its ID filled.
 func registerWorker(t *testing.T, s *Store, name string, capacity int) *Worker {
 	t.Helper()
+	return registerWorkerArch(t, s, name, "x86_64", capacity)
+}
+
+// registerWorkerArch registers a worker with an explicit architecture.
+func registerWorkerArch(t *testing.T, s *Store, name, arch string, capacity int) *Worker {
+	t.Helper()
 	w := &Worker{
 		Name:     name,
 		Role:     "agent",
 		Mode:     "pool",
-		Arch:     "x86_64",
+		Arch:     arch,
 		Capacity: capacity,
 		Status:   "online",
 		Version:  "test",

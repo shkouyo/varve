@@ -62,6 +62,10 @@ var (
 	// ErrConflict reports a state or name conflict (duplicate result,
 	// offset mismatch, cancellation late report, worker with active tasks).
 	ErrConflict = errors.New("dispatch: conflict")
+	// ErrArchUnsupported reports a change whose declared architectures
+	// have no intersection with the architectures the deployment can
+	// build; the package is skipped instead of queuing forever.
+	ErrArchUnsupported = errors.New("dispatch: unsupported architecture")
 )
 
 // OffsetError wraps ErrConflict with the current server-side offset so
