@@ -60,7 +60,7 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	b, err := s.store.GetBuild(ctx, id)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			s.renderError(w, http.StatusNotFound, "Build not found: "+strconv.FormatInt(id, 10))
+			s.renderError(w, http.StatusNotFound, "Build not found: "+id)
 			return
 		}
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the build.")
@@ -68,27 +68,28 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := buildData{
-		base:        s.page("Build #"+strconv.FormatInt(id, 10), nil),
+		base:        s.page("Build #"+id, nil),
 		Build:       *b,
-		BuildID:     strconv.FormatInt(id, 10),
-		LogURL:      "/builds/" + strconv.FormatInt(id, 10) + "/log",
+		BuildID:     id,
+		LogURL:      "/builds/" + id + "/log",
 		SampleCount: len(b.ResourceUsage),
 	}
 
-	// Executing machine name (builds.worker_id joins workers.name) and
-	// the package name for context.
+	// Executing machine name (builds.worker_name in plain text, with the
+	// workers table as a fallback for rows recorded before the column was
+	// populated) and the package name for context.
 	if p, err := s.store.GetPackageByID(ctx, b.PackageID); err == nil {
 		data.Pkgbase = p.Pkgbase
 	}
-	if b.WorkerID > 0 {
+	data.WorkerName = b.WorkerName
+	if data.WorkerName == "" && b.WorkerID > 0 {
 		if w, err := s.store.GetWorkerByID(ctx, b.WorkerID); err == nil {
 			data.WorkerName = w.Name
 		}
 	}
-
 	// Log history from the log store (the live stream lives on the log
 	// page).
-	if logData, err := s.logs.ReadLog(ctx, strconv.FormatInt(id, 10)); err == nil && len(logData) > 0 {
+	if logData, err := s.logs.ReadLog(ctx, id); err == nil && len(logData) > 0 {
 		data.Log = string(logData)
 		data.HasLog = true
 	}

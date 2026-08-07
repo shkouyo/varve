@@ -290,7 +290,7 @@ func seedActiveBuild(t *testing.T, s *db.Store, pkg db.Package, state string) db
 
 // setPackageBuild records the outcome of a build on the package row
 // (version, description, last_build_id) through the public tx path.
-func setPackageBuild(t *testing.T, s *db.Store, pkgbase string, buildID int64) {
+func setPackageBuild(t *testing.T, s *db.Store, pkgbase string, buildID string) {
 	t.Helper()
 	err := s.WithTx(testCtx, func(tx *db.Tx) error {
 		return tx.UpdatePackageAfterBuild(testCtx, pkgbase, "1.2.3-1", "A demo package",

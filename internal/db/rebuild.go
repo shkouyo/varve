@@ -43,7 +43,8 @@ type RebuildPackage struct {
 	Maintainers     []string
 
 	// Build metadata of the single (latest) build row to create.
-	WorkerID    int64 // 0 = unknown worker (builds.worker_id NULL)
+	WorkerID    int64  // 0 = unknown worker (builds.worker_id NULL)
+	WorkerName  string // plain-text executing machine name (builds.worker_name)
 	Commit      string
 	UpstreamRef string
 	SrcinfoHash string
@@ -137,10 +138,10 @@ func (s *Store) insertRebuiltPackage(ctx context.Context, tx *sql.Tx, p *Rebuild
 // a successful ingest) and the log path is the conventional
 // "logs/<build-id>.log"; the new id cannot point at the old on-disk log,
 // which is an accepted consequence of the rebuild.
-func (s *Store) insertRebuiltBuild(ctx context.Context, tx *sql.Tx, p *RebuildPackage, packageID int64) (int64, error) {
+func (s *Store) insertRebuiltBuild(ctx context.Context, tx *sql.Tx, p *RebuildPackage, packageID int64) (string, error) {
 	artifacts, err := encodeJSON(p.Artifacts)
 	if err != nil {
-		return 0, fmt.Errorf("db: rebuild index: encode artifacts for package %q: %w", p.Pkgbase, err)
+		return "", fmt.Errorf("db: rebuild index: encode artifacts for package %q: %w", p.Pkgbase, err)
 	}
 	var finishedAt any
 	if !p.BuiltAt.IsZero() {
@@ -150,23 +151,22 @@ func (s *Store) insertRebuiltBuild(ctx context.Context, tx *sql.Tx, p *RebuildPa
 	if p.WorkerID != 0 {
 		workerID = p.WorkerID
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO builds
-		(package_id, branch, "commit", upstream_ref, srcinfo_hash, status,
-		 worker_id, log_path, started_at, finished_at, error, artifacts, resource_usage)
-		VALUES (?, ?, ?, ?, ?, 'succeeded', ?, '', NULL, ?, '', ?, '[]')`,
-		packageID, p.Branch, p.Commit, p.UpstreamRef, p.SrcinfoHash,
-		workerID, finishedAt, artifacts)
+	id, err := newBuildID(ctx, tx)
 	if err != nil {
-		return 0, fmt.Errorf("db: rebuild index: insert build for package %q: %w", p.Pkgbase, err)
+		return "", fmt.Errorf("db: rebuild index: build id for package %q: %w", p.Pkgbase, err)
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("db: rebuild index: build id for package %q: %w", p.Pkgbase, err)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO builds
+		(id, seq, package_id, branch, "commit", upstream_ref, srcinfo_hash, status,
+		 worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage)
+		VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM builds), ?, ?, ?, ?, ?, 'succeeded', ?, ?, '', NULL, ?, '', ?, '[]')`,
+		id, packageID, p.Branch, p.Commit, p.UpstreamRef, p.SrcinfoHash,
+		workerID, p.WorkerName, finishedAt, artifacts); err != nil {
+		return "", fmt.Errorf("db: rebuild index: insert build for package %q: %w", p.Pkgbase, err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE builds SET log_path = ? WHERE id = ?`,
-		fmt.Sprintf("logs/%d.log", id), id); err != nil {
-		return 0, fmt.Errorf("db: rebuild index: set log path for package %q: %w", p.Pkgbase, err)
+		fmt.Sprintf("logs/%s.log", id), id); err != nil {
+		return "", fmt.Errorf("db: rebuild index: set log path for package %q: %w", p.Pkgbase, err)
 	}
 	return id, nil
 }

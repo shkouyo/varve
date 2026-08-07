@@ -22,9 +22,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
-const packageColumns = `id, pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, COALESCE(last_build_id, 0), maintainers`
+const packageColumns = `id, pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
 
 // GetPackageByBase returns one package by its pkgbase with maintainers
 // decoded. ErrNotFound when the package does not exist.
@@ -53,8 +54,9 @@ func (s *Store) ListPackages(ctx context.Context, q string, page, perPage int) (
 	where := ""
 	var args []any
 	if q != "" {
-		where = ` WHERE pkgbase LIKE ? OR pkgdesc LIKE ?`
-		args = append(args, "%"+q+"%", "%"+q+"%")
+		where = ` WHERE pkgbase LIKE ? ESCAPE '\' OR pkgdesc LIKE ? ESCAPE '\'`
+		pattern := "%" + escapeLike(q) + "%"
+		args = append(args, pattern, pattern)
 	}
 	var total int
 	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM packages`+where, args...).Scan(&total); err != nil {
@@ -133,7 +135,7 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 // UpdatePackageAfterBuild records the outcome of a successful build on the
 // package row. It is only valid inside WithTx. ErrNotFound when pkgbase is
 // unknown.
-func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase, currentVersion, pkgdesc, srcinfoHash, upstreamRef string, buildID int64) error {
+func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase, currentVersion, pkgdesc, srcinfoHash, upstreamRef string, buildID string) error {
 	res, err := t.tx.ExecContext(ctx, `UPDATE packages SET
 		current_version = ?, pkgdesc = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?
 		WHERE pkgbase = ?`,
@@ -147,18 +149,32 @@ func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase, currentVersio
 // scanPackage decodes one packages row.
 func scanPackage(rs rowScanner) (*Package, error) {
 	var p Package
-	var enabled, lastBuildID int64
+	var enabled int64
 	var maintainers string
+	var lastFailedAt sql.NullString
 	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch, &enabled,
-		&p.CurrentVersion, &p.Pkgdesc, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastBuildID, &maintainers); err != nil {
+		&p.CurrentVersion, &p.Pkgdesc, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID, &maintainers); err != nil {
 		return nil, err
 	}
 	p.Enabled = enabled != 0
-	p.LastBuildID = lastBuildID
+	if lastFailedAt.Valid {
+		at, err := parseTime(lastFailedAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("db: decode last_failed_at for package %q: %w", p.Pkgbase, err)
+		}
+		p.LastFailedAt = &at
+	}
 	ms, err := decodeStrings(maintainers)
 	if err != nil {
 		return nil, fmt.Errorf("db: decode maintainers for package %q: %w", p.Pkgbase, err)
 	}
 	p.Maintainers = ms
 	return &p, nil
+}
+
+// escapeLike escapes the LIKE metacharacters of a user-supplied search
+// term so the query matches them literally instead of as wildcards.
+func escapeLike(q string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+	return replacer.Replace(q)
 }

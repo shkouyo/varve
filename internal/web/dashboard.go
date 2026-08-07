@@ -65,14 +65,25 @@ func statusCounts(by map[string]int) []statusCount {
 }
 
 // recentBuildView is one recent build row with the executing node name
-// resolved (builds.worker_id joins workers.name).
+// (builds.worker_name in plain text, with the workers table as a
+// fallback for rows recorded before the column was populated).
 type recentBuildView struct {
-	ID         int64
+	ID         string
 	Pkgbase    string
 	Status     string
 	WorkerName string
 	StartedAt  string
 	FinishedAt string
+}
+
+// workerNameOf resolves the display name of the machine behind a build:
+// the plain-text worker_name column wins, the workers table is the
+// fallback for rows that predate it.
+func workerNameOf(b db.Build, byID map[int64]string) string {
+	if b.WorkerName != "" {
+		return b.WorkerName
+	}
+	return byID[b.WorkerID]
 }
 
 // workerView is one worker row of the online overview. Performance
@@ -133,7 +144,7 @@ func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, worker
 		view := recentBuildView{
 			ID:         b.ID,
 			Status:     b.Status,
-			WorkerName: workerNames[b.WorkerID],
+			WorkerName: workerNameOf(b, workerNames),
 			StartedAt:  formatWhen(b.StartedAt, now),
 			FinishedAt: formatWhen(b.FinishedAt, now),
 		}

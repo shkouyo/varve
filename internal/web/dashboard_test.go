@@ -79,7 +79,7 @@ func TestRecentBuildViews(t *testing.T) {
 	store := newTestDB(t)
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
 	workers := []db.Worker{{ID: 7, Name: "proud-heron-7"}}
-	builds := []db.Build{{ID: 1, PackageID: 0, WorkerID: 7, Status: "failed"}}
+	builds := []db.Build{{ID: "0000000000000001", PackageID: 0, WorkerID: 7, Status: "failed"}}
 
 	views := s.recentBuildViews(context.Background(), builds, workers)
 	if len(views) != 1 {

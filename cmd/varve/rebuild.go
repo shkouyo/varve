@@ -237,6 +237,7 @@ func toRebuildPackage(sc *repo.Sidecar, old db.Package, workerID map[string]int6
 		LastSrcinfoHash: sc.Build.SrcinfoHash,
 		LastUpstreamRef: sc.Build.UpstreamRef,
 		WorkerID:        workerID[sc.Build.Worker],
+		WorkerName:      sc.Build.Worker,
 		Commit:          sc.Build.Commit,
 		UpstreamRef:     sc.Build.UpstreamRef,
 		SrcinfoHash:     sc.Build.SrcinfoHash,

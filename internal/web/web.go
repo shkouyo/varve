@@ -181,13 +181,23 @@ func (s *Server) renderError(w http.ResponseWriter, status int, message string) 
 	}
 }
 
-// parseID parses a route path value as a positive build id.
-func parseID(raw string) (int64, bool) {
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || id < 1 {
-		return 0, false
+// buildIDLen is the fixed width of a build id (16 lowercase hex
+// characters), mirroring the store's id generator.
+const buildIDLen = 16
+
+// parseID validates a route path value as a build id: exactly 16
+// lowercase hex characters, the fixed shape the store generates.
+func parseID(raw string) (string, bool) {
+	if len(raw) != buildIDLen {
+		return "", false
 	}
-	return id, true
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
+			return "", false
+		}
+	}
+	return raw, true
 }
 
 // parsePage parses a ?page= query value, defaulting to 1.

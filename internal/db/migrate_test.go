@@ -72,8 +72,8 @@ func TestMigrateFresh(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 1 || versions[0] != 1 {
-		t.Errorf("schema_migrations = %v, want [1]", versions)
+	if len(versions) != 2 || versions[0] != 1 || versions[1] != 2 {
+		t.Errorf("schema_migrations = %v, want [1 2]", versions)
 	}
 
 	// WAL journal mode.
@@ -115,8 +115,8 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := s2.read.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("schema_migrations count = %d after reopen, want 1", n)
+	if n != 2 {
+		t.Errorf("schema_migrations count = %d after reopen, want 2", n)
 	}
 }
 
@@ -144,8 +144,8 @@ func TestMigrateFromFixture(t *testing.T) {
 	}
 	defer s2.Close()
 
-	// Migration 1 was already applied and must not run again; the store is
-	// usable and the ledger unchanged.
+	// Migrations 1 and 2 were already applied and must not run again; the
+	// store is usable and the ledger unchanged.
 	pkg := mustSeedPackage(t, s2, "pkg-fixture")
 	createTask(t, s2, "fixture-task", "queued", pkg, at(0))
 	var versions []int
@@ -161,8 +161,8 @@ func TestMigrateFromFixture(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 2 || versions[0] != 1 || versions[1] != 999 {
-		t.Errorf("schema_migrations = %v, want [1 999]", versions)
+	if len(versions) != 3 || versions[0] != 1 || versions[1] != 2 || versions[2] != 999 {
+		t.Errorf("schema_migrations = %v, want [1 2 999]", versions)
 	}
 }
 

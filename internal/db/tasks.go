@@ -30,12 +30,13 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-const taskColumns = `id, package_id, build_id, state, COALESCE(worker_id, 0), assigned_at, created_at, last_progress_at, attempts, claim_token, cancel_requested`
+const taskColumns = `id, package_id, build_id, state, COALESCE(worker_id, 0), assigned_at, created_at, last_progress_at, attempts, claim_token, cancel_requested, fail_count`
 
 // CreateTask inserts a task and its mirrored build row in one transaction
-// and fills b.ID plus b.LogPath ("logs/<id>.log"). The build's status
-// mirrors the task state. ErrConflict when the package already has an
-// active (queued/assigned/running) task or the task id is a duplicate.
+// and fills b.ID (a fresh 16-hex hash), b.LogPath ("logs/<id>.log") and
+// t.BuildID. The build's status mirrors the task state. ErrConflict when
+// the package already has an active (queued/assigned/running) task or the
+// task id is a duplicate.
 func (s *Store) CreateTask(ctx context.Context, t *Task, b *Build) error {
 	if t == nil || b == nil {
 		return errors.New("db: CreateTask requires a task and a build")
@@ -52,25 +53,24 @@ func (s *Store) CreateTask(ctx context.Context, t *Task, b *Build) error {
 	b.PackageID = t.PackageID
 	b.Status = t.State // builds.status mirrors the task state
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `INSERT INTO builds
-			(package_id, branch, "commit", upstream_ref, srcinfo_hash, status, worker_id, log_path, started_at, finished_at, error, artifacts, resource_usage)
-			VALUES (?, ?, ?, ?, ?, ?, NULL, '', NULL, NULL, '', '[]', '[]')`,
-			b.PackageID, b.Branch, b.Commit, b.UpstreamRef, b.SrcinfoHash, b.Status)
-		if err != nil {
-			return err
-		}
-		id, err := res.LastInsertId()
+		id, err := newBuildID(ctx, tx)
 		if err != nil {
 			return err
 		}
 		b.ID = id
+		if _, err := tx.ExecContext(ctx, `INSERT INTO builds
+			(id, seq, package_id, branch, "commit", upstream_ref, srcinfo_hash, status, worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage)
+			VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM builds), ?, ?, ?, ?, ?, ?, NULL, '', '', NULL, NULL, '', '[]', '[]')`,
+			b.ID, b.PackageID, b.Branch, b.Commit, b.UpstreamRef, b.SrcinfoHash, b.Status); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks
-			(id, package_id, build_id, state, worker_id, assigned_at, created_at, last_progress_at, attempts, claim_token, cancel_requested)
-			VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 0, '', 0)`,
+			(id, package_id, build_id, state, worker_id, assigned_at, created_at, last_progress_at, attempts, claim_token, cancel_requested, fail_count)
+			VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 0, '', 0, 0)`,
 			t.ID, t.PackageID, b.ID, t.State, formatTime(t.CreatedAt), formatTime(t.LastProgressAt)); err != nil {
 			return err
 		}
-		logPath := fmt.Sprintf("logs/%d.log", b.ID)
+		logPath := fmt.Sprintf("logs/%s.log", b.ID)
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE builds SET log_path = ? WHERE id = ?`, logPath, b.ID); err != nil {
 			return err
@@ -133,7 +133,7 @@ func (s *Store) RequeueTask(ctx context.Context, id string) error {
 			return ErrConflict
 		}
 		_, err = tx.ExecContext(ctx,
-			`UPDATE builds SET status = 'queued', started_at = NULL WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
+			`UPDATE builds SET status = 'queued', started_at = NULL, worker_id = NULL, worker_name = '' WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
 			id)
 		return err
 	})
@@ -227,7 +227,7 @@ func (s *Store) TouchTaskProgress(ctx context.Context, id string, at time.Time) 
 // AppendResourceSamples merges samples into the build's resource_usage
 // JSON, keeping one sample per timestamp and sorting by time. ErrNotFound
 // when the build does not exist.
-func (s *Store) AppendResourceSamples(ctx context.Context, buildID int64, samples []Sample) error {
+func (s *Store) AppendResourceSamples(ctx context.Context, buildID string, samples []Sample) error {
 	if len(samples) == 0 {
 		return nil
 	}
@@ -243,7 +243,7 @@ func (s *Store) AppendResourceSamples(ctx context.Context, buildID int64, sample
 		}
 		existing, err := decodeSamples(raw)
 		if err != nil {
-			return fmt.Errorf("db: decode resource_usage for build %d: %w", buildID, err)
+			return fmt.Errorf("db: decode resource_usage for build %s: %w", buildID, err)
 		}
 		merged := mergeSamples(existing, samples)
 		if reflect.DeepEqual(existing, merged) {
@@ -261,7 +261,7 @@ func (s *Store) AppendResourceSamples(ctx context.Context, buildID int64, sample
 		if errors.Is(err, ErrNotFound) {
 			return err
 		}
-		return fmt.Errorf("db: append resource samples to build %d: %w", buildID, err)
+		return fmt.Errorf("db: append resource samples to build %s: %w", buildID, err)
 	}
 	return nil
 }
@@ -296,7 +296,7 @@ func scanTask(rs rowScanner) (*Task, error) {
 	var cancelRequested int64
 	var createdAt, lastProgressAt string
 	if err := rs.Scan(&t.ID, &t.PackageID, &t.BuildID, &t.State, &t.WorkerID, &assignedAt,
-		&createdAt, &lastProgressAt, &t.Attempts, &t.ClaimToken, &cancelRequested); err != nil {
+		&createdAt, &lastProgressAt, &t.Attempts, &t.ClaimToken, &cancelRequested, &t.FailCount); err != nil {
 		return nil, err
 	}
 	t.CancelRequested = cancelRequested != 0

@@ -153,7 +153,7 @@ func (o *OrchestratorImpl) failTask(ctx context.Context, task *db.Task, stage, s
 	}
 	build, berr := o.store.GetBuild(ctx, task.BuildID)
 	if berr != nil {
-		log.Printf("dispatch: read build %d for notification: %v", task.BuildID, berr)
+		log.Printf("dispatch: read build %s for notification: %v", task.BuildID, berr)
 		return
 	}
 	o.notifyFailure(ctx, task, build, stage, summary)
@@ -178,7 +178,7 @@ func (o *OrchestratorImpl) handleFailed(ctx context.Context, task *db.Task, res 
 	if berr == nil {
 		o.notifyFailure(ctx, task, build, stage, summary)
 	} else {
-		log.Printf("dispatch: read build %d for notification: %v", task.BuildID, berr)
+		log.Printf("dispatch: read build %s for notification: %v", task.BuildID, berr)
 	}
 	o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
 	o.clearSigner(task.ID)
@@ -291,10 +291,10 @@ func (o *OrchestratorImpl) writeStaged(ctx context.Context, taskID, name, dst st
 // finalSamples merges the samples accumulated through heartbeats and log
 // progress with the result report's list so FinalizeTask never clobbers
 // the streaming channel.
-func (o *OrchestratorImpl) finalSamples(ctx context.Context, buildID int64, reported []db.Sample) []db.Sample {
+func (o *OrchestratorImpl) finalSamples(ctx context.Context, buildID string, reported []db.Sample) []db.Sample {
 	build, err := o.store.GetBuild(ctx, buildID)
 	if err != nil {
-		log.Printf("dispatch: read build %d samples: %v", buildID, err)
+		log.Printf("dispatch: read build %s samples: %v", buildID, err)
 		return reported
 	}
 	return mergeSamples(build.ResourceUsage, reported)

@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
@@ -78,7 +77,7 @@ func (o *OrchestratorImpl) AppendLog(ctx context.Context, taskID, token string, 
 		}
 		return nil, err
 	}
-	buildID := strconv.FormatInt(task.BuildID, 10)
+	buildID := task.BuildID
 	size, err := o.logs.Size(buildID)
 	if err != nil {
 		if !errors.Is(err, ErrNotFound) {

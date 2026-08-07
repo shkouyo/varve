@@ -24,7 +24,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"git.0x0f.dev/varve/internal/db"
@@ -142,7 +141,7 @@ func (o *OrchestratorImpl) finalizeFailed(ctx context.Context, t *db.Task, stage
 	}
 	build, err := o.store.GetBuild(ctx, t.BuildID)
 	if err != nil {
-		log.Printf("dispatch: read build %d for notification: %v", t.BuildID, err)
+		log.Printf("dispatch: read build %s for notification: %v", t.BuildID, err)
 		return
 	}
 	o.notifyFailure(ctx, t, build, stage, summary)
@@ -181,8 +180,8 @@ func (o *OrchestratorImpl) sweepLogs(ctx context.Context) {
 		tooOld := now.Sub(*b.FinishedAt) > o.cfg.Logs.Retention
 		tooMany := kept > o.cfg.Logs.MaxBuilds
 		if tooOld || tooMany {
-			if err := o.logs.Delete(strconv.FormatInt(b.ID, 10)); err != nil {
-				log.Printf("dispatch: log sweep: delete build %d: %v", b.ID, err)
+			if err := o.logs.Delete(b.ID); err != nil {
+				log.Printf("dispatch: log sweep: delete build %s: %v", b.ID, err)
 			}
 		}
 	}

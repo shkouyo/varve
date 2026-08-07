@@ -41,9 +41,9 @@ func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, tok
 	}
 	var claimed *Task
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
-		var arch string
+		var arch, name string
 		if err := tx.QueryRowContext(ctx,
-			`SELECT arch FROM workers WHERE id = ?`, workerID).Scan(&arch); err != nil {
+			`SELECT arch, name FROM workers WHERE id = ?`, workerID).Scan(&arch, &name); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("%w: worker %d", ErrNotFound, workerID)
 			}
@@ -88,8 +88,8 @@ func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, tok
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE builds SET status = 'assigned' WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
-			id); err != nil {
+			`UPDATE builds SET status = 'assigned', worker_id = ?, worker_name = ? WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
+			workerID, name, id); err != nil {
 			return err
 		}
 		task, err := scanTask(tx.QueryRowContext(ctx,

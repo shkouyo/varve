@@ -40,7 +40,7 @@ func TestBuildDetailRenders(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /builds/%d = %d, want 200", build.ID, rec.Code)
+		t.Fatalf("GET /builds/%s = %d, want 200", build.ID, rec.Code)
 	}
 	body := rec.Body.String()
 	mustContain(t, body,
@@ -72,9 +72,9 @@ func TestBuildDetailMachineName(t *testing.T) {
 // TestBuildNotFound asserts a missing build renders the 404 error page.
 func TestBuildNotFound(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
-	rec := get(t, s, http.MethodGet, "/builds/99999", nil)
+	rec := get(t, s, http.MethodGet, "/builds/ffffffffffffffff", nil)
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("GET /builds/99999 = %d, want 404", rec.Code)
+		t.Fatalf("GET /builds/ffffffffffffffff = %d, want 404", rec.Code)
 	}
 	mustContain(t, rec.Body.String(), "Not Found", "Build not found")
 }

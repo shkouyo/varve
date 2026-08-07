@@ -18,8 +18,10 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"git.0x0f.dev/varve/internal/dispatch"
@@ -123,17 +125,17 @@ func TestTemplateSetCompiles(t *testing.T) {
 	}
 }
 
-// itoa formats an int64 without strconv noise in tests.
-func itoa(n int64) string {
-	if n == 0 {
-		return "0"
+// itoa renders an id without strconv noise in tests: integers are
+// formatted as decimals, strings are passed through unchanged (build ids
+// became hash strings).
+func itoa(n any) string {
+	switch v := n.(type) {
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int:
+		return strconv.Itoa(v)
+	case string:
+		return v
 	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
+	return fmt.Sprint(n)
 }

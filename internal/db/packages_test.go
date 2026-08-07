@@ -188,7 +188,7 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 	mustSeedPackage(t, s, "upd")
 
 	err := s.WithTx(testCtx, func(tx *Tx) error {
-		return tx.UpdatePackageAfterBuild(testCtx, "upd", "2.0.0-1", "new desc", "hash2", "ref2", 42)
+		return tx.UpdatePackageAfterBuild(testCtx, "upd", "2.0.0-1", "new desc", "hash2", "ref2", "000000000000002a")
 	})
 	if err != nil {
 		t.Fatalf("UpdatePackageAfterBuild: %v", err)
@@ -198,13 +198,13 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 		t.Fatalf("GetPackageByBase: %v", err)
 	}
 	if got.CurrentVersion != "2.0.0-1" || got.Pkgdesc != "new desc" ||
-		got.LastSrcinfoHash != "hash2" || got.LastUpstreamRef != "ref2" || got.LastBuildID != 42 {
+		got.LastSrcinfoHash != "hash2" || got.LastUpstreamRef != "ref2" || got.LastBuildID != "000000000000002a" {
 		t.Errorf("updated fields mismatch: %+v", got)
 	}
 
 	// Unknown pkgbase -> ErrNotFound (transaction still commits cleanly).
 	err = s.WithTx(testCtx, func(tx *Tx) error {
-		return tx.UpdatePackageAfterBuild(testCtx, "nope", "1", "d", "h", "r", 1)
+		return tx.UpdatePackageAfterBuild(testCtx, "nope", "1", "d", "h", "r", "0000000000000001")
 	})
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdatePackageAfterBuild(missing) = %v, want ErrNotFound", err)

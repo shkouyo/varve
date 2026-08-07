@@ -19,6 +19,7 @@ package db
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -30,7 +31,7 @@ func TestGetBuild(t *testing.T) {
 	pkg := mustSeedPackage(t, s, "bld")
 	// Create the task already assigned so MarkRunning can advance it.
 	_, b := createTask(t, s, "bld-task", "assigned", pkg, at(0))
-	if b.ID == 0 {
+	if b.ID == "" {
 		t.Fatal("CreateTask did not fill build ID")
 	}
 
@@ -67,8 +68,8 @@ func TestGetBuild(t *testing.T) {
 	if got.FinishedAt == nil || !got.FinishedAt.Equal(finished) {
 		t.Errorf("FinishedAt = %v, want %v", got.FinishedAt, finished)
 	}
-	if got.LogPath != "logs/1.log" {
-		t.Errorf("LogPath = %q, want logs/1.log", got.LogPath)
+	if !strings.HasPrefix(got.LogPath, "logs/") || !strings.HasSuffix(got.LogPath, ".log") {
+		t.Errorf("LogPath = %q, want logs/<id>.log", got.LogPath)
 	}
 	if len(got.Artifacts) != 1 || got.Artifacts[0].File != "foo-1.0-1-x86_64.pkg.tar.zst" || got.Artifacts[0].Kind != "package" {
 		t.Errorf("Artifacts = %v", got.Artifacts)
@@ -77,8 +78,8 @@ func TestGetBuild(t *testing.T) {
 		t.Errorf("ResourceUsage = %v", got.ResourceUsage)
 	}
 
-	if _, err := s.GetBuild(testCtx, 9999); !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetBuild(9999) = %v, want ErrNotFound", err)
+	if _, err := s.GetBuild(testCtx, "0000000000000000"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetBuild(unknown) = %v, want ErrNotFound", err)
 	}
 }
 

@@ -76,7 +76,7 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 	// Latest build: prefer the recorded last_build_id, fall back to the
 	// newest history row.
 	var latest *db.Build
-	if pkg.LastBuildID > 0 {
+	if pkg.LastBuildID != "" {
 		if b, err := s.store.GetBuild(ctx, pkg.LastBuildID); err == nil {
 			latest = b
 		}

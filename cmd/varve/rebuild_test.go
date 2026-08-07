@@ -185,11 +185,11 @@ func TestRebuildIndex(t *testing.T) {
 	if len(keepBuild.Artifacts) != 2 || keepBuild.Artifacts[0].Kind != "package" || keepBuild.Artifacts[0].Pkgname != "keep" {
 		t.Errorf("keep build artifacts = %+v", keepBuild.Artifacts)
 	}
-	if keepBuild.LogPath != "logs/"+fmt.Sprintf("%d", keepBuild.ID)+".log" {
+	if keepBuild.LogPath != "logs/"+keepBuild.ID+".log" {
 		t.Errorf("keep build log_path = %q", keepBuild.LogPath)
 	}
 	if keep2.LastBuildID != keepBuild.ID {
-		t.Errorf("keep.last_build_id = %d, want %d", keep2.LastBuildID, keepBuild.ID)
+		t.Errorf("keep.last_build_id = %q, want %q", keep2.LastBuildID, keepBuild.ID)
 	}
 	newBuild, ok := byPackage[newpkg.ID]
 	if !ok {

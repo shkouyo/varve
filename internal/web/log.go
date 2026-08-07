@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -63,14 +62,14 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	build, err := s.store.GetBuild(ctx, id)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			s.renderError(w, http.StatusNotFound, "Build not found: "+strconv.FormatInt(id, 10))
+			s.renderError(w, http.StatusNotFound, "Build not found: "+id)
 			return
 		}
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the build.")
 		return
 	}
 
-	buildID := strconv.FormatInt(build.ID, 10)
+	buildID := build.ID
 	if wantsSSE(r) {
 		s.serveSSE(w, r, buildID)
 		return

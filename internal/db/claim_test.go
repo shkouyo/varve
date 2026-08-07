@@ -237,7 +237,7 @@ func TestClaimMirror(t *testing.T) {
 		t.Errorf("build status = %q, want assigned (mirror)", build.Status)
 	}
 	if claimed.BuildID != b.ID {
-		t.Errorf("claimed.BuildID = %d, want %d", claimed.BuildID, b.ID)
+		t.Errorf("claimed.BuildID = %s, want %s", claimed.BuildID, b.ID)
 	}
 }
 

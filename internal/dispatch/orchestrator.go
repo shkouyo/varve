@@ -38,7 +38,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -354,7 +353,7 @@ func (o *OrchestratorImpl) notifyFailure(ctx context.Context, task *db.Task, bui
 	if len(pkg.Maintainers) == 0 {
 		return
 	}
-	url := strings.TrimRight(o.cfg.Server.WebURL, "/") + "/builds/" + strconv.FormatInt(build.ID, 10)
+	url := strings.TrimRight(o.cfg.Server.WebURL, "/") + "/builds/" + build.ID
 	info := mail.FailureInfo{
 		Pkgbase: pkg.Pkgbase,
 		Branch:  build.Branch,

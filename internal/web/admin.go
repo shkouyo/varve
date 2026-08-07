@@ -21,7 +21,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"git.0x0f.dev/varve/internal/db"
@@ -62,7 +61,7 @@ type adminBuildsData struct {
 // failedBuildView is one failed build row with its package and the
 // recorded error summary.
 type failedBuildView struct {
-	ID        int64
+	ID        string
 	Pkgbase   string
 	Error     string
 	BuildURL  string
@@ -207,7 +206,7 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 				pkgNames[b.PackageID] = name
 			}
 		}
-		id := strconv.FormatInt(b.ID, 10)
+		id := b.ID
 		data.Builds = append(data.Builds, failedBuildView{
 			ID:        b.ID,
 			Pkgbase:   name,

@@ -24,18 +24,18 @@ import (
 	"fmt"
 )
 
-const buildColumns = `id, package_id, branch, "commit", upstream_ref, srcinfo_hash, status, COALESCE(worker_id, 0), log_path, started_at, finished_at, error, artifacts, resource_usage`
+const buildColumns = `id, package_id, branch, "commit", upstream_ref, srcinfo_hash, status, COALESCE(worker_id, 0), worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage`
 
 // GetBuild returns one build by id with artifacts and resource usage
 // decoded. ErrNotFound when the build does not exist.
-func (s *Store) GetBuild(ctx context.Context, id int64) (*Build, error) {
+func (s *Store) GetBuild(ctx context.Context, id string) (*Build, error) {
 	b, err := scanBuild(s.read.QueryRowContext(ctx,
 		`SELECT `+buildColumns+` FROM builds WHERE id = ?`, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("db: get build %d: %w", id, err)
+		return nil, fmt.Errorf("db: get build %s: %w", id, err)
 	}
 	return b, nil
 }
@@ -57,7 +57,7 @@ func (s *Store) ListBuilds(ctx context.Context, page, perPage int, failedOnly bo
 	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM builds`+where).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("db: count builds: %w", err)
 	}
-	query := `SELECT ` + buildColumns + ` FROM builds` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	query := `SELECT ` + buildColumns + ` FROM builds` + where + ` ORDER BY seq DESC LIMIT ? OFFSET ?`
 	rows, err := s.read.QueryContext(ctx, query, perPage, (page-1)*perPage)
 	if err != nil {
 		return nil, 0, fmt.Errorf("db: list builds: %w", err)
@@ -83,32 +83,32 @@ func scanBuild(rs rowScanner) (*Build, error) {
 	var commit, artifacts, resourceUsage string
 	var startedAtNS, finishedAtNS sql.NullString
 	if err := rs.Scan(&b.ID, &b.PackageID, &b.Branch, &commit, &b.UpstreamRef, &b.SrcinfoHash,
-		&b.Status, &b.WorkerID, &b.LogPath, &startedAtNS, &finishedAtNS, &b.Error, &artifacts, &resourceUsage); err != nil {
+		&b.Status, &b.WorkerID, &b.WorkerName, &b.LogPath, &startedAtNS, &finishedAtNS, &b.Error, &artifacts, &resourceUsage); err != nil {
 		return nil, err
 	}
 	b.Commit = commit
 	if startedAtNS.Valid {
 		t, err := parseTime(startedAtNS.String)
 		if err != nil {
-			return nil, fmt.Errorf("db: decode started_at for build %d: %w", b.ID, err)
+			return nil, fmt.Errorf("db: decode started_at for build %s: %w", b.ID, err)
 		}
 		b.StartedAt = &t
 	}
 	if finishedAtNS.Valid {
 		t, err := parseTime(finishedAtNS.String)
 		if err != nil {
-			return nil, fmt.Errorf("db: decode finished_at for build %d: %w", b.ID, err)
+			return nil, fmt.Errorf("db: decode finished_at for build %s: %w", b.ID, err)
 		}
 		b.FinishedAt = &t
 	}
 	arts, err := decodeArtifacts(artifacts)
 	if err != nil {
-		return nil, fmt.Errorf("db: decode artifacts for build %d: %w", b.ID, err)
+		return nil, fmt.Errorf("db: decode artifacts for build %s: %w", b.ID, err)
 	}
 	b.Artifacts = arts
 	samples, err := decodeSamples(resourceUsage)
 	if err != nil {
-		return nil, fmt.Errorf("db: decode resource_usage for build %d: %w", b.ID, err)
+		return nil, fmt.Errorf("db: decode resource_usage for build %s: %w", b.ID, err)
 	}
 	b.ResourceUsage = samples
 	return &b, nil

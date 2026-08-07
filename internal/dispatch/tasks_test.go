@@ -19,7 +19,6 @@ package dispatch
 
 import (
 	"errors"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -116,7 +115,7 @@ func TestAppendLogOffsetSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask: %v", err)
 	}
-	data, err := env.logs.Read(strconv.FormatInt(task.BuildID, 10))
+	data, err := env.logs.Read(task.BuildID)
 	if err != nil {
 		t.Fatalf("logs.Read: %v", err)
 	}

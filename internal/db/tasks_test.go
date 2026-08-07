@@ -19,6 +19,7 @@ package db
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,21 +67,21 @@ func TestCreateTaskFill(t *testing.T) {
 	if err := s.CreateTask(testCtx, task, build); err != nil {
 		t.Fatalf("CreateTask: %v", err)
 	}
-	if build.ID == 0 {
+	if build.ID == "" {
 		t.Error("build.ID not filled")
 	}
-	if build.LogPath != "logs/1.log" {
-		t.Errorf("build.LogPath = %q, want logs/1.log", build.LogPath)
+	if !strings.HasSuffix(build.LogPath, ".log") || !strings.HasPrefix(build.LogPath, "logs/") {
+		t.Errorf("build.LogPath = %q, want logs/<id>.log", build.LogPath)
 	}
 	if task.BuildID != build.ID {
-		t.Errorf("task.BuildID = %d, want %d", task.BuildID, build.ID)
+		t.Errorf("task.BuildID = %s, want %s", task.BuildID, build.ID)
 	}
 
 	b, err := s.GetBuild(testCtx, build.ID)
 	if err != nil {
 		t.Fatalf("GetBuild: %v", err)
 	}
-	if b.Status != "queued" || b.LogPath != "logs/1.log" {
+	if b.Status != "queued" || b.LogPath != "logs/"+build.ID+".log" {
 		t.Errorf("mirrored build = status %q log %q", b.Status, b.LogPath)
 	}
 	// Artifacts/resource_usage default to empty arrays, not null.
@@ -199,7 +200,7 @@ func TestAppendResourceSamples(t *testing.T) {
 		t.Errorf("repeated append grew the list: %d samples", len(build.ResourceUsage))
 	}
 
-	if err := s.AppendResourceSamples(testCtx, 9999, first); !errors.Is(err, ErrNotFound) {
+	if err := s.AppendResourceSamples(testCtx, "0000000000000000", first); !errors.Is(err, ErrNotFound) {
 		t.Errorf("AppendResourceSamples(missing build) = %v, want ErrNotFound", err)
 	}
 }

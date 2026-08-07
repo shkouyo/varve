@@ -22,7 +22,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -118,7 +117,7 @@ func TestStallSecondFails(t *testing.T) {
 	if len(env.not.calls) != 1 || env.not.calls[0].Stage != "stalled" {
 		t.Errorf("notifications = %+v, want one stalled notification", env.not.calls)
 	}
-	if env.not.calls[0].LogURL != "https://varve.example.org/builds/"+strconv.FormatInt(task.BuildID, 10) {
+	if env.not.calls[0].LogURL != "https://varve.example.org/builds/"+task.BuildID {
 		t.Errorf("log URL = %q", env.not.calls[0].LogURL)
 	}
 }
@@ -210,7 +209,7 @@ func TestSweepLogs(t *testing.T) {
 		t.Fatalf("report old: %v", err)
 	}
 	oldTaskRow, _ := env.store.GetTask(context.Background(), oldClaimed)
-	if err := env.logs.Append(strconv.FormatInt(oldTaskRow.BuildID, 10), []byte("old log")); err != nil {
+	if err := env.logs.Append(oldTaskRow.BuildID, []byte("old log")); err != nil {
 		t.Fatalf("append old log: %v", err)
 	}
 
@@ -225,7 +224,7 @@ func TestSweepLogs(t *testing.T) {
 		t.Fatalf("report recent: %v", err)
 	}
 	recentRow, _ := env.store.GetTask(context.Background(), recentClaimed)
-	if err := env.logs.Append(strconv.FormatInt(recentRow.BuildID, 10), []byte("recent log")); err != nil {
+	if err := env.logs.Append(recentRow.BuildID, []byte("recent log")); err != nil {
 		t.Fatalf("append recent log: %v", err)
 	}
 
@@ -237,19 +236,19 @@ func TestSweepLogs(t *testing.T) {
 		t.Fatalf("report failed: %v", err)
 	}
 	failRow, _ := env.store.GetTask(context.Background(), failClaimed)
-	if err := env.logs.Append(strconv.FormatInt(failRow.BuildID, 10), []byte("failed log")); err != nil {
+	if err := env.logs.Append(failRow.BuildID, []byte("failed log")); err != nil {
 		t.Fatalf("append failed log: %v", err)
 	}
 
 	env.o.sweepLogs(context.Background())
 
-	if _, err := env.logs.Read(strconv.FormatInt(oldTaskRow.BuildID, 10)); !errors.Is(err, ErrNotFound) {
+	if _, err := env.logs.Read(oldTaskRow.BuildID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("old succeeded log not deleted: %v", err)
 	}
-	if _, err := env.logs.Read(strconv.FormatInt(recentRow.BuildID, 10)); err != nil {
+	if _, err := env.logs.Read(recentRow.BuildID); err != nil {
 		t.Errorf("recent succeeded log deleted: %v", err)
 	}
-	if _, err := env.logs.Read(strconv.FormatInt(failRow.BuildID, 10)); err != nil {
+	if _, err := env.logs.Read(failRow.BuildID); err != nil {
 		t.Errorf("failed log must be permanent: %v", err)
 	}
 }

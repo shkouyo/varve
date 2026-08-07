@@ -53,13 +53,17 @@ type Package struct {
 	Pkgdesc         string
 	LastSrcinfoHash string
 	LastUpstreamRef string
-	LastBuildID     int64
+	LastFailedAt    *time.Time // when the package's build last failed (rebuild cooldown marker)
+	LastBuildID     string     // 16-hex hash of the latest build row
 	Maintainers     []string
 }
 
-// Build mirrors one builds row.
+// Build mirrors one builds row. ID is a 16-hex hash; WorkerName is the
+// plain-text machine name that executed the build (worker_id is kept as a
+// nullable provenance hint without a foreign key, so deleting a worker
+// never orphans build history).
 type Build struct {
-	ID            int64
+	ID            string
 	PackageID     int64
 	Branch        string
 	Commit        string
@@ -67,6 +71,7 @@ type Build struct {
 	SrcinfoHash   string
 	Status        string
 	WorkerID      int64
+	WorkerName    string
 	LogPath       string
 	StartedAt     *time.Time
 	FinishedAt    *time.Time
@@ -88,11 +93,13 @@ type Worker struct {
 	Version       string
 }
 
-// Task mirrors one tasks row.
+// Task mirrors one tasks row. FailCount counts the failed attempts of the
+// task; the retry policy (a later change) re-queues a failed task while
+// FailCount stays below the configured retry budget.
 type Task struct {
 	ID              string
 	PackageID       int64
-	BuildID         int64
+	BuildID         string
 	WorkerID        int64
 	State           string
 	AssignedAt      *time.Time
@@ -101,6 +108,7 @@ type Task struct {
 	Attempts        int
 	ClaimToken      string
 	CancelRequested bool
+	FailCount       int
 }
 
 // Sample is one cgroup resource sample. It is stored inside the builds.resource_usage JSON column.
