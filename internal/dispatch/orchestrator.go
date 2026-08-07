@@ -131,6 +131,7 @@ type Orchestrator interface {
 	CancelTask(ctx context.Context, taskID string) error
 	RebuildPackage(ctx context.Context, pkgbase string) error
 	DisableWorker(ctx context.Context, name string) error
+	EnableWorker(ctx context.Context, name string) error
 	RemoveWorker(ctx context.Context, name string) error
 	// dashboard and logs (web consumes; the log reader interface is
 	// defined by web and implemented here).

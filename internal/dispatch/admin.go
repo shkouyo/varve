@@ -58,7 +58,7 @@ func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) e
 // DisableWorker stops new work from being assigned to a node: its status
 // becomes "disabled" and Poll refuses to claim for it (db.ClaimTask itself
 // does not check status; the check lives here). The node keeps its history
-// and may be re-enabled by re-registering. Concurrently safe.
+// and may be re-enabled with EnableWorker. Concurrently safe.
 func (o *OrchestratorImpl) DisableWorker(ctx context.Context, name string) error {
 	if _, err := o.store.GetWorkerByName(ctx, name); err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -69,10 +69,22 @@ func (o *OrchestratorImpl) DisableWorker(ctx context.Context, name string) error
 	return o.store.SetWorkerStatus(ctx, name, "disabled")
 }
 
+// EnableWorker reverses DisableWorker: the node's status becomes "online"
+// again and Poll resumes claiming for it once it heartbeats. The node must
+// be registered (ErrNotFound otherwise). Concurrently safe.
+func (o *OrchestratorImpl) EnableWorker(ctx context.Context, name string) error {
+	if _, err := o.store.GetWorkerByName(ctx, name); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+	return o.store.SetWorkerStatus(ctx, name, "online")
+}
+
 // RemoveWorker deletes a node record. A node with active tasks cannot be
-// removed (ErrConflict); a node referenced by build history fails the
-// underlying foreign key and the error surfaces for the admin. Concurrently
-// safe.
+// removed (ErrConflict); builds keep the display name as plain text
+// (worker_name), so history survives the deletion. Concurrently safe.
 func (o *OrchestratorImpl) RemoveWorker(ctx context.Context, name string) error {
 	w, err := o.store.GetWorkerByName(ctx, name)
 	if err != nil {

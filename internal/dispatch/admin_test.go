@@ -75,6 +75,35 @@ func TestRemoveWorker(t *testing.T) {
 	}
 }
 
+// TestEnableWorker covers the re-enable operation: a disabled worker
+// becomes online again and claims work, an unknown worker is not found.
+func TestEnableWorker(t *testing.T) {
+	env := newTestEnv(t)
+	env.registerWorker(t, "w1", "host", "host", 1)
+	if err := env.o.DisableWorker(ctx(), "w1"); err != nil {
+		t.Fatalf("DisableWorker: %v", err)
+	}
+	if err := env.o.EnableWorker(ctx(), "w1"); err != nil {
+		t.Fatalf("EnableWorker: %v", err)
+	}
+	w, err := env.store.GetWorkerByName(ctx(), "w1")
+	if err != nil {
+		t.Fatalf("GetWorkerByName: %v", err)
+	}
+	if w.Status != "online" {
+		t.Errorf("status after enable = %q, want online", w.Status)
+	}
+	// An enabled worker claims new work again.
+	env.enqueue(t, "foo", "foo")
+	claimed, _ := env.claim(t, "w1")
+	if claimed == "" {
+		t.Fatal("enabled worker could not claim")
+	}
+	if err := env.o.EnableWorker(ctx(), "ghost"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("EnableWorker(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
 // TestStats covers the dashboard aggregation.
 func TestStats(t *testing.T) {
 	env := newTestEnv(t)

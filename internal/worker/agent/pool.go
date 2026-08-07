@@ -121,7 +121,8 @@ func (r *Runner) reRegister(ctx context.Context, name string, cause error) {
 	}
 }
 
-// deregister marks the node offline on normal shutdown.
+// deregister removes the node on normal shutdown (the controller deletes
+// the workers row; executed builds keep the display name as plain text).
 func (r *Runner) deregister(name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

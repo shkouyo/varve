@@ -22,6 +22,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"git.0x0f.dev/varve/internal/db"
 )
 
 func ctx() context.Context { return context.Background() }
@@ -128,7 +130,8 @@ func TestPollArchFilterAndCapacity(t *testing.T) {
 }
 
 // TestPollNotForOfflineOrDisabled covers the status gate: neither an
-// offline nor a disabled worker is allocated new work.
+// offline nor a disabled worker is allocated new work. Deregistering
+// deletes the row entirely, so the node is unknown to Poll afterwards.
 func TestPollNotForOfflineOrDisabled(t *testing.T) {
 	env := newTestEnv(t)
 	env.enqueue(t, "foo", "foo")
@@ -138,18 +141,15 @@ func TestPollNotForOfflineOrDisabled(t *testing.T) {
 	if err := env.o.Deregister(ctx(), "w1"); err != nil {
 		t.Fatalf("Deregister: %v", err)
 	}
-	resp, err := env.o.Poll(ctx(), PollReq{Name: "w1", Arch: "x86_64"})
-	if err != nil {
-		t.Fatalf("Poll offline: %v", err)
-	}
-	if resp.Task != nil {
-		t.Errorf("offline worker got a task")
+	// Deregister deletes the node: Poll no longer knows it.
+	if _, err := env.o.Poll(ctx(), PollReq{Name: "w1", Arch: "x86_64"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Poll deregistered worker = %v, want ErrNotFound", err)
 	}
 
 	if err := env.o.DisableWorker(ctx(), "w2"); err != nil {
 		t.Fatalf("DisableWorker: %v", err)
 	}
-	resp, err = env.o.Poll(ctx(), PollReq{Name: "w2", Arch: "x86_64"})
+	resp, err := env.o.Poll(ctx(), PollReq{Name: "w2", Arch: "x86_64"})
 	if err != nil {
 		t.Fatalf("Poll disabled: %v", err)
 	}
@@ -232,8 +232,8 @@ func TestHeartbeatProgressAndCancel(t *testing.T) {
 	_ = token
 }
 
-// TestDeregisterCovers covers the offline transition and the conflict when
-// a node still has active tasks.
+// TestDeregisterCovers covers the delete-self semantics and the conflict
+// when a node still has active tasks.
 func TestDeregisterCovers(t *testing.T) {
 	env := newTestEnv(t)
 	env.enqueue(t, "foo", "foo")
@@ -247,12 +247,9 @@ func TestDeregisterCovers(t *testing.T) {
 	if err := env.o.Deregister(ctx(), "w2"); err != nil {
 		t.Fatalf("Deregister idle: %v", err)
 	}
-	w, err := env.store.GetWorkerByName(ctx(), "w2")
-	if err != nil {
-		t.Fatalf("GetWorkerByName: %v", err)
-	}
-	if w.Status != "offline" {
-		t.Errorf("status = %q, want offline", w.Status)
+	// Deregister deletes the row: the node is gone entirely.
+	if _, err := env.store.GetWorkerByName(ctx(), "w2"); !errors.Is(err, db.ErrNotFound) {
+		t.Errorf("worker still present after deregister: %v", err)
 	}
 	if err := env.o.Deregister(ctx(), "ghost"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Deregister unknown = %v, want ErrNotFound", err)

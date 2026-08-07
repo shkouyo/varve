@@ -120,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/packages/{pkgbase}/rebuild", s.requireAuth(s.handleAdminRebuild))
 	mux.HandleFunc("POST /admin/tasks/{id}/cancel", s.requireAuth(s.handleAdminCancel))
 	mux.HandleFunc("POST /admin/workers/{name}/disable", s.requireAuth(s.handleAdminDisable))
+	mux.HandleFunc("POST /admin/workers/{name}/enable", s.requireAuth(s.handleAdminEnable))
 	mux.HandleFunc("POST /admin/workers/{name}/remove", s.requireAuth(s.handleAdminRemove))
 	mux.HandleFunc("GET /admin/builds", s.requireAuth(s.handleAdminBuilds))
 	return mux

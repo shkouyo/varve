@@ -160,3 +160,69 @@ func TestDeleteWorker(t *testing.T) {
 		t.Errorf("DeleteWorker(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+// TestMarkStaleWorkersOffline covers the offline transition: only online
+// workers whose heartbeat predates the cutoff are marked offline; fresh
+// and disabled workers keep their status.
+func TestMarkStaleWorkersOffline(t *testing.T) {
+	s := newTestStore(t)
+	registerWorker(t, s, "stale", 1)
+	if err := s.Heartbeat(testCtx, "stale", at(-time.Hour)); err != nil {
+		t.Fatalf("Heartbeat stale: %v", err)
+	}
+	registerWorker(t, s, "fresh", 1)
+	if err := s.Heartbeat(testCtx, "fresh", at(time.Minute)); err != nil {
+		t.Fatalf("Heartbeat fresh: %v", err)
+	}
+	registerWorker(t, s, "disabled", 1)
+	if err := s.SetWorkerStatus(testCtx, "disabled", "disabled"); err != nil {
+		t.Fatalf("SetWorkerStatus: %v", err)
+	}
+
+	n, err := s.MarkStaleWorkersOffline(testCtx, at(0))
+	if err != nil {
+		t.Fatalf("MarkStaleWorkersOffline: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("marked = %d, want exactly the stale worker", n)
+	}
+	for _, tc := range []struct {
+		name, want string
+	}{
+		{"stale", "offline"},
+		{"fresh", "online"},
+		{"disabled", "disabled"},
+	} {
+		w, err := s.GetWorkerByName(testCtx, tc.name)
+		if err != nil {
+			t.Fatalf("GetWorkerByName %s: %v", tc.name, err)
+		}
+		if w.Status != tc.want {
+			t.Errorf("%s status = %q, want %q", tc.name, w.Status, tc.want)
+		}
+	}
+}
+
+// TestDeleteWorkerKeepsHistory covers the no-FK contract: a worker that
+// claimed a task can be deleted and the build keeps the executing node's
+// name as plain text.
+func TestDeleteWorkerKeepsHistory(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "hist")
+	_, b := createTask(t, s, "hist-1", "queued", pkg, at(0))
+	w := registerWorker(t, s, "machine", 1)
+	if _, err := s.ClaimTask(testCtx, w.ID, 1, "tok"); err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+
+	if err := s.DeleteWorker(testCtx, "machine"); err != nil {
+		t.Fatalf("DeleteWorker with history: %v", err)
+	}
+	build, err := s.GetBuild(testCtx, b.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if build.WorkerName != "machine" {
+		t.Errorf("build worker_name = %q, want %q (plain-text ownership survives)", build.WorkerName, "machine")
+	}
+}

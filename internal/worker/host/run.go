@@ -105,13 +105,14 @@ func (r *Runner) drain() {
 	}
 }
 
-// deregister marks the node offline. The context is detached from the
+// deregister removes the node record. The context is detached from the
 // cancelled shutdown context so the call can complete; a failure is logged
-// and left to the controller's offline sweep.
+// and left to the controller's stale-heartbeat scan to mark the node
+// offline.
 func (r *Runner) deregister() {
 	dctx, cancel := context.WithTimeout(context.Background(), r.deregisterTimeout)
 	defer cancel()
 	if err := r.client.Deregister(dctx, r.name); err != nil {
-		log.Printf("host: deregister %s: %v (offline sweep will reclaim the node)", r.name, err)
+		log.Printf("host: deregister %s: %v (heartbeat scan will mark the node offline)", r.name, err)
 	}
 }

@@ -136,9 +136,13 @@ func (o *OrchestratorImpl) Poll(ctx context.Context, poll PollReq) (*PollResp, e
 	return resp, nil
 }
 
-// Deregister marks a node offline (its row is kept for history). A node
-// with active tasks cannot deregister: the caller must drain them first
-// (ErrConflict). Concurrently safe.
+// Deregister removes the node record: a worker exiting normally deletes
+// itself. The builds it executed keep the node's display name as plain
+// text (worker_name), so history survives the deletion. A node with
+// active tasks cannot deregister: the caller must drain them first
+// (ErrConflict). A node that dies without deregistering is marked offline
+// by the heartbeat scan and deleted after 24h when it is an agent.
+// Concurrently safe.
 func (o *OrchestratorImpl) Deregister(ctx context.Context, name string) error {
 	w, err := o.store.GetWorkerByName(ctx, name)
 	if err != nil {
@@ -154,10 +158,7 @@ func (o *OrchestratorImpl) Deregister(ctx context.Context, name string) error {
 	if active > 0 {
 		return fmt.Errorf("%w: worker %q has %d active tasks; drain them before deregistering", ErrConflict, name, active)
 	}
-	if err := o.store.SetWorkerStatus(ctx, name, "offline"); err != nil {
-		return err
-	}
-	return nil
+	return o.store.DeleteWorker(ctx, name)
 }
 
 // processProgress applies one heartbeat/log progress report: it refreshes

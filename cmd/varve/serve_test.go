@@ -476,6 +476,7 @@ func (f *fakeOrchestrator) RebuildPackage(ctx context.Context, pkgbase string) e
 func (f *fakeOrchestrator) DisableWorker(ctx context.Context, name string) error {
 	return nil
 }
+func (f *fakeOrchestrator) EnableWorker(ctx context.Context, name string) error { return nil }
 func (f *fakeOrchestrator) RemoveWorker(ctx context.Context, name string) error { return nil }
 func (f *fakeOrchestrator) Stats(ctx context.Context) (*dispatch.Stats, error) {
 	return &dispatch.Stats{}, nil

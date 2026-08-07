@@ -30,10 +30,10 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// runScheduler is the single periodic goroutine: a 30s scan for
-// stalled/timed-out/cancelled tasks and an hourly maintenance pass for
-// log retention, node cleanup and stale staging sweep. It exits when its
-// context is cancelled (Stop). Tests invoke scanStalled and
+// runScheduler is the single periodic goroutine: a 30s scan for stale
+// workers, stalled/timed-out/cancelled tasks and an hourly maintenance
+// pass for log retention, dead-agent cleanup and stale staging sweep. It
+// exits when its context is cancelled (Stop). Tests invoke scanStalled and
 // hourlyMaintenance directly with an injected clock.
 func (o *OrchestratorImpl) runScheduler(ctx context.Context) {
 	defer close(o.schedDone)
@@ -60,12 +60,14 @@ func (o *OrchestratorImpl) runScheduler(ctx context.Context) {
 
 // scanStalled runs the 30s sweep:
 //
-//  1. stalled tasks (last_progress_at older than stall_timeout): tasks with
+//  1. stale workers (last_heartbeat older than heartbeat_timeout) are
+//     marked offline so they stop receiving new assignments;
+//  2. stalled tasks (last_progress_at older than stall_timeout): tasks with
 //     a durable cancel request are finalized as cancelled (cancellation
 //     wins and is never re-queued); first-time stalls (attempts < 1) are
 //     re-queued with created_at preserved; otherwise the task fails with
 //     stage "stalled" and a notification;
-//  2. timed-out tasks (assigned_at + build_timeout past): failed with stage
+//  3. timed-out tasks (assigned_at + build_timeout past): failed with stage
 //     "timeout" and a notification (cancelled requests still win). The
 //     executing agent kills makepkg at its own deadline; this controller
 //     pass is the safety net.
@@ -74,6 +76,13 @@ func (o *OrchestratorImpl) runScheduler(ctx context.Context) {
 // with agent reports are absorbed (ErrConflict is tolerated).
 func (o *OrchestratorImpl) scanStalled(ctx context.Context) error {
 	now := o.now().UTC()
+
+	// 0. Worker offline marking: a node that stops heartbeating becomes
+	// offline within one scan cycle and is no longer allocated new work.
+	// The hourly pass later deletes long-dead agents.
+	if _, err := o.store.MarkStaleWorkersOffline(ctx, now.Add(-o.cfg.Worker.HeartbeatTimeout)); err != nil {
+		return err
+	}
 
 	// 1. Stall recovery.
 	stalled, err := o.store.ListStalledTasks(ctx, now.Add(-o.cfg.Worker.StallTimeout), "assigned", "running")
@@ -187,10 +196,11 @@ func (o *OrchestratorImpl) sweepLogs(ctx context.Context) {
 	}
 }
 
-// sweepWorkers marks nodes whose heartbeat is stale (heartbeat_timeout)
-// as offline, then deletes agent nodes offline for more than 24h. Host
-// nodes are never auto-deleted. A worker referenced by build history
-// cannot be deleted (foreign key); the sweep logs and skips it.
+// sweepWorkers deletes agent nodes that have been offline for more than
+// 24h. Host nodes are never auto-deleted. The offline transition itself
+// is driven by the 30s heartbeat scan (scanStalled); this pass only
+// reaps the long-dead agents. Deletion is unconditional: worker_name on
+// builds keeps the history readable.
 func (o *OrchestratorImpl) sweepWorkers(ctx context.Context) {
 	workers, err := o.store.ListWorkers(ctx)
 	if err != nil {
@@ -200,19 +210,10 @@ func (o *OrchestratorImpl) sweepWorkers(ctx context.Context) {
 	now := o.now().UTC()
 	for i := range workers {
 		w := &workers[i]
-		if w.Status == "disabled" {
-			continue
-		}
-		if w.LastHeartbeat != nil && now.Sub(*w.LastHeartbeat) > o.cfg.Worker.HeartbeatTimeout && w.Status != "offline" {
-			if err := o.store.SetWorkerStatus(ctx, w.Name, "offline"); err != nil {
-				log.Printf("dispatch: worker sweep: mark %s offline: %v", w.Name, err)
-			}
-			w.Status = "offline"
-		}
 		if w.Role == "agent" && w.Status == "offline" &&
 			w.LastHeartbeat != nil && now.Sub(*w.LastHeartbeat) > 24*time.Hour {
 			if err := o.store.DeleteWorker(ctx, w.Name); err != nil {
-				log.Printf("dispatch: worker sweep: delete %s: %v (skipped; likely referenced by history)", w.Name, err)
+				log.Printf("dispatch: worker sweep: delete %s: %v", w.Name, err)
 			}
 		}
 	}

@@ -44,11 +44,12 @@ type fakeOrchestrator struct {
 	stats    *dispatch.Stats
 	statsErr error
 
-	rebuildErr, cancelErr, disableErr, removeErr error
+	rebuildErr, cancelErr, disableErr, enableErr, removeErr error
 
 	rebuilds []string
 	cancels  []string
 	disables []string
+	enables  []string
 	removes  []string
 }
 
@@ -101,6 +102,12 @@ func (f *fakeOrchestrator) DisableWorker(ctx context.Context, name string) error
 	defer f.mu.Unlock()
 	f.disables = append(f.disables, name)
 	return f.disableErr
+}
+func (f *fakeOrchestrator) EnableWorker(ctx context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.enables = append(f.enables, name)
+	return f.enableErr
 }
 func (f *fakeOrchestrator) RemoveWorker(ctx context.Context, name string) error {
 	f.mu.Lock()

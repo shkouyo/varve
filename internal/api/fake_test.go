@@ -293,6 +293,9 @@ func (f *fakeOrchestrator) RebuildPackage(ctx context.Context, pkgbase string) e
 // DisableWorker implements Orchestrator.
 func (f *fakeOrchestrator) DisableWorker(ctx context.Context, name string) error { return nil }
 
+// EnableWorker implements Orchestrator.
+func (f *fakeOrchestrator) EnableWorker(ctx context.Context, name string) error { return nil }
+
 // RemoveWorker implements Orchestrator.
 func (f *fakeOrchestrator) RemoveWorker(ctx context.Context, name string) error { return nil }
 

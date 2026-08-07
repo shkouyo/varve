@@ -161,6 +161,16 @@ func (s *Server) handleAdminDisable(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" disabled")
 }
 
+// handleAdminEnable re-enables a disabled worker (new assignments resume).
+func (s *Server) handleAdminEnable(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.orch.EnableWorker(r.Context(), name); err != nil {
+		s.redirectFlash(w, r, "/admin", "error", "Enable failed: "+err.Error())
+		return
+	}
+	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" enabled")
+}
+
 // handleAdminRemove removes a worker record.
 func (s *Server) handleAdminRemove(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")

@@ -157,10 +157,12 @@ func (s *Store) DistinctWorkerArches(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-// DeleteWorker removes a worker by name without cascading. ErrNotFound
-// when the worker is not registered. A worker referenced by builds or
-// tasks rows fails with a foreign-key error (dispatch pre-checks active
-// tasks and tolerates history references during the offline sweep).
+// DeleteWorker removes a worker row by name. ErrNotFound when the worker
+// is not registered. Deregistration is a plain delete: builds keep the
+// executing node as plain text (worker_name) and carry worker_id only as
+// a provenance hint without a foreign key, so history never blocks the
+// deletion. Callers pre-check for active tasks; the store stays
+// unconditional.
 func (s *Store) DeleteWorker(ctx context.Context, name string) error {
 	res, err := s.write.ExecContext(ctx,
 		`DELETE FROM workers WHERE name = ?`, name)
@@ -168,6 +170,26 @@ func (s *Store) DeleteWorker(ctx context.Context, name string) error {
 		return fmt.Errorf("db: delete worker %q: %w", name, err)
 	}
 	return requireAffected(res, fmt.Sprintf("delete worker %q", name))
+}
+
+// MarkStaleWorkersOffline marks every online worker whose heartbeat is
+// older than before as offline and returns the number of rows updated.
+// The predicate is evaluated inside the single UPDATE, so a heartbeat
+// that lands between a read and a write cannot race the transition.
+// Disabled workers keep their status: only the admin re-enables them.
+func (s *Store) MarkStaleWorkersOffline(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.write.ExecContext(ctx,
+		`UPDATE workers SET status = 'offline'
+		 WHERE status = 'online' AND last_heartbeat IS NOT NULL AND last_heartbeat < ?`,
+		formatTime(before))
+	if err != nil {
+		return 0, fmt.Errorf("db: mark stale workers offline: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("db: mark stale workers offline: %w", err)
+	}
+	return n, nil
 }
 
 // scanWorker decodes one workers row.

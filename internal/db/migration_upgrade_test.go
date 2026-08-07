@@ -71,7 +71,7 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 	}
 	defer s.Close()
 
-	// Ledger: both migrations recorded, exactly once.
+	// Ledger: every migration recorded, exactly once.
 	var versions []int
 	rows, err := s.read.Query(`SELECT version FROM schema_migrations ORDER BY version`)
 	if err != nil {
@@ -85,8 +85,8 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 		versions = append(versions, v)
 	}
 	rows.Close()
-	if len(versions) != 2 || versions[0] != 1 || versions[1] != 2 {
-		t.Fatalf("schema_migrations = %v, want [1 2]", versions)
+	if len(versions) != 3 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 {
+		t.Fatalf("schema_migrations = %v, want [1 2 3]", versions)
 	}
 
 	// Build 1: deterministic hash id, rewritten log path, no worker name.

@@ -38,6 +38,16 @@ func (e *testEnv) claimAndStall(t *testing.T, worker string) (string, string) {
 	return claimed, token
 }
 
+// heartbeat refreshes a worker's heartbeat through the public path (the
+// 30s scan marks stale-heartbeat workers offline, so re-claiming a node
+// after a long advance needs a fresh heartbeat first).
+func (e *testEnv) heartbeat(t *testing.T, name string) {
+	t.Helper()
+	if _, err := e.o.Heartbeat(context.Background(), HeartbeatReq{Name: name}); err != nil {
+		t.Fatalf("Heartbeat %s: %v", name, err)
+	}
+}
+
 // TestStallRecovery covers the first-stall policy: the task is re-queued
 // (attempts 0→1, worker and claim token released, created_at preserved).
 func TestStallRecovery(t *testing.T) {
@@ -92,7 +102,10 @@ func TestStallSecondFails(t *testing.T) {
 	if err := env.o.scanStalled(context.Background()); err != nil {
 		t.Fatalf("scanStalled: %v", err)
 	}
-	// Re-claim the re-queued task and let it stall a second time.
+	// Re-claim the re-queued task and let it stall a second time. The
+	// first scan marked the worker offline (stale heartbeat), so it
+	// heartbeats again as a recovered node first.
+	env.heartbeat(t, "w1")
 	claimed, _ = env.claimAndStall(t, "w1")
 	if claimed != taskID {
 		t.Fatalf("re-claimed %s", claimed)
@@ -255,6 +268,8 @@ func TestSweepLogs(t *testing.T) {
 
 // TestSweepWorkers covers the worker sweep: agents offline for more than
 // 24h are deleted, hosts never are, and disabled nodes are left alone.
+// Offline marking itself happens in the 30s scan (scanStalled); the sweep
+// only reaps the long-dead agents.
 func TestSweepWorkers(t *testing.T) {
 	env := newTestEnv(t)
 	env.advance(-25 * time.Hour)
@@ -267,6 +282,11 @@ func TestSweepWorkers(t *testing.T) {
 		t.Fatalf("DisableWorker: %v", err)
 	}
 
+	// The 30s scan marks the stale nodes offline (disabled nodes keep
+	// their status).
+	if err := env.o.scanStalled(context.Background()); err != nil {
+		t.Fatalf("scanStalled: %v", err)
+	}
 	env.o.sweepWorkers(context.Background())
 
 	if _, err := env.store.GetWorkerByName(context.Background(), "agent-old"); err == nil {
@@ -292,6 +312,63 @@ func TestSweepWorkers(t *testing.T) {
 	}
 	if disabled.Status != "disabled" {
 		t.Errorf("disabled status = %q", disabled.Status)
+	}
+}
+
+// TestStaleHeartbeatOffline covers the offline transition driven by the
+// 30s scan: a worker whose heartbeat is older than heartbeat_timeout is
+// marked offline within one scan cycle, a fresh worker stays online and a
+// disabled worker keeps its status.
+func TestStaleHeartbeatOffline(t *testing.T) {
+	env := newTestEnv(t)
+	env.registerWorker(t, "stale", "host", "host", 1)
+	env.registerWorker(t, "fresh", "host", "host", 1)
+	env.registerWorker(t, "disabled", "agent", "pool", 1)
+
+	// Past the timeout: the stale worker's heartbeat ages out.
+	env.advance(env.cfg.Worker.HeartbeatTimeout + time.Second)
+	// The fresh worker still heartbeats.
+	if _, err := env.o.Heartbeat(ctx(), HeartbeatReq{Name: "fresh"}); err != nil {
+		t.Fatalf("Heartbeat fresh: %v", err)
+	}
+	if err := env.o.DisableWorker(ctx(), "disabled"); err != nil {
+		t.Fatalf("DisableWorker: %v", err)
+	}
+
+	if err := env.o.scanStalled(context.Background()); err != nil {
+		t.Fatalf("scanStalled: %v", err)
+	}
+
+	stale, err := env.store.GetWorkerByName(ctx(), "stale")
+	if err != nil {
+		t.Fatalf("GetWorkerByName stale: %v", err)
+	}
+	if stale.Status != "offline" {
+		t.Errorf("stale status = %q, want offline", stale.Status)
+	}
+	fresh, err := env.store.GetWorkerByName(ctx(), "fresh")
+	if err != nil {
+		t.Fatalf("GetWorkerByName fresh: %v", err)
+	}
+	if fresh.Status != "online" {
+		t.Errorf("fresh status = %q, want online", fresh.Status)
+	}
+	disabled, err := env.store.GetWorkerByName(ctx(), "disabled")
+	if err != nil {
+		t.Fatalf("GetWorkerByName disabled: %v", err)
+	}
+	if disabled.Status != "disabled" {
+		t.Errorf("disabled status = %q, want disabled", disabled.Status)
+	}
+
+	// A subsequent poll refuses work for the offline node.
+	env.enqueue(t, "foo", "foo")
+	resp, err := env.o.Poll(ctx(), PollReq{Name: "stale", Arch: "x86_64"})
+	if err != nil {
+		t.Fatalf("Poll offline: %v", err)
+	}
+	if resp.Task != nil {
+		t.Errorf("offline worker got a task")
 	}
 }
 

@@ -92,6 +92,11 @@ func TestAdminActions(t *testing.T) {
 				t.Fatalf("disables = %v, want [node-1]", orch.disables)
 			}
 		}},
+		{"enable", http.MethodPost, "/admin/workers/node-1/enable", func(t *testing.T) {
+			if len(orch.enables) != 1 || orch.enables[0] != "node-1" {
+				t.Fatalf("enables = %v, want [node-1]", orch.enables)
+			}
+		}},
 		{"remove", http.MethodPost, "/admin/workers/node-1/remove", func(t *testing.T) {
 			if len(orch.removes) != 1 || orch.removes[0] != "node-1" {
 				t.Fatalf("removes = %v, want [node-1]", orch.removes)

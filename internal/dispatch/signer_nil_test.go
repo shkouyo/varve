@@ -73,6 +73,9 @@ func TestTypedNilSignerNoPanic(t *testing.T) {
 	if err := env.o.scanStalled(context.Background()); err != nil {
 		t.Fatalf("scanStalled (requeue): %v", err)
 	}
+	// The requeue scan marked the worker offline (stale heartbeat); it
+	// heartbeats again as a recovered node before the second attempt.
+	env.heartbeat(t, "w1")
 	claimed, _ = env.claimAndStall(t, "w1")
 	if claimed != failTask {
 		t.Fatalf("re-claimed %s, want %s", claimed, failTask)
@@ -90,6 +93,7 @@ func TestTypedNilSignerNoPanic(t *testing.T) {
 	for _, a := range artifacts {
 		env.stage(t, okTask, a.File)
 	}
+	env.heartbeat(t, "w1") // the fail scan above marked the node offline
 	claimed, token = env.claim(t, "w1")
 	if claimed != okTask {
 		t.Fatalf("claimed %s, want %s", claimed, okTask)
