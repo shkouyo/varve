@@ -19,6 +19,7 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,40 +29,55 @@ import (
 	"time"
 
 	"git.0x0f.dev/varve/internal/config"
+	"git.0x0f.dev/varve/internal/db"
 )
 
-// fakeActionsDispatcher records dispatch attempts; it is the test double
-// for workflowDispatcher in the trigger-condition tests.
+// fakeActionsDispatcher records dispatch attempts with their task
+// bindings; it is the test double for workflowDispatcher.
 type fakeActionsDispatcher struct {
 	mu    sync.Mutex
-	calls int
-	ref   string
+	calls []dispatchCall
 	err   error
 }
 
-func (f *fakeActionsDispatcher) Dispatch(ctx context.Context, ref string) error {
+type dispatchCall struct {
+	ref   string
+	task  string
+	token string
+}
+
+func (f *fakeActionsDispatcher) Dispatch(ctx context.Context, ref, taskID, token string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls++
-	f.ref = ref
+	f.calls = append(f.calls, dispatchCall{ref: ref, task: taskID, token: token})
 	return f.err
 }
 
 func (f *fakeActionsDispatcher) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.calls
+	return len(f.calls)
+}
+
+func (f *fakeActionsDispatcher) last() dispatchCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.calls) == 0 {
+		return dispatchCall{}
+	}
+	return f.calls[len(f.calls)-1]
 }
 
 // enabledActions returns a valid worker.actions configuration for tests.
 func enabledActions() config.WorkerActions {
 	return config.WorkerActions{
-		Enabled:  true,
-		Token:    "tok",
-		Repo:     "shkouyo/varve-runner",
-		Workflow: "worker-actions.yml",
-		Ref:      "main",
-		Cooldown: 3 * time.Minute,
+		Enabled:        true,
+		Token:          "tok",
+		Repo:           "shkouyo/varve-runner",
+		Workflow:       "worker-actions.yml",
+		Ref:            "main",
+		MaxConcurrency: 3,
+		ClaimTimeout:   5 * time.Minute,
 	}
 }
 
@@ -125,7 +141,7 @@ func TestGitHubActionsDispatch(t *testing.T) {
 				workflow: "worker-actions.yml",
 				http:     server.Client(),
 			}
-			err := client.Dispatch(context.Background(), "main")
+			err := client.Dispatch(context.Background(), "main", "t1", "tok1")
 
 			if got.method != http.MethodPost {
 				t.Errorf("method = %q, want POST", got.method)
@@ -145,8 +161,9 @@ func TestGitHubActionsDispatch(t *testing.T) {
 			if got.contentType != "application/json" {
 				t.Errorf("Content-Type = %q", got.contentType)
 			}
-			if got.body != `{"ref":"main"}` {
-				t.Errorf("body = %q", got.body)
+			want := `{"inputs":{"task_id":"t1","task_token":"tok1"},"ref":"main"}`
+			if got.body != want {
+				t.Errorf("body = %q, want %q", got.body, want)
 			}
 
 			if tt.wantErr {
@@ -179,29 +196,29 @@ func TestGitHubActionsDispatchNetworkError(t *testing.T) {
 		workflow: "wf.yml",
 		http:     server.Client(),
 	}
-	if err := client.Dispatch(context.Background(), "main"); err == nil {
+	if err := client.Dispatch(context.Background(), "main", "t1", "tok1"); err == nil {
 		t.Fatal("Dispatch() = nil, want transport error")
 	}
 }
 
-// autoscaleStep advances the injected clock and then runs one scan,
-// expecting the given cumulative number of dispatch attempts.
-type autoscaleStep struct {
+// dispatchStep advances the injected clock and then runs one dispatch
+// pass, expecting the given cumulative number of dispatch attempts.
+type dispatchStep struct {
 	advance time.Duration
 	want    int
 }
 
-// TestAutoscaleWorkers is the trigger-condition matrix: the workflow is
-// dispatched exactly when queued tasks wait, no worker is online and the
-// cooldown has elapsed.
+// TestAutoscaleWorkers is the trigger-condition matrix: a run is
+// dispatched exactly when a queued task waits without a binding and the
+// concurrency ceiling leaves room.
 func TestAutoscaleWorkers(t *testing.T) {
-	cooldown := 3 * time.Minute
+	timeout := 5 * time.Minute
 	tests := []struct {
 		name    string
 		actions func() config.WorkerActions
 		setup   func(t *testing.T, env *testEnv)
 		dispErr error // dispatcher failure injected for the retry case
-		steps   []autoscaleStep
+		steps   []dispatchStep
 	}{
 		{
 			name: "disabled does not dispatch",
@@ -211,69 +228,21 @@ func TestAutoscaleWorkers(t *testing.T) {
 			setup: func(t *testing.T, env *testEnv) {
 				env.enqueue(t, "foo", "foo")
 			},
-			steps: []autoscaleStep{{0, 0}},
+			steps: []dispatchStep{{0, 0}},
 		},
 		{
 			name:    "no queued tasks",
 			actions: enabledActions,
-			steps:   []autoscaleStep{{0, 0}},
+			steps:   []dispatchStep{{0, 0}},
 		},
 		{
-			name:    "queued with an online worker",
+			name:    "queued with an online pool worker still dispatches",
 			actions: enabledActions,
 			setup: func(t *testing.T, env *testEnv) {
 				env.enqueue(t, "foo", "foo")
 				env.registerWorker(t, "w1", "host", "host", 1)
 			},
-			steps: []autoscaleStep{{0, 0}},
-		},
-		{
-			name:    "queued with only a disabled worker",
-			actions: enabledActions,
-			setup: func(t *testing.T, env *testEnv) {
-				env.enqueue(t, "foo", "foo")
-				env.registerWorker(t, "w1", "agent", "pool", 1)
-				if err := env.o.DisableWorker(context.Background(), "w1"); err != nil {
-					t.Fatalf("DisableWorker: %v", err)
-				}
-			},
-			steps: []autoscaleStep{{0, 1}},
-		},
-		{
-			name:    "queued with only a stale-heartbeat worker",
-			actions: enabledActions,
-			setup: func(t *testing.T, env *testEnv) {
-				env.enqueue(t, "foo", "foo")
-				env.registerWorker(t, "w1", "agent", "pool", 1)
-				env.advance(env.cfg.Worker.HeartbeatTimeout + time.Second)
-			},
-			steps: []autoscaleStep{{0, 1}},
-		},
-		{
-			name:    "cooldown active after a previous dispatch",
-			actions: enabledActions,
-			setup: func(t *testing.T, env *testEnv) {
-				env.enqueue(t, "foo", "foo")
-				env.o.actionsMu.Lock()
-				env.o.lastDispatchAt = env.now
-				env.o.actionsMu.Unlock()
-			},
-			steps: []autoscaleStep{{0, 0}},
-		},
-		{
-			name:    "dispatches after the cooldown, then waits again",
-			actions: enabledActions,
-			setup: func(t *testing.T, env *testEnv) {
-				env.enqueue(t, "foo", "foo")
-				env.o.actionsMu.Lock()
-				env.o.lastDispatchAt = env.now.Add(-cooldown - time.Second)
-				env.o.actionsMu.Unlock()
-			},
-			steps: []autoscaleStep{
-				{0, 1},
-				{time.Second, 1},
-				{cooldown + time.Second, 2},
-			},
+			steps: []dispatchStep{{0, 1}},
 		},
 		{
 			name: "missing token never dispatches",
@@ -285,20 +254,83 @@ func TestAutoscaleWorkers(t *testing.T) {
 			setup: func(t *testing.T, env *testEnv) {
 				env.enqueue(t, "foo", "foo")
 			},
-			steps: []autoscaleStep{{0, 0}},
+			steps: []dispatchStep{{0, 0}},
 		},
 		{
-			name:    "failed dispatch respects the cooldown before retrying",
+			name:    "one queued task dispatches once with its binding",
+			actions: enabledActions,
+			setup: func(t *testing.T, env *testEnv) {
+				env.enqueue(t, "foo", "foo")
+			},
+			steps: []dispatchStep{
+				{0, 1},
+				{time.Second, 1},
+			},
+		},
+		{
+			name: "concurrency ceiling limits a dispatch pass",
+			actions: func() config.WorkerActions {
+				ac := enabledActions()
+				ac.MaxConcurrency = 2
+				return ac
+			},
+			setup: func(t *testing.T, env *testEnv) {
+				env.enqueue(t, "a", "a")
+				env.enqueue(t, "b", "b")
+				env.enqueue(t, "c", "c")
+			},
+			steps: []dispatchStep{{0, 2}},
+		},
+		{
+			name: "a finished run frees capacity",
+			actions: func() config.WorkerActions {
+				ac := enabledActions()
+				ac.MaxConcurrency = 1
+				return ac
+			},
+			setup: func(t *testing.T, env *testEnv) {
+				env.enqueue(t, "a", "a")
+				env.enqueue(t, "b", "b")
+			},
+			steps: []dispatchStep{{0, 1}},
+		},
+		{
+			name:    "unclaimed run is released after the claim timeout",
+			actions: enabledActions,
+			setup: func(t *testing.T, env *testEnv) {
+				env.enqueue(t, "foo", "foo")
+			},
+			steps: []dispatchStep{
+				{0, 1},
+				{timeout - time.Second, 1},
+				{2 * time.Second, 2},
+			},
+		},
+		{
+			name:    "failed dispatch waits for the claim timeout before retrying",
 			actions: enabledActions,
 			dispErr: context.DeadlineExceeded,
 			setup: func(t *testing.T, env *testEnv) {
 				env.enqueue(t, "foo", "foo")
 			},
-			steps: []autoscaleStep{
+			steps: []dispatchStep{
 				{0, 1},
-				{cooldown - time.Second, 1},
+				{timeout - time.Second, 1},
 				{2 * time.Second, 2},
 			},
+		},
+		{
+			name: "claimed run keeps its binding and its capacity",
+			actions: func() config.WorkerActions {
+				ac := enabledActions()
+				ac.MaxConcurrency = 1
+				return ac
+			},
+			setup: func(t *testing.T, env *testEnv) {
+				env.enqueue(t, "a", "a")
+				env.enqueue(t, "b", "b")
+			},
+			steps: []dispatchStep{{0, 1}},
 		},
 	}
 	for _, tt := range tests {
@@ -321,17 +353,169 @@ func TestAutoscaleWorkers(t *testing.T) {
 	}
 }
 
-// TestAutoscaleWorkersRef covers the ref handed to the dispatcher.
-func TestAutoscaleWorkersRef(t *testing.T) {
+// TestAutoscaleDispatchBinding asserts the dispatched run carries the
+// task id and a fresh one-shot token, and the token claims the task
+// through the one-shot GetTask path.
+func TestAutoscaleDispatchBinding(t *testing.T) {
+	env := newTestEnv(t)
+	env.cfg.Worker.Actions = enabledActions()
+	fake := &fakeActionsDispatcher{}
+	env.o.actions = fake
+	taskID := env.enqueue(t, "foo", "foo")
+
+	env.o.autoscaleWorkers(context.Background())
+	call := fake.last()
+	if call.task != taskID {
+		t.Fatalf("dispatched task = %q, want %q", call.task, taskID)
+	}
+	if call.ref != "main" {
+		t.Errorf("dispatched ref = %q, want main", call.ref)
+	}
+	if call.token == "" {
+		t.Fatal("dispatched token is empty")
+	}
+	// The pre-issued token claims the queued task (one-shot GetTask).
+	detail, err := env.o.GetTask(context.Background(), taskID, call.token)
+	if err != nil {
+		t.Fatalf("GetTask with dispatch token: %v", err)
+	}
+	if detail.Package.Pkgbase != "foo" {
+		t.Errorf("task detail pkgbase = %q, want foo", detail.Package.Pkgbase)
+	}
+	task, err := env.store.GetTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.State != "running" {
+		t.Errorf("task state = %q, want running after claim", task.State)
+	}
+	// The binding survives the claim (the run is in flight) and the
+	// same token stays valid for the task protocol.
+	if _, err := env.o.GetTask(context.Background(), taskID, call.token); err != nil {
+		t.Errorf("idempotent GetTask: %v", err)
+	}
+	if _, err := env.o.AppendLog(context.Background(), taskID, call.token, LogSegment{Offset: 0, Data: "x"}); err != nil {
+		t.Errorf("AppendLog with dispatch token: %v", err)
+	}
+	// A different token cannot drive the task.
+	if _, err := env.o.GetTask(context.Background(), taskID, "wrong"); !errors.Is(err, ErrForbidden) {
+		t.Errorf("GetTask with wrong token = %v, want ErrForbidden", err)
+	}
+}
+
+// TestAutoscaleClaimTimeoutRotatesToken covers the expiry path: after
+// the claim timeout the old binding and token die, and the re-dispatch
+// uses a fresh token.
+func TestAutoscaleClaimTimeoutRotatesToken(t *testing.T) {
 	env := newTestEnv(t)
 	ac := enabledActions()
-	ac.Ref = "custom-branch"
+	ac.ClaimTimeout = 5 * time.Minute
 	env.cfg.Worker.Actions = ac
 	fake := &fakeActionsDispatcher{}
 	env.o.actions = fake
-	env.enqueue(t, "foo", "foo")
+	taskID := env.enqueue(t, "foo", "foo")
+
 	env.o.autoscaleWorkers(context.Background())
-	if fake.count() != 1 || fake.ref != "custom-branch" {
-		t.Fatalf("dispatch calls = %d ref = %q, want 1 and custom-branch", fake.count(), fake.ref)
+	first := fake.last()
+	env.advance(ac.ClaimTimeout + time.Second)
+	env.o.autoscaleWorkers(context.Background())
+	if got := fake.count(); got != 2 {
+		t.Fatalf("dispatch calls = %d, want 2 after expiry", got)
+	}
+	second := fake.last()
+	if second.task != taskID {
+		t.Fatalf("re-dispatched task = %q, want %q", second.task, taskID)
+	}
+	if second.token == first.token {
+		t.Errorf("re-dispatch reused the stale token")
+	}
+	if _, err := env.o.GetTask(context.Background(), taskID, first.token); !errors.Is(err, ErrForbidden) {
+		t.Errorf("GetTask with expired token = %v, want ErrForbidden", err)
+	}
+	if _, err := env.o.GetTask(context.Background(), taskID, second.token); err != nil {
+		t.Errorf("GetTask with fresh token = %v, want nil", err)
+	}
+}
+
+// TestAutoscaleRequeueRedispatches covers the eager release on requeue: a
+// claimed run whose task stalls is re-queued, the binding dies and the
+// next scan dispatches the retry immediately with a fresh token (the
+// claim timeout is still far away, so only the requeue could have
+// released the binding).
+func TestAutoscaleRequeueRedispatches(t *testing.T) {
+	env := newTestEnv(t)
+	ac := enabledActions()
+	env.cfg.Worker.Actions = ac
+	env.cfg.Worker.StallTimeout = time.Minute
+	fake := &fakeActionsDispatcher{}
+	env.o.actions = fake
+	taskID := env.enqueue(t, "foo", "foo")
+
+	env.o.autoscaleWorkers(context.Background())
+	first := fake.last()
+	if first.task != taskID {
+		t.Fatalf("first dispatch task = %q, want %q", first.task, taskID)
+	}
+	if _, err := env.o.GetTask(context.Background(), taskID, first.token); err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	// Stall recovery re-queues the task and releases the binding.
+	env.advance(2 * time.Minute)
+	if err := env.o.scanStalled(context.Background()); err != nil {
+		t.Fatalf("scanStalled: %v", err)
+	}
+	task, err := env.store.GetTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.State != "queued" {
+		t.Fatalf("state = %q, want queued after stall requeue", task.State)
+	}
+	env.o.autoscaleWorkers(context.Background())
+	if got := fake.count(); got != 2 {
+		t.Fatalf("dispatch calls after requeue = %d, want 2", got)
+	}
+	second := fake.last()
+	if second.token == first.token {
+		t.Errorf("re-dispatch reused the stale token %q", first.token)
+	}
+	if _, err := env.o.GetTask(context.Background(), taskID, first.token); !errors.Is(err, ErrForbidden) {
+		t.Errorf("GetTask with stale token = %v, want ErrForbidden", err)
+	}
+}
+
+// TestAutoscaleConcurrencyGap covers the ceiling arithmetic: a claimed
+// run keeps its slot until the task is terminal, then the next queued
+// task is dispatched.
+func TestAutoscaleConcurrencyGap(t *testing.T) {
+	env := newTestEnv(t)
+	ac := enabledActions()
+	ac.MaxConcurrency = 1
+	env.cfg.Worker.Actions = ac
+	fake := &fakeActionsDispatcher{}
+	env.o.actions = fake
+	env.enqueue(t, "a", "a")
+	env.enqueue(t, "b", "b")
+
+	env.o.autoscaleWorkers(context.Background())
+	if got := fake.count(); got != 1 {
+		t.Fatalf("dispatch calls = %d, want 1 (ceiling 1)", got)
+	}
+	// Claim the run's task and finish it: the slot frees.
+	call := fake.last()
+	if _, err := env.o.GetTask(context.Background(), call.task, call.token); err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if err := env.store.WithTx(context.Background(), func(tx *db.Tx) error {
+		return tx.FinalizeTask(context.Background(), call.task, "succeeded", "", env.now.UTC(), nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize task: %v", err)
+	}
+	env.o.autoscaleWorkers(context.Background())
+	if got := fake.count(); got != 2 {
+		t.Fatalf("dispatch calls after finish = %d, want 2", got)
+	}
+	if last := fake.last(); last.task == call.task {
+		t.Errorf("re-dispatched the finished task %q, want the next queued one", last.task)
 	}
 }

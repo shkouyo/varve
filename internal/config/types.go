@@ -134,9 +134,6 @@ type WorkerActions struct {
 	Ref            string        // git ref to dispatch on, "main"
 	MaxConcurrency int           // maximum concurrent runner runs, 3
 	ClaimTimeout   time.Duration // a dispatched run must claim its task within this window, "5m"
-	// Cooldown is deprecated and ignored; the TOML key is still accepted
-	// for compatibility.
-	Cooldown time.Duration
 }
 
 // MailConfig configures SMTP failure notifications.

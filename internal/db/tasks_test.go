@@ -128,6 +128,52 @@ func TestMarkRunning(t *testing.T) {
 	}
 }
 
+// TestClaimTaskToken covers the one-shot token claim: a queued task moves
+// straight to running with the token recorded, and non-queued or missing
+// tasks conflict or are not found.
+func TestClaimTaskToken(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "tokclaim")
+	_, b := createTask(t, s, "tok-1", "queued", pkg, at(0))
+
+	when := at(time.Minute)
+	if err := s.ClaimTaskToken(testCtx, "tok-1", "tok", when); err != nil {
+		t.Fatalf("ClaimTaskToken: %v", err)
+	}
+	task, err := s.GetTask(testCtx, "tok-1")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.State != "running" {
+		t.Errorf("state = %q, want running", task.State)
+	}
+	if task.ClaimToken != "tok" {
+		t.Errorf("claim_token = %q, want tok", task.ClaimToken)
+	}
+	if task.AssignedAt == nil || !task.AssignedAt.Equal(when) {
+		t.Errorf("AssignedAt = %v, want %v", task.AssignedAt, when)
+	}
+	if task.WorkerID != 0 {
+		t.Errorf("WorkerID = %d, want 0 (no worker row for one-shot runners)", task.WorkerID)
+	}
+	build, err := s.GetBuild(testCtx, b.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if build.Status != "running" || build.StartedAt == nil || !build.StartedAt.Equal(when) {
+		t.Errorf("build mirror = %q started %v, want running %v", build.Status, build.StartedAt, when)
+	}
+
+	// A claimed task cannot be claimed again.
+	if err := s.ClaimTaskToken(testCtx, "tok-1", "tok2", at(2*time.Minute)); !errors.Is(err, ErrConflict) {
+		t.Errorf("second claim = %v, want ErrConflict", err)
+	}
+	// Missing task.
+	if err := s.ClaimTaskToken(testCtx, "ghost", "tok", at(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ClaimTaskToken(ghost) = %v, want ErrNotFound", err)
+	}
+}
+
 // TestTouchTaskProgress covers last_progress_at updates and ErrNotFound.
 func TestTouchTaskProgress(t *testing.T) {
 	s := newTestStore(t)

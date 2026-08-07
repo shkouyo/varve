@@ -103,6 +103,7 @@ func (o *OrchestratorImpl) scanStalled(ctx context.Context) error {
 				continue
 			}
 			o.clearToken(t.ID) // the stale container's token dies
+			o.releaseDispatch(t.ID)
 			log.Printf("dispatch: stalled task %s re-queued (attempt 2)", t.ID)
 		default:
 			o.finalizeFailed(ctx, t, "stalled", "no progress for "+o.cfg.Worker.StallTimeout.String())

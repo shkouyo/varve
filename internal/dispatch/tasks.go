@@ -32,8 +32,10 @@ import (
 
 // GetTask returns the task detail for a one-shot agent. The first call
 // (state=assigned) transitions the task to running with started_at=now;
-// subsequent calls are idempotent. Terminal tasks conflict. Claim-token
-// protected. Concurrently safe.
+// subsequent calls are idempotent. A queued task is claimed directly
+// when the caller holds a pre-issued dispatch token (actions one-shot
+// runner: transient runners never register a node). Terminal tasks
+// conflict. Claim-token protected. Concurrently safe.
 func (o *OrchestratorImpl) GetTask(ctx context.Context, taskID, token string) (*TaskDetail, error) {
 	if err := o.checkToken(taskID, token); err != nil {
 		return nil, err
@@ -44,6 +46,19 @@ func (o *OrchestratorImpl) GetTask(ctx context.Context, taskID, token string) (*
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	if task.State == "queued" {
+		// Pre-issued dispatch token: claim the task straight to running.
+		if err := o.store.ClaimTaskToken(ctx, taskID, token, o.now().UTC()); err != nil {
+			return nil, err
+		}
+		task, err = o.store.GetTask(ctx, taskID)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
 	}
 	switch task.State {
 	case "assigned":

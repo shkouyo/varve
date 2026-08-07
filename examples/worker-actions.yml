@@ -1,7 +1,22 @@
 # examples/worker-actions.yml
+#
+# The controller dispatches one workflow run per queued task
+# ([worker.actions] enabled) and passes the task binding through the
+# workflow_dispatch inputs. Each run builds exactly that one task in
+# one-shot mode and then exits, so the runner is released for the next
+# run. Copy this file into the runner repository named by
+# worker.actions.workflow (default "worker-actions.yml"); the
+# task_id/task_token inputs are required.
 name: varve-worker
 on:
     workflow_dispatch:
+        inputs:
+            task_id:
+                description: varve task id to build (one-shot mode)
+                required: true
+            task_token:
+                description: one-shot claim token issued for the task
+                required: true
 jobs:
     worker:
         runs-on: ubuntu-latest
@@ -9,8 +24,9 @@ jobs:
             image: <registry>/varve-worker:latest # image published to Forgejo Packages
             env:
                 VARVE_CONTROLLER_URL: ${{ secrets.VARVE_CONTROLLER_URL }}
-                VARVE_TOKEN: ${{ secrets.VARVE_TOKEN }}
-                VARVE_ROLE: agent # run as an agent inside the container (pool mode)
-                # VARVE_WORKER_NAME: runner-1 # optional: fixed node name; auto-generated when unset
+                VARVE_ROLE: agent # run as an agent inside the container (one-shot mode)
+                VARVE_ONE_SHOT: "1" # build exactly the dispatched task, then exit
+                VARVE_TASK_ID: ${{ github.event.inputs.task_id }}
+                VARVE_TASK_TOKEN: ${{ github.event.inputs.task_token }}
         steps:
             - run: varve-worker

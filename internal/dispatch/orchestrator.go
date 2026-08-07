@@ -152,7 +152,9 @@ type Orchestrator interface {
 //   - ingestMu serializes the whole ingest orchestration (single-repo
 //     mutex);
 //   - tokenCache holds taskID → claim token in memory; a controller restart
-//     clears it, orphaning running agents until stall recovery re-claims;
+//     clears it, orphaning running agents until stall recovery re-claims.
+//     Pre-issued dispatch tokens (actions one-shot runners) live here too
+//     and die with the restart, orphaning their runs the same way;
 //   - roundSet tracks the pkgbases enqueued in the current detection round
 //     for the name-conflict check, pruned after cfg.Source.PollInterval.
 //
@@ -176,12 +178,14 @@ type OrchestratorImpl struct {
 	roundMu    sync.Mutex
 	roundSet   map[string]time.Time
 
-	// actions autoscaling (worker.actions): the dispatcher is built at
-	// construction and the last dispatch attempt is tracked under a lock
-	// (the scheduler reads and writes it).
-	actions        workflowDispatcher
-	actionsMu      sync.Mutex
-	lastDispatchAt time.Time
+	// actions per-task dispatch (worker.actions): the dispatcher is
+	// built at construction and dispatchMap tracks every dispatched run
+	// (dispatched → claimed → done) so the scheduler can enforce
+	// max_concurrency and release unclaimed tasks after the claim
+	// timeout. All access goes through dispatchMu.
+	actions     workflowDispatcher
+	dispatchMu  sync.Mutex
+	dispatchMap map[string]dispatchEntry
 
 	// scheduler lifecycle (started by NewOrchestrator, stopped by Stop).
 	stopOnce       sync.Once
@@ -237,6 +241,7 @@ func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend stor
 		execCommand:    exec.CommandContext,
 		tokenCache:     make(map[string]string),
 		roundSet:       make(map[string]time.Time),
+		dispatchMap:    make(map[string]dispatchEntry),
 		stallInterval:  30 * time.Second,
 		hourlyInterval: time.Hour,
 		actions:        newActionsDispatcher(&cfg.Worker.Actions),

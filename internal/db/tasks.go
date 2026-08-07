@@ -102,6 +102,53 @@ func (s *Store) GetTask(ctx context.Context, id string) (*Task, error) {
 	return t, nil
 }
 
+// ClaimTaskToken claims a queued task for a one-shot runner that holds a
+// pre-issued dispatch token (actions runners are never registered as
+// workers): the task moves straight to running — the runner starts
+// executing right after GetTask, so there is no separate assigned phase
+// — with the token, assigned_at and last_progress_at recorded, and the
+// mirrored build row follows with started_at. No worker row exists, so
+// worker_id and worker_name stay empty. ErrConflict when the task is not
+// queued (another runner claimed it first), ErrNotFound when it does not
+// exist.
+func (s *Store) ClaimTaskToken(ctx context.Context, id, token string, at time.Time) error {
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE tasks SET
+			state = 'running', assigned_at = ?, claim_token = ?, last_progress_at = ?
+			WHERE id = ? AND state = 'queued'`,
+			formatTime(at), token, formatTime(at), id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			var one int
+			if err := tx.QueryRowContext(ctx,
+				`SELECT 1 FROM tasks WHERE id = ?`, id).Scan(&one); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrNotFound
+				}
+				return err
+			}
+			return ErrConflict
+		}
+		_, err = tx.ExecContext(ctx,
+			`UPDATE builds SET status = 'running', started_at = ? WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
+			formatTime(at), id)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
+			return err
+		}
+		return fmt.Errorf("db: claim task %s by token: %w", id, err)
+	}
+	return nil
+}
+
 // RequeueTask returns a stalled assigned/running task to the queue head:
 // state=queued, the worker and claim token are released, attempts is
 // incremented and created_at is preserved so the task keeps its FIFO

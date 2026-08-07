@@ -199,6 +199,7 @@ func (o *OrchestratorImpl) failOrRetry(ctx context.Context, task *db.Task, stage
 			return err
 		}
 		o.clearToken(task.ID)
+		o.releaseDispatch(task.ID)
 		log.Printf("dispatch: task %s failed (%s), retry %d/%d", task.ID, stage, task.FailCount+1, o.cfg.Worker.RetryMax)
 		return nil
 	}
