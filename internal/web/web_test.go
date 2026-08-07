@@ -105,9 +105,8 @@ func TestCopyingServesLicense(t *testing.T) {
 }
 
 // TestTemplateSetCompiles asserts that the full template set is
-// registered and each servable page renders with a 200. admin.html is no
-// longer routed (the admin area merged into the dashboard) but stays in
-// the embedded set until the template cleanup removes it.
+// registered and each servable page renders with a 200. admin.html was
+// removed when the admin area merged into the dashboard.
 func TestTemplateSetCompiles(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -117,7 +116,7 @@ func TestTemplateSetCompiles(t *testing.T) {
 
 	want := []string{
 		"dashboard.html", "packages.html", "package.html", "build.html",
-		"log.html", "admin.html", "admin_builds.html", "builds.html", "error.html",
+		"log.html", "admin_builds.html", "builds.html", "error.html",
 	}
 	for _, name := range want {
 		if s.tmpl.Lookup(name) == nil {
