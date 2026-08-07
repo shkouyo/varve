@@ -492,6 +492,9 @@ func (f *fakeOrchestrator) ReadLog(ctx context.Context, buildID string) ([]byte,
 func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
 	return 0, nil
 }
+func (f *fakeOrchestrator) Size(ctx context.Context, buildID string) (int64, error) {
+	return 0, nil
+}
 func (f *fakeOrchestrator) Stop() { f.rec.record("orch.Stop") }
 
 // fakeDetector records the moment its Run loop observes the cancellation
