@@ -182,6 +182,33 @@ func TestListPackages(t *testing.T) {
 	})
 }
 
+// TestListPackagesLikeEscape asserts that LIKE metacharacters in the
+// search term match literally instead of acting as wildcards.
+func TestListPackagesLikeEscape(t *testing.T) {
+	s := newTestStore(t)
+	seedPackage(t, s, Package{Pkgbase: "lib-100%", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "percent package"})
+	seedPackage(t, s, Package{Pkgbase: "lib-100x", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "plain package"})
+
+	rows, total, err := s.ListPackages(testCtx, "100%", 1, 100)
+	if err != nil {
+		t.Fatalf("search literal percent: %v", err)
+	}
+	if total != 1 || len(rows) != 1 || rows[0].Pkgbase != "lib-100%" {
+		t.Errorf("rows=%v total=%d, want only lib-100%% (literal %% match)", rows, total)
+	}
+
+	// A bare underscore matches only a literal underscore, not any char.
+	seedPackage(t, s, Package{Pkgbase: "lib_1", Branch: "main", Arch: "x86_64", Enabled: true})
+	seedPackage(t, s, Package{Pkgbase: "libx1", Branch: "main", Arch: "x86_64", Enabled: true})
+	rows, total, err = s.ListPackages(testCtx, "lib_1", 1, 100)
+	if err != nil {
+		t.Fatalf("search literal underscore: %v", err)
+	}
+	if total != 1 || len(rows) != 1 || rows[0].Pkgbase != "lib_1" {
+		t.Errorf("rows=%v total=%d, want only lib_1 (literal _ match)", rows, total)
+	}
+}
+
 // TestUpdatePackageAfterBuild asserts the update semantics inside WithTx.
 func TestUpdatePackageAfterBuild(t *testing.T) {
 	s := newTestStore(t)
