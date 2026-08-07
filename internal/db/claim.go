@@ -31,8 +31,10 @@ import (
 // architecture match covers every element of the package's arch set: an
 // "any" package (or an "any" worker) matches everything, otherwise the
 // worker's architecture must be one of the "|"-joined elements. The
-// task is moved to assigned and the mirrored build row to assigned in the
-// same BEGIN IMMEDIATE transaction, which serializes concurrent polls.
+// task is moved to assigned and the mirrored build row to assigned with
+// the worker's plain-text name and started_at=now in the same BEGIN
+// IMMEDIATE transaction, which serializes concurrent polls (MarkRunning
+// later overwrites started_at idempotently).
 // ErrNoTask when nothing is claimable, ErrNotFound when the worker does
 // not exist.
 func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, token string) (*Task, error) {
@@ -88,8 +90,8 @@ func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, tok
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE builds SET status = 'assigned', worker_id = ?, worker_name = ? WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
-			workerID, name, id); err != nil {
+			`UPDATE builds SET status = 'assigned', worker_id = ?, worker_name = ?, started_at = ? WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
+			workerID, name, formatTime(now), id); err != nil {
 			return err
 		}
 		task, err := scanTask(tx.QueryRowContext(ctx,

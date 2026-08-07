@@ -218,7 +218,8 @@ func TestClaimUnknownWorker(t *testing.T) {
 	}
 }
 
-// TestClaimMirror asserts the build row mirrors the assigned state.
+// TestClaimMirror asserts the build row mirrors the assigned state: the
+// worker's plain-text name and started_at are backfilled at claim time.
 func TestClaimMirror(t *testing.T) {
 	s := newTestStore(t)
 	pkg := mustSeedPackage(t, s, "mirror")
@@ -235,6 +236,12 @@ func TestClaimMirror(t *testing.T) {
 	}
 	if build.Status != "assigned" {
 		t.Errorf("build status = %q, want assigned (mirror)", build.Status)
+	}
+	if build.WorkerName != "mirror-w" {
+		t.Errorf("build worker_name = %q, want mirror-w (plain-text backfill)", build.WorkerName)
+	}
+	if build.StartedAt == nil {
+		t.Error("build started_at = nil, want set at claim time")
 	}
 	if claimed.BuildID != b.ID {
 		t.Errorf("claimed.BuildID = %s, want %s", claimed.BuildID, b.ID)

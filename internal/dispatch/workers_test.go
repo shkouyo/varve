@@ -161,6 +161,40 @@ func TestPollNotForOfflineOrDisabled(t *testing.T) {
 	}
 }
 
+// TestClaimBackfillsWorkerAndStarted covers Task B: claiming a task
+// stamps the build row with the worker's plain-text name and started_at,
+// in both host and pool (agent) modes — the shared Poll/ClaimTask path.
+func TestClaimBackfillsWorkerAndStarted(t *testing.T) {
+	env := newTestEnv(t)
+	env.enqueue(t, "host-pkg", "host-pkg")
+	env.enqueue(t, "pool-pkg", "pool-pkg")
+	env.registerWorker(t, "host-node", "host", "host", 1)
+	env.registerWorker(t, "pool-node", "agent", "pool", 1)
+
+	for _, tc := range []struct {
+		worker, pkgbase string
+	}{
+		{"host-node", "host-pkg"},
+		{"pool-node", "pool-pkg"},
+	} {
+		claimed, _ := env.claim(t, tc.worker)
+		task, err := env.store.GetTask(ctx(), claimed)
+		if err != nil {
+			t.Fatalf("GetTask %s: %v", claimed, err)
+		}
+		build, err := env.store.GetBuild(ctx(), task.BuildID)
+		if err != nil {
+			t.Fatalf("GetBuild: %v", err)
+		}
+		if build.WorkerName != tc.worker {
+			t.Errorf("%s build worker_name = %q, want %q", tc.worker, build.WorkerName, tc.worker)
+		}
+		if build.StartedAt == nil {
+			t.Errorf("%s build started_at = nil, want set at claim", tc.worker)
+		}
+	}
+}
+
 // TestHeartbeatProgressAndCancel covers progress application and the
 // cancellation signal delivery.
 func TestHeartbeatProgressAndCancel(t *testing.T) {
