@@ -1,6 +1,6 @@
 # Manual release workflow: build both binaries and publish the container
 # images to Forgejo Packages. Triggered only from the Actions UI via
-# workflow_dispatch with an optional tag input. No tests, vet, lint or
+# workflow_dispatch. No tests, vet, lint or
 # format checks run here: this workflow is the publish path, validation
 # already happened before the operator decided to release.
 #
@@ -25,12 +25,7 @@
 name: release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: image tag to publish (default latest)
-        default: latest
-        required: false
+  workflow_dispatch: {}
 
 jobs:
   build-and-publish:
@@ -112,7 +107,7 @@ jobs:
           args: |
             --context=${{ github.workspace }}
             --dockerfile=Containerfile.controller
-            --destination=${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/varve-controller:${{ inputs.tag || 'latest' }}
+            --destination=${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/varve-controller:latest
 
       - name: Build and push worker image
         uses: docker://gcr.io/kaniko-project/executor:v1.24.0
@@ -122,4 +117,4 @@ jobs:
           args: |
             --context=${{ github.workspace }}
             --dockerfile=Containerfile.worker
-            --destination=${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/varve-worker:${{ inputs.tag || 'latest' }}
+            --destination=${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/varve-worker:latest
