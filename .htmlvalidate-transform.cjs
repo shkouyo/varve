@@ -10,10 +10,14 @@
  * would otherwise close the attribute value early and make the tokenizer fail
  * with parser-error/attr-spacing.
  *
- * Each action is replaced with a unique placeholder `xN` (N increments per
- * action) padded with spaces when it directly abuts non-whitespace, and
- * newlines inside the action are preserved so reported line numbers still
- * point at the original template lines. This keeps the document valid:
+ * Each action is replaced with a placeholder, padded with spaces when it
+ * directly abuts non-whitespace, and newlines inside the action are preserved
+ * so reported line numbers still point at the original template lines. The
+ * placeholder is unique per action (`xN`, N increments per action) except
+ * inside quoted attribute values, where a constant numeric placeholder (`0`)
+ * is used: numeric attributes (e.g. `<progress value>`) must hold a valid
+ * number, and html-validate's attribute-allowed-values rule rejects `xN`
+ * there. This keeps the document valid:
  *   - actions inside attribute values leave a legal, non-empty value;
  *   - actions between attributes or tags leave whitespace-separated
  *     placeholders, so checks like wcag/h30 (anchor text), empty-heading and
@@ -108,7 +112,12 @@ function stripGoActions(source) {
     const after = j < n ? source[j] : "";
     const padBefore = before !== "" && !/\s/.test(before) && !inValue;
     const padAfter = after !== "" && !/\s/.test(after) && !inValue;
-    const placeholder = "x" + actionCount++;
+    // Inside a quoted attribute value use a constant numeric placeholder:
+    // html-validate's attribute-allowed-values rule requires numeric
+    // attributes (e.g. <progress value>) to hold a valid number, which the
+    // unique "xN" placeholder is not. Uniqueness is only needed between
+    // attributes (to avoid duplicated-attribute reports), where "xN" is kept.
+    const placeholder = inValue ? "0" : "x" + actionCount++;
 
     let replacement = (padBefore ? " " : "") + placeholder + (padAfter ? " " : "");
     const end = Math.min(j, n);
