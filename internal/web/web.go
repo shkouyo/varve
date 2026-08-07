@@ -19,11 +19,12 @@
 // over html/template, a build-time Tailwind stylesheet embedded into the
 // binary, a Basic Auth protected /admin area (no cookies), an
 // Origin/Referer same-origin gate on every admin POST (CSRF defense for
-// the auto-attached Basic credentials), and an SSE log stream on
-// GET /builds/{id}/log with a no-JavaScript meta-refresh fallback. The
-// UI is fully usable without JavaScript: every admin action is a plain
-// form POST and every page renders semantic, keyboard navigable markup
-// (WCAG 2.2 AA).
+// the auto-attached Basic credentials), and a resumable SSE log stream
+// on GET /builds/{id}/log/stream. The build log is merged into the
+// build detail page; the legacy /builds/{id}/log URL redirects to its
+// anchor. The UI is fully usable without JavaScript: every admin action
+// is a plain form POST and every page renders semantic, keyboard
+// navigable markup (WCAG 2.2 AA).
 package web
 
 import (
@@ -125,6 +126,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /builds", s.handleBuilds)
 	mux.HandleFunc("GET /builds/{id}", s.handleBuild)
 	mux.HandleFunc("GET /builds/{id}/log", s.handleLog)
+	mux.HandleFunc("GET /builds/{id}/log/stream", s.handleLogStream)
 	mux.HandleFunc("GET /packages", s.handlePackages)
 	mux.HandleFunc("GET /packages/{pkgbase}", s.handlePackage)
 	mux.HandleFunc("GET /COPYING.txt", s.handleCopying)
@@ -144,15 +146,22 @@ func (s *Server) Handler() http.Handler {
 }
 
 // base carries the fields every page template renders: the page title,
-// the inlined compiled stylesheet and an optional redirect-back flash
-// message (admin actions).
+// the inlined compiled stylesheet, an optional redirect-back flash
+// message (admin actions) and the auto-refresh cadence. RefreshSeconds
+// is 10 on every page except the merged log section of a terminal
+// build, which must not refresh anymore; PageActive marks a build page
+// whose build is still in progress. The template renders the meta
+// refresh inside <noscript> so JavaScript users are never reloaded (the
+// build page streams live log increments over SSE instead).
 type base struct {
 	Title string
 	CSS   template.CSS
 	Flash *flash
 	// Nav names the active section for the header navigation
 	// (aria-current), or "" when none applies.
-	Nav string
+	Nav            string
+	PageActive     bool
+	RefreshSeconds int
 }
 
 // flash is a one-shot message carried through the redirect query string;
@@ -164,7 +173,7 @@ type flash struct {
 
 // page builds the base fields shared by every page.
 func (s *Server) page(title string, f *flash) base {
-	return base{Title: title, CSS: template.CSS(s.css), Flash: f}
+	return base{Title: title, CSS: template.CSS(s.css), Flash: f, RefreshSeconds: 10}
 }
 
 // render executes a named template with the page data. The stylesheet is

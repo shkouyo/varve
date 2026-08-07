@@ -49,6 +49,15 @@ func shortID(s string) string {
 	return s[:8] + "…"
 }
 
+// shortBuildID renders a build id for display: the first 7 hex
+// characters (ids are 16 hex; shorter values pass through).
+func shortBuildID(id string) string {
+	if len(id) > 7 {
+		return id[:7]
+	}
+	return id
+}
+
 // relTime renders an optional timestamp as a relative age ("3m ago").
 func relTime(t *time.Time) string {
 	return formatWhen(t, time.Now())

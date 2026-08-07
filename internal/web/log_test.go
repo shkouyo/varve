@@ -27,71 +27,125 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// TestLogContentNegotiation drives the Accept matrix:
-// text/event-stream selects SSE, everything else gets the HTML page.
-func TestLogContentNegotiation(t *testing.T) {
+// TestLogRedirect asserts the legacy log URL redirects to the merged
+// build page anchor, keeping 404/400 semantics for unknown or malformed
+// build ids.
+func TestLogRedirect(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
-	// A terminal build lets every SSE case finish (log increment → done).
 	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
 
-	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store,
-		newFakeLogReader("==> building\n"))
-
-	cases := []struct {
-		name   string
-		accept string
-		sse    bool
-	}{
-		{"exact sse", "text/event-stream", true},
-		{"sse in list", "text/event-stream, text/html", true},
-		{"sse with param", "text/event-stream; charset=utf-8", true},
-		{"html", "text/html", false},
-		{"html list", "text/html, application/xhtml+xml", false},
-		{"none", "", false},
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("GET /builds/%s/log = %d, want 302", build.ID, rec.Code)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log",
-				map[string]string{"Accept": tc.accept})
-			if rec.Code != http.StatusOK {
-				t.Fatalf("log page = %d, want 200", rec.Code)
-			}
-			if tc.sse {
-				if got := rec.Header().Get("Content-Type"); got != "text/event-stream" {
-					t.Errorf("Content-Type = %q, want text/event-stream", got)
-				}
-				mustContain(t, rec.Body.String(), "event: log", "event: done")
-			} else {
-				if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-					t.Errorf("Content-Type = %q, want text/html", got)
-				}
-				mustContain(t, rec.Body.String(), "<noscript>", `http-equiv="refresh"`, "EventSource")
-			}
-		})
+	if loc := rec.Header().Get("Location"); loc != "/builds/"+itoa(build.ID)+"#log" {
+		t.Errorf("Location = %q, want /builds/%s#log", loc, build.ID)
+	}
+
+	rec = get(t, s, http.MethodGet, "/builds/ffffffffffffffff/log", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown build log = %d, want 404", rec.Code)
+	}
+	rec = get(t, s, http.MethodGet, "/builds/99999/log", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("malformed build log = %d, want 400", rec.Code)
 	}
 }
 
-// TestSSEEventSequence asserts the log increment becomes event: log with
-// the JSON {"offset","data"} payload and the terminal build closes the
-// stream with event: done.
-func TestSSEEventSequence(t *testing.T) {
+// TestSSEStream asserts the stream endpoint emits the log as event: log
+// with a JSON {"offset","data"} payload, an id: line carrying the byte
+// offset the next resume starts from, and closes a terminal build with
+// event: done.
+func TestSSEStream(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
 	build := seedBuild(t, store, pkg, "succeeded", nil, nil) // terminal
 
-	logs := newFakeLogReader("line1\nline2\n")
-	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
-	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log",
-		map[string]string{"Accept": "text/event-stream"})
-	body := rec.Body.String()
-
-	mustContain(t, body,
-		"event: log",
-		`"offset":12`,             // "line1\nline2\n" is 12 bytes
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\nline2\n"))
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /log/stream = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	mustContain(t, rec.Body.String(),
+		"id: 12",                  // resume offset
+		"event: log",              // "line1\nline2\n" is 12 bytes
+		`"offset":12`,             //
 		`"data":"line1\nline2\n"`, // JSON-encoded payload
 		"event: done",
 	)
+}
+
+// TestSSEResumeMatrix drives the ?after= and Last-Event-ID resume
+// semantics: the stream starts at the requested offset, Last-Event-ID
+// wins over the query value, negative values clamp to 0 and malformed
+// values are a 400.
+func TestSSEResumeMatrix(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil) // terminal
+	id := itoa(build.ID)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\nline2\n"))
+
+	// after=6: the stream resumes mid-log and emits the remainder
+	// ("line1\n" is 6 bytes, so offset 6 starts at "line2\n").
+	rec := get(t, s, http.MethodGet, "/builds/"+id+"/log/stream?after=6", nil)
+	mustContain(t, rec.Body.String(), `"data":"line2\n"`, "id: 12")
+
+	// after=12: nothing left, the terminal build closes immediately.
+	rec = get(t, s, http.MethodGet, "/builds/"+id+"/log/stream?after=12", nil)
+	body := rec.Body.String()
+	mustContain(t, body, "event: done")
+	if strings.Contains(body, "event: log") {
+		t.Error("no data event expected past the end of the log")
+	}
+
+	// Negative offsets clamp to 0: the full log is delivered.
+	rec = get(t, s, http.MethodGet, "/builds/"+id+"/log/stream?after=-1", nil)
+	mustContain(t, rec.Body.String(), `"data":"line1\nline2\n"`)
+
+	// Last-Event-ID wins over ?after=.
+	rec = get(t, s, http.MethodGet, "/builds/"+id+"/log/stream?after=0",
+		map[string]string{"Last-Event-ID": "6"})
+	mustContain(t, rec.Body.String(), `"data":"line2\n"`)
+
+	// Malformed offsets are a 400.
+	for _, q := range []string{"after=abc", "after=1.5"} {
+		rec = get(t, s, http.MethodGet, "/builds/"+id+"/log/stream?"+q, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("?%s = %d, want 400", q, rec.Code)
+		}
+	}
+
+	// Vary: Accept announces the negotiation on the stream response.
+	rec = get(t, s, http.MethodGet, "/builds/"+id+"/log/stream", nil)
+	if got := rec.Header().Get("Vary"); !strings.Contains(got, "Accept") {
+		t.Errorf("Vary = %q, want Accept", got)
+	}
+}
+
+// TestSSETruncationCap asserts the stream never serves history older
+// than the most recent maxInlineLog bytes: a client resuming from 0 on
+// an oversized log is clamped to the truncation point.
+func TestSSETruncationCap(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil) // terminal
+
+	head := strings.Repeat("A", 64)           // older than the cap: never served
+	tail := strings.Repeat("B", maxInlineLog) // the most recent 1 MiB
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(head+tail))
+
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream?after=0", nil)
+	body := rec.Body.String()
+	mustContain(t, body, `"data":"`+tail+`"`, "id: "+itoa(int64(len(head)+len(tail))))
+	if strings.Contains(body, "A") {
+		t.Error("stream must not serve history older than the truncation point")
+	}
 }
 
 // TestSSEDoneOnTerminal asserts an empty log on a terminal build closes
@@ -102,8 +156,7 @@ func TestSSEDoneOnTerminal(t *testing.T) {
 	build := seedBuild(t, store, pkg, "cancelled", nil, nil) // terminal
 
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
-	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log",
-		map[string]string{"Accept": "text/event-stream"})
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream", nil)
 	body := rec.Body.String()
 	mustContain(t, body, "event: done")
 	if strings.Contains(body, ": ping") {
@@ -122,8 +175,7 @@ func TestSSEPingAndDisconnect(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log")
-	req.Header.Set("Accept", "text/event-stream")
+	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream")
 	req = req.WithContext(ctx)
 
 	// Cancel the client after a few ping intervals; the handler must
@@ -148,10 +200,8 @@ func TestSSELogMissing(t *testing.T) {
 	logs := newFakeLogReader("")
 	logs.tailErr = dispatch.ErrNotFound
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
-	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log",
-		map[string]string{"Accept": "text/event-stream"})
-	body := rec.Body.String()
-	mustContain(t, body, "No log was recorded", "event: done")
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream", nil)
+	mustContain(t, rec.Body.String(), "No log was recorded", "event: done")
 }
 
 // TestSSELogMissingWaits asserts a missing log file on a still-active
@@ -168,8 +218,7 @@ func TestSSELogMissingWaits(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log")
-	req.Header.Set("Accept", "text/event-stream")
+	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream")
 	req = req.WithContext(ctx)
 	time.AfterFunc(120*time.Millisecond, cancel)
 	rec := serve(t, s, req)
@@ -180,61 +229,16 @@ func TestSSELogMissingWaits(t *testing.T) {
 	}
 }
 
-// TestLogHTMLMissing asserts the HTML log page maps a missing log file to
-// a 200 with a waiting state (queued/not-started), and a terminal build
-// without a log renders a closing note.
-func TestLogHTMLMissing(t *testing.T) {
-	store := newTestDB(t)
-	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
-
-	// Active build without a log: 200 + waiting.
-	build := seedActiveBuild(t, store, pkg, "queued")
-	logs := newFakeLogReader("")
-	logs.readErr = dispatch.ErrNotFound
-	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
-	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("log HTML (active) = %d, want 200", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "Waiting for log output") {
-		t.Error("active build log page must render the waiting state")
-	}
-
-	// Terminal build without a log: 200 + note.
-	other := seedPackage(t, store, "other-pkg", "A second package")
-	term := seedBuild(t, store, other, "cancelled", nil, nil)
-	rec = get(t, s, http.MethodGet, "/builds/"+itoa(term.ID)+"/log", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("log HTML (terminal) = %d, want 200", rec.Code)
-	}
-}
-
-// TestLogBuildMissing asserts a missing build is a 404 and a malformed
-// build id a 400 for both the HTML page and the SSE stream.
-func TestLogBuildMissing(t *testing.T) {
+// TestLogStreamBuildMissing asserts a missing build is a 404 and a
+// malformed build id a 400 on the stream endpoint.
+func TestLogStreamBuildMissing(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
-	for _, accept := range []string{"", "text/event-stream"} {
-		rec := get(t, s, http.MethodGet, "/builds/ffffffffffffffff/log", map[string]string{"Accept": accept})
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("accept=%q: log page = %d, want 404", accept, rec.Code)
-		}
-		rec = get(t, s, http.MethodGet, "/builds/99999/log", map[string]string{"Accept": accept})
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("accept=%q: malformed log id = %d, want 400", accept, rec.Code)
-		}
+	rec := get(t, s, http.MethodGet, "/builds/ffffffffffffffff/log/stream", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown build stream = %d, want 404", rec.Code)
 	}
-}
-
-// TestLogHTMLNoScript asserts the no-JavaScript fallback meta refresh is
-// present in the HTML log page.
-func TestLogHTMLNoScript(t *testing.T) {
-	store := newTestDB(t)
-	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
-	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
-
-	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store,
-		newFakeLogReader("tail of log"))
-	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log", nil)
-	body := rec.Body.String()
-	mustContain(t, body, "<noscript>", `http-equiv="refresh"`, "tail of log", "EventSource")
+	rec = get(t, s, http.MethodGet, "/builds/99999/log/stream", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("malformed build stream = %d, want 400", rec.Code)
+	}
 }

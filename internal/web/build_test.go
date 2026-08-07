@@ -19,10 +19,12 @@ package web
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"git.0x0f.dev/varve/internal/db"
+	"git.0x0f.dev/varve/internal/dispatch"
 )
 
 // TestBuildDetailRenders asserts the build page shows the summary, the
@@ -85,6 +87,116 @@ func TestBuildInvalidID(t *testing.T) {
 	rec := get(t, s, http.MethodGet, "/builds/12345", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("GET /builds/12345 = %d, want 400", rec.Code)
+	}
+}
+
+// TestBuildLogData asserts the merged log data contract: the rendered
+// line array, the SSE resume URL (at the end of the rendered content),
+// the activity flags for the auto-refresh and the short-id page title.
+func TestBuildLogData(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil) // terminal
+
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\nline2\n"))
+	data, err := s.buildData(newRequest(t, http.MethodGet, "/"), itoa(build.ID))
+	if err != nil {
+		t.Fatalf("buildData: %v", err)
+	}
+	if !data.HasLog || data.Truncated || data.Wait || data.Note != "" {
+		t.Errorf("log flags = HasLog %v Truncated %v Wait %v Note %q, want only HasLog",
+			data.HasLog, data.Truncated, data.Wait, data.Note)
+	}
+	want := []string{"line1", "line2", ""}
+	if len(data.Lines) != len(want) || data.Lines[0] != want[0] || data.Lines[1] != want[1] || data.Lines[2] != want[2] {
+		t.Errorf("Lines = %q, want %q", data.Lines, want)
+	}
+	if data.SSEURL != "/builds/"+itoa(build.ID)+"/log/stream?after=12" {
+		t.Errorf("SSEURL = %q, want resume at the rendered length (12 bytes)", data.SSEURL)
+	}
+	if data.PageActive {
+		t.Error("terminal build must not be marked active")
+	}
+	if data.RefreshSeconds != 0 {
+		t.Errorf("RefreshSeconds = %d, want 0 on a terminal build", data.RefreshSeconds)
+	}
+	if data.Title != "Build "+shortBuildID(itoa(build.ID)) {
+		t.Errorf("Title = %q, want the 7-char short build id", data.Title)
+	}
+}
+
+// TestBuildLogTruncation asserts oversized logs are cut to the most
+// recent maxInlineLog bytes with a truncation note: the first line is
+// the partial remainder of the cut line and the SSE URL resumes after
+// the rendered tail.
+func TestBuildLogTruncation(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedActiveBuild(t, store, pkg, "running") // active
+
+	tail := "tail-line\n"
+	// The log is maxInlineLog+len(tail) bytes: the truncation point is 10
+	// bytes in, so the rendered tail keeps the full 1 MiB window and ends
+	// with the distinguishable tail line.
+	logs := newFakeLogReader(strings.Repeat("x", maxInlineLog) + tail)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
+	data, err := s.buildData(newRequest(t, http.MethodGet, "/"), itoa(build.ID))
+	if err != nil {
+		t.Fatalf("buildData: %v", err)
+	}
+	if !data.Truncated {
+		t.Fatal("oversized log must be flagged truncated")
+	}
+	if len(data.Log) != maxInlineLog || !strings.HasSuffix(data.Log, tail) {
+		t.Errorf("Log = %d bytes, want the %d-byte recent window ending %q", len(data.Log), maxInlineLog, tail)
+	}
+	if len(data.Lines) != 2 || !strings.HasSuffix(data.Lines[0], "tail-line") || data.Lines[1] != "" {
+		t.Errorf("Lines = %q, want the tail split into lines", data.Lines)
+	}
+	if !strings.Contains(data.TruncatedNote, "showing the last "+itoa(maxInlineLog)+" bytes") {
+		t.Errorf("TruncatedNote = %q, want a byte-count note", data.TruncatedNote)
+	}
+	wantURL := "/builds/" + itoa(build.ID) + "/log/stream?after=" + itoa(int64(maxInlineLog+len(tail)))
+	if data.SSEURL != wantURL {
+		t.Errorf("SSEURL = %q, want %q", data.SSEURL, wantURL)
+	}
+	if !data.PageActive || data.RefreshSeconds != 10 {
+		t.Errorf("active build: PageActive %v RefreshSeconds %d, want true/10", data.PageActive, data.RefreshSeconds)
+	}
+}
+
+// TestBuildLogMissing asserts a queued build without a log renders the
+// waiting state and a terminal build without a log renders the closing
+// note, with the SSE URL left at its bare stream endpoint.
+func TestBuildLogMissing(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	logs := newFakeLogReader("")
+	logs.readErr = dispatch.ErrNotFound
+
+	// The terminal build is seeded first: an active task later occupies
+	// the unique per-package slot (the cancelled row no longer counts).
+	term := seedBuild(t, store, pkg, "cancelled", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
+	data, err := s.buildData(newRequest(t, http.MethodGet, "/"), itoa(term.ID))
+	if err != nil {
+		t.Fatalf("buildData: %v", err)
+	}
+	if data.Note == "" || data.Wait {
+		t.Errorf("terminal build without log: Note %q Wait %v, want a closing note", data.Note, data.Wait)
+	}
+
+	active := seedActiveBuild(t, store, pkg, "queued")
+	data, err = s.buildData(newRequest(t, http.MethodGet, "/"), itoa(active.ID))
+	if err != nil {
+		t.Fatalf("buildData: %v", err)
+	}
+	if !data.Wait || data.HasLog || data.Note != "" {
+		t.Errorf("active build without log: Wait %v HasLog %v Note %q, want waiting state",
+			data.Wait, data.HasLog, data.Note)
+	}
+	if data.SSEURL != "/builds/"+itoa(active.ID)+"/log/stream" {
+		t.Errorf("SSEURL = %q, want the bare stream endpoint", data.SSEURL)
 	}
 }
 

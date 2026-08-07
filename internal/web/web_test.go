@@ -55,7 +55,7 @@ func TestHandlerRouteTable(t *testing.T) {
 		{"build detail", http.MethodGet, "/builds/" + itoa(build.ID), http.StatusOK},
 		{"build missing", http.MethodGet, "/builds/ffffffffffffffff", http.StatusNotFound},
 		{"build invalid", http.MethodGet, "/builds/99999", http.StatusBadRequest},
-		{"build log", http.MethodGet, "/builds/" + itoa(build.ID) + "/log", http.StatusOK},
+		{"build log", http.MethodGet, "/builds/" + itoa(build.ID) + "/log", http.StatusFound},
 		{"copying", http.MethodGet, "/copying.txt", http.StatusMovedPermanently},
 		{"copying canonical", http.MethodGet, "/COPYING.txt", http.StatusOK},
 		{"favicon svg", http.MethodGet, "/favicon.svg", http.StatusOK},
@@ -209,12 +209,13 @@ func TestTemplateSetCompiles(t *testing.T) {
 		}
 	}
 
+	// The legacy log page is served by a redirect; the merged log renders
+	// inside build.html.
 	paths := map[string]string{
 		"dashboard.html":    "/",
 		"packages.html":     "/packages",
 		"package.html":      "/packages/demo-pkg",
 		"build.html":        "/builds/" + itoa(build.ID),
-		"log.html":          "/builds/" + itoa(build.ID) + "/log",
 		"builds.html":       "/builds",
 		"admin_builds.html": "/admin/builds?failed=1",
 	}

@@ -81,7 +81,6 @@ func TestSemanticMarkup(t *testing.T) {
 		"packages":    "/packages",
 		"package":     "/packages/demo-pkg",
 		"build":       "/builds/" + itoa(build.ID),
-		"log":         "/builds/" + itoa(build.ID) + "/log",
 		"builds":      "/builds",
 		"admin":       "/",
 		"adminBuilds": "/admin/builds?failed=1",
@@ -109,7 +108,7 @@ func TestSemanticMarkup(t *testing.T) {
 			"<footer",      // landmark
 			`aria-label="Main"`,
 		)
-		if name != "adminBuilds" && name != "log" && name != "build" && name != "builds" {
+		if name != "adminBuilds" && name != "build" && name != "builds" {
 			mustContain(t, body, "aria-labelledby")
 		}
 		assertIconsHidden(t, body, name)
@@ -207,7 +206,6 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 		{"packages", "/packages", false, true},
 		{"package", "/packages/demo-pkg", false, true},
 		{"build", "/builds/" + itoa(build.ID), false, true},
-		{"log", "/builds/" + itoa(build.ID) + "/log", false, true},
 		{"builds", "/builds", false, true},
 		{"admin", "/", true, true},
 		{"adminBuilds", "/admin/builds?failed=1", true, true},
@@ -233,10 +231,9 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 		}
 	}
 
-	// Scrollable log regions must be keyboard-focusable (WCAG 2.1.1).
-	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log", nil)
-	mustContain(t, rec.Body.String(), `id="log" tabindex="0"`)
-	rec = get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
+	// Scrollable log regions must be keyboard-focusable (WCAG 2.1.1);
+	// the merged log renders on the build page now.
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
 	mustContain(t, rec.Body.String(), `<pre tabindex="0"`)
 
 	// 404 big status numeral: stone-500 on white (4.79:1 >= 3:1 large text).
