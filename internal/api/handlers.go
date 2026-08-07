@@ -42,6 +42,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	if err := validateRegisterReq(&req); err != nil {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
+		return
+	}
 	resp, err := s.orch.Register(r.Context(), req)
 	if err != nil {
 		s.writeOrchError(w, err)
@@ -55,6 +59,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var req HeartbeatReq
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := validateHeartbeatReq(&req); err != nil {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
 		return
 	}
 	resp, err := s.orch.Heartbeat(r.Context(), req)
@@ -71,6 +79,10 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	if err := validatePollReq(&req); err != nil {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
+		return
+	}
 	resp, err := s.orch.Poll(r.Context(), req)
 	if err != nil {
 		s.writeOrchError(w, err)
@@ -81,7 +93,12 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 
 // handleGetTask implements GET /api/v1/tasks/{id} (one-shot claim).
 func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
-	task, err := s.orch.GetTask(r.Context(), r.PathValue("id"), claimToken(r))
+	id, ok := validTaskPath(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid task id")
+		return
+	}
+	task, err := s.orch.GetTask(r.Context(), id, claimToken(r))
 	if err != nil {
 		s.writeOrchError(w, err)
 		return
@@ -91,11 +108,20 @@ func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 
 // handleAppendLog implements POST /api/v1/tasks/{id}/log.
 func (s *Server) handleAppendLog(w http.ResponseWriter, r *http.Request) {
+	id, ok := validTaskPath(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid task id")
+		return
+	}
 	var seg LogSegment
 	if !decodeJSON(w, r, &seg) {
 		return
 	}
-	ack, err := s.orch.AppendLog(r.Context(), r.PathValue("id"), claimToken(r), seg)
+	if err := validateLogSegment(&seg); err != nil {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
+		return
+	}
+	ack, err := s.orch.AppendLog(r.Context(), id, claimToken(r), seg)
 	if err != nil {
 		s.writeOrchError(w, err)
 		return
@@ -105,11 +131,20 @@ func (s *Server) handleAppendLog(w http.ResponseWriter, r *http.Request) {
 
 // handleReportResult implements POST /api/v1/tasks/{id}/result.
 func (s *Server) handleReportResult(w http.ResponseWriter, r *http.Request) {
+	id, ok := validTaskPath(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid task id")
+		return
+	}
 	var res ResultReq
 	if !decodeJSON(w, r, &res) {
 		return
 	}
-	if err := s.orch.ReportResult(r.Context(), r.PathValue("id"), claimToken(r), res); err != nil {
+	if err := validateResultReq(&res); err != nil {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
+		return
+	}
+	if err := s.orch.ReportResult(r.Context(), id, claimToken(r), res); err != nil {
 		s.writeOrchError(w, err)
 		return
 	}
@@ -120,7 +155,12 @@ func (s *Server) handleReportResult(w http.ResponseWriter, r *http.Request) {
 // may claim it exactly once (repeat → 409, mapped from
 // sign.ErrAlreadyExported).
 func (s *Server) handleSigningKey(w http.ResponseWriter, r *http.Request) {
-	km, err := s.orch.IssueSigningKey(r.Context(), r.PathValue("id"), claimToken(r))
+	id, ok := validTaskPath(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid task id")
+		return
+	}
+	km, err := s.orch.IssueSigningKey(r.Context(), id, claimToken(r))
 	if err != nil {
 		s.writeOrchError(w, err)
 		return
@@ -135,9 +175,21 @@ func (s *Server) handleSigningKey(w http.ResponseWriter, r *http.Request) {
 // handleDeregister implements POST /api/v1/workers/{name}/deregister
 // (normal shutdown).
 func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
-	if err := s.orch.Deregister(r.Context(), r.PathValue("name")); err != nil {
+	name := r.PathValue("name")
+	if !validToken(name, maxWorkerNameLen) {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid worker name")
+		return
+	}
+	if err := s.orch.Deregister(r.Context(), name); err != nil {
 		s.writeOrchError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, struct{}{})
+}
+
+// validTaskPath returns the validated {id} path value of a task-level
+// request.
+func validTaskPath(r *http.Request) (string, bool) {
+	id := r.PathValue("id")
+	return id, validTaskID(id)
 }

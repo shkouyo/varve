@@ -94,8 +94,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // decodeJSON strictly decodes one JSON value from the request body into dst.
 // Unknown fields, type mismatches, syntax errors and trailing data all map
 // to 400 invalid_request; the message names the offending field when the
-// decoder provides one. It reports false after writing the error response.
+// decoder provides one. Oversized bodies are rejected by the reader cap. It
+// reports false after writing the error response.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyLen)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {

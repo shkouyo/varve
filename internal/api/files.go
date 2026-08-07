@@ -25,13 +25,14 @@ import (
 	"strconv"
 )
 
-// validUploadName enforces the upload whitelist [A-Za-z0-9._+-]: every
-// byte must be a whitelisted character, which excludes path separators
-// and shell metacharacters and therefore prevents staging escapes. The
-// bare "." and ".." are rejected as well: they would resolve outside the
-// task directory despite matching the character class.
+// validUploadName enforces the upload whitelist [A-Za-z0-9._+-] and a
+// 255-byte cap: every byte must be a whitelisted character, which
+// excludes path separators and shell metacharacters and therefore
+// prevents staging escapes. The bare "." and ".." are rejected as well:
+// they would resolve outside the task directory despite matching the
+// character class.
 func validUploadName(name string) bool {
-	if name == "" || name == "." || name == ".." {
+	if name == "" || name == "." || name == ".." || len(name) > maxFileNameLen {
 		return false
 	}
 	for i := 0; i < len(name); i++ {
@@ -63,8 +64,16 @@ func parseOffset(r *http.Request) (int64, error) {
 // area (PUT /api/v1/tasks/{id}/files/{name}?offset=N): the request body
 // is forwarded to the orchestrator as an io.Reader without loading it
 // into memory. An offset mismatch surfaces as 409 carrying the current
-// server-side offset so the worker can resume.
+// server-side offset so the worker can resume. Size limits are enforced
+// here: one request must stay under maxUploadSegment and the final
+// artifact (offset + segment) under maxUploadTotal; a body that exceeds
+// the declared size mid-stream is cut off by the reader cap.
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := validTaskPath(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid task id")
+		return
+	}
 	name := r.PathValue("name")
 	if !validUploadName(name) {
 		writeError(w, http.StatusBadRequest, codeInvalidRequest,
@@ -76,7 +85,18 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
 		return
 	}
-	meta, err := s.orch.UploadFile(r.Context(), r.PathValue("id"), claimToken(r), name,
+	if r.ContentLength > maxUploadSegment {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest,
+			fmt.Sprintf("invalid request: upload segment must not exceed %d bytes", maxUploadSegment))
+		return
+	}
+	if offset > maxUploadTotal || (r.ContentLength > 0 && offset+r.ContentLength > maxUploadTotal) {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest,
+			fmt.Sprintf("invalid request: staged file must not exceed %d bytes", maxUploadTotal))
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSegment)
+	meta, err := s.orch.UploadFile(r.Context(), id, claimToken(r), name,
 		r.Body, r.ContentLength, offset)
 	if err != nil {
 		s.writeOrchError(w, err)
@@ -89,13 +109,18 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 // (GET /api/v1/tasks/{id}/files/{name}). The existence check happens inside
 // the orchestrator so a missing file maps to 404 before any bytes flow.
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := validTaskPath(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid task id")
+		return
+	}
 	name := r.PathValue("name")
 	if !validUploadName(name) {
 		writeError(w, http.StatusBadRequest, codeInvalidRequest,
 			fmt.Sprintf("invalid file name %q", name))
 		return
 	}
-	rc, err := s.orch.DownloadFile(r.Context(), r.PathValue("id"), claimToken(r), name)
+	rc, err := s.orch.DownloadFile(r.Context(), id, claimToken(r), name)
 	if err != nil {
 		s.writeOrchError(w, err)
 		return
