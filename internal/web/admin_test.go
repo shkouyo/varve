@@ -146,8 +146,8 @@ func TestAdminActions(t *testing.T) {
 			if rec.Code != http.StatusSeeOther {
 				t.Fatalf("POST %s = %d, want 303", tc.path, rec.Code)
 			}
-			if loc := rec.Header().Get("Location"); !strings.HasPrefix(loc, "/admin?ok=") {
-				t.Errorf("Location = %q, want /admin?ok=...", loc)
+			if loc := rec.Header().Get("Location"); !strings.HasPrefix(loc, "/?ok=") {
+				t.Errorf("Location = %q, want /?ok=...", loc)
 			}
 			tc.assert(t)
 		})
@@ -180,7 +180,7 @@ func TestAdminFlashSanitizesPaths(t *testing.T) {
 
 	rec := getAuth(t, s, http.MethodPost, "/admin/packages/demo-pkg/rebuild", "admin", "s3cret")
 	loc := rec.Header().Get("Location")
-	msg, err := url.QueryUnescape(strings.TrimPrefix(loc, "/admin?error="))
+	msg, err := url.QueryUnescape(strings.TrimPrefix(loc, "/?error="))
 	if err != nil || strings.Contains(msg, "/data/varve") || !strings.Contains(msg, "/…") {
 		t.Errorf("redirect flash = %q, want the path scrubbed to a placeholder", loc)
 	}
@@ -210,17 +210,12 @@ func TestAdminActionErrorFlash(t *testing.T) {
 		t.Fatalf("POST rebuild = %d, want 303", rec.Code)
 	}
 	loc := rec.Header().Get("Location")
-	if !strings.HasPrefix(loc, "/admin?error=") || !strings.Contains(loc, "conflict") {
-		t.Errorf("Location = %q, want /admin?error=...conflict...", loc)
+	if !strings.HasPrefix(loc, "/?error=") || !strings.Contains(loc, "conflict") {
+		t.Errorf("Location = %q, want /?error=...conflict...", loc)
 	}
 
-	// The flash survives the /admin redirect into the dashboard query.
-	rec = getAuth(t, s, http.MethodGet, loc, "admin", "s3cret")
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") == "" {
-		t.Fatalf("GET %s = %d, want a redirect to the dashboard", loc, rec.Code)
-	}
-	dash := strings.Replace(loc, "/admin", "/", 1)
-	req := newRequest(t, http.MethodGet, dash)
+	// The flash survives the direct redirect into the dashboard query.
+	req := newRequest(t, http.MethodGet, loc)
 	req.SetBasicAuth("admin", "s3cret")
 	data, err := s.dashboardData(req)
 	if err != nil {

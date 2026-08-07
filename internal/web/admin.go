@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 )
@@ -86,7 +85,6 @@ func (s *Server) taskViews(ctx context.Context, tasks []db.Task, workers []db.Wo
 		workerNames[w.ID] = w.Name
 	}
 	pkgNames := make(map[int64]string)
-	now := time.Now()
 	out := make([]taskView, 0, len(tasks))
 	for _, t := range tasks {
 		name, ok := pkgNames[t.PackageID]
@@ -101,51 +99,53 @@ func (s *Server) taskViews(ctx context.Context, tasks []db.Task, workers []db.Wo
 			Pkgbase:   name,
 			State:     t.State,
 			Worker:    workerNames[t.WorkerID],
-			CreatedAt: formatWhen(&t.CreatedAt, now),
+			CreatedAt: absTime(&t.CreatedAt),
 			CancelURL: "/admin/tasks/" + t.ID + "/cancel",
 		})
 	}
 	return out
 }
 
-// handleAdminRebuild posts a manual rebuild for a package.
+// handleAdminRebuild posts a manual rebuild for a package. The action
+// redirects straight back to the dashboard with the flash carried in the
+// query string (one hop, no /admin round trip).
 func (s *Server) handleAdminRebuild(w http.ResponseWriter, r *http.Request) {
 	pkgbase := r.PathValue("pkgbase")
 	if err := s.orch.RebuildPackage(r.Context(), pkgbase); err != nil {
-		s.redirectFlash(w, r, "/admin", "error", "Rebuild failed: "+err.Error())
+		s.redirectFlash(w, r, "/", "error", "Rebuild failed: "+err.Error())
 		return
 	}
-	s.redirectFlash(w, r, "/admin", "ok", "Rebuild queued for "+pkgbase)
+	s.redirectFlash(w, r, "/", "ok", "Rebuild queued for "+pkgbase)
 }
 
 // handleAdminCancel cancels a queued or running task.
 func (s *Server) handleAdminCancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.orch.CancelTask(r.Context(), id); err != nil {
-		s.redirectFlash(w, r, "/admin", "error", "Cancel failed: "+err.Error())
+		s.redirectFlash(w, r, "/", "error", "Cancel failed: "+err.Error())
 		return
 	}
-	s.redirectFlash(w, r, "/admin", "ok", "Cancellation requested for task "+id)
+	s.redirectFlash(w, r, "/", "ok", "Cancellation requested for task "+id)
 }
 
 // handleAdminDisable disables a worker (no new assignments).
 func (s *Server) handleAdminDisable(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.orch.DisableWorker(r.Context(), name); err != nil {
-		s.redirectFlash(w, r, "/admin", "error", "Disable failed: "+err.Error())
+		s.redirectFlash(w, r, "/", "error", "Disable failed: "+err.Error())
 		return
 	}
-	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" disabled")
+	s.redirectFlash(w, r, "/", "ok", "Worker "+name+" disabled")
 }
 
 // handleAdminEnable re-enables a disabled worker (new assignments resume).
 func (s *Server) handleAdminEnable(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.orch.EnableWorker(r.Context(), name); err != nil {
-		s.redirectFlash(w, r, "/admin", "error", "Enable failed: "+err.Error())
+		s.redirectFlash(w, r, "/", "error", "Enable failed: "+err.Error())
 		return
 	}
-	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" enabled")
+	s.redirectFlash(w, r, "/", "ok", "Worker "+name+" enabled")
 }
 
 // handleAdminRemove removes a worker record immediately; pressing the
@@ -154,10 +154,10 @@ func (s *Server) handleAdminEnable(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminRemove(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.orch.RemoveWorker(r.Context(), name); err != nil {
-		s.redirectFlash(w, r, "/admin", "error", "Remove failed: "+err.Error())
+		s.redirectFlash(w, r, "/", "error", "Remove failed: "+err.Error())
 		return
 	}
-	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" removed")
+	s.redirectFlash(w, r, "/", "ok", "Worker "+name+" removed")
 }
 
 // handleAdminBuilds renders GET /admin/builds?failed=1, the long-term
@@ -217,7 +217,7 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 			Error:     b.Error,
 			BuildURL:  "/builds/" + id,
 			LogURL:    "/builds/" + id + "/log",
-			StartedAt: formatWhen(b.StartedAt, time.Now()),
+			StartedAt: absTime(b.StartedAt),
 		})
 	}
 	s.render(w, "admin_builds.html", data)
@@ -235,8 +235,9 @@ func sanitizeFlash(msg string) string {
 	return pathToken.ReplaceAllString(msg, "${1}/…")
 }
 
-// redirectFlash redirects back to the admin area with a flash message
-// carried in the query string (no cookies).
+// redirectFlash redirects back to the dashboard with a flash message
+// carried in the query string (no cookies). Admin actions land directly
+// on /, so there is no second redirect hop.
 func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, target, kind, msg string) {
 	q := url.Values{}
 	q.Set(kind, sanitizeFlash(msg))
