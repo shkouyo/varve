@@ -162,6 +162,8 @@ func scanBuild(rs rowScanner) (*Build, error) {
 	if err != nil {
 		return nil, fmt.Errorf("db: decode resource_usage for build %s: %w", b.ID, err)
 	}
-	b.ResourceUsage = samples
+	// Keep only the most recent maxSamples entries so the render path
+	// (web performance table) never sees unbounded history.
+	b.ResourceUsage = capSamples(samples)
 	return &b, nil
 }

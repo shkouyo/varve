@@ -184,6 +184,41 @@ func TestListBuilds(t *testing.T) {
 	})
 }
 
+// TestResourceSampleCap asserts the resource_usage history is bounded:
+// a build with more than maxSamples samples stores and reads back only
+// the most recent maxSamples entries.
+func TestResourceSampleCap(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "cap")
+	_, b := createTask(t, s, "cap-task", "queued", pkg, at(0))
+
+	samples := make([]Sample, 0, maxSamples+25)
+	for i := 0; i < maxSamples+25; i++ {
+		samples = append(samples, Sample{At: at(time.Duration(i) * time.Second), CPUTimeNS: int64(i)})
+	}
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		return tx.FinalizeTask(testCtx, "cap-task", "succeeded", "", at(3*time.Hour), nil, samples)
+	}); err != nil {
+		t.Fatalf("FinalizeTask: %v", err)
+	}
+
+	got, err := s.GetBuild(testCtx, b.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if len(got.ResourceUsage) != maxSamples {
+		t.Fatalf("ResourceUsage has %d samples, want the %d cap", len(got.ResourceUsage), maxSamples)
+	}
+	// The cap keeps the most recent samples: the first stored sample is
+	// dropped and the newest one survives.
+	if got.ResourceUsage[0].CPUTimeNS != 25 {
+		t.Errorf("first kept sample cpu = %d, want 25 (oldest 25 dropped)", got.ResourceUsage[0].CPUTimeNS)
+	}
+	if last := got.ResourceUsage[len(got.ResourceUsage)-1]; last.CPUTimeNS != maxSamples+24 {
+		t.Errorf("last kept sample cpu = %d, want %d", last.CPUTimeNS, maxSamples+24)
+	}
+}
+
 // TestGetBuildCorruptJSON guards the no-panic contract on both JSON
 // columns.
 func TestGetBuildCorruptJSON(t *testing.T) {

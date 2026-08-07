@@ -73,7 +73,7 @@ func (t *Tx) FinalizeTask(ctx context.Context, id, state, errMsg string, at time
 	if err != nil {
 		return fmt.Errorf("db: encode artifacts for task %s: %w", id, err)
 	}
-	samps, err := encodeJSON(samples)
+	samps, err := encodeJSON(capSamples(samples))
 	if err != nil {
 		return fmt.Errorf("db: encode resource samples for task %s: %w", id, err)
 	}

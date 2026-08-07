@@ -193,6 +193,21 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// maxSamples is the number of resource samples kept per build: samples
+// are read every second to a few seconds, so long builds would otherwise
+// grow the JSON column without bound. The cap keeps the most recent
+// maxSamples entries, which is all the performance display needs.
+const maxSamples = 200
+
+// capSamples truncates a sample list to its most recent maxSamples
+// entries, dropping the oldest ones when the list exceeds the cap.
+func capSamples(s []Sample) []Sample {
+	if len(s) <= maxSamples {
+		return s
+	}
+	return s[len(s)-maxSamples:]
+}
+
 // decodeStrings decodes a maintainers JSON array.
 func decodeStrings(s string) ([]string, error) {
 	var out []string
