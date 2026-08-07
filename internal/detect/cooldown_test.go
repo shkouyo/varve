@@ -131,3 +131,99 @@ func TestPollOnceRebuildCooldownClearedBySuccess(t *testing.T) {
 	}
 	assertChangeCount(t, sink, 1)
 }
+
+// TestPollOnceRebuildCooldownBoundary pins the expiry semantics of the
+// cooldown gate: the window is half-open, [last_failed_at, last_failed_at
+// + cooldown). The failed build's residue is held on every round inside
+// the window, and the first round at or past the expiry submits again.
+// This locks in the behavior seen live: a round five seconds past the
+// expiry re-enqueued the package, which is correct expiry behavior rather
+// than a missed hold.
+func TestPollOnceRebuildCooldownBoundary(t *testing.T) {
+	body := srcinfoBody("cool", "1.0", "1")
+	src := newSourceRepo(t, "cool", map[string]string{".SRCINFO": body})
+	const cooldown = time.Hour
+	failedAt := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name string
+		now  time.Time
+		want int // submitted changes
+	}{
+		{"deep inside window", failedAt.Add(cooldown / 2), 0},
+		{"just before expiry", failedAt.Add(cooldown - time.Second), 0},
+		{"exactly at expiry", failedAt.Add(cooldown), 1},
+		{"just past expiry", failedAt.Add(cooldown + time.Second), 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, dbPath := openStore(t)
+			sink := &fakeSink{}
+			seedFailedPackage(t, dbPath, "cool", "old-success-hash", hashOf(body), failedAt)
+			d := newTestDetector(t, "file://"+src, store, sink)
+			d.failedRebuildCooldown = cooldown
+			d.now = func() time.Time { return tc.now }
+			if err := d.PollOnce(context.Background()); err != nil {
+				t.Fatalf("PollOnce: %v", err)
+			}
+			assertChangeCount(t, sink, tc.want)
+		})
+	}
+}
+
+// stampLastFailedAt rewrites the package's last_failed_at marker directly,
+// simulating a re-enqueued build that failed again (the failure path
+// stamps the marker in the same transaction as the build's finished_at).
+func stampLastFailedAt(t *testing.T, dbPath string, at time.Time) {
+	t.Helper()
+	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`UPDATE packages SET last_failed_at = ?`,
+		at.UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("stamp last_failed_at: %v", err)
+	}
+}
+
+// TestPollOnceRebuildCooldownRestartsOnNewFailure covers the restart
+// semantics: when a re-enqueued build fails again, the failure path moves
+// last_failed_at to the new failure and a fresh window starts from there.
+// Without the move the residue would be re-submitted right after the old
+// window, duplicating the same failed build; with it the gate keeps
+// holding until the newer window elapses.
+func TestPollOnceRebuildCooldownRestartsOnNewFailure(t *testing.T) {
+	body := srcinfoBody("cool", "1.0", "1")
+	src := newSourceRepo(t, "cool", map[string]string{".SRCINFO": body})
+	store, dbPath := openStore(t)
+	sink := &fakeSink{}
+	failedAt := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
+	seedFailedPackage(t, dbPath, "cool", "old-success-hash", hashOf(body), failedAt)
+
+	d := newTestDetector(t, "file://"+src, store, sink)
+	d.failedRebuildCooldown = time.Hour
+	d.now = func() time.Time { return failedAt.Add(30 * time.Minute) }
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	assertChangeCount(t, sink, 0)
+
+	// The re-enqueued build fails 40 minutes in: the marker moves and the
+	// round 30 minutes later (past the old expiry, inside the new window)
+	// still holds.
+	newer := failedAt.Add(40 * time.Minute)
+	stampLastFailedAt(t, dbPath, newer)
+	d.now = func() time.Time { return newer.Add(30 * time.Minute) }
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	assertChangeCount(t, sink, 0)
+
+	// Past the restarted window the stale residue is finally submitted.
+	d.now = func() time.Time { return newer.Add(2 * time.Hour) }
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	assertChangeCount(t, sink, 1)
+}
