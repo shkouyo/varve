@@ -201,7 +201,7 @@ func TestTemplateSetCompiles(t *testing.T) {
 
 	want := []string{
 		"dashboard.html", "packages.html", "package.html", "build.html",
-		"log.html", "admin_builds.html", "builds.html", "error.html",
+		"admin_builds.html", "builds.html", "error.html",
 	}
 	for _, name := range want {
 		if s.tmpl.Lookup(name) == nil {
@@ -209,8 +209,9 @@ func TestTemplateSetCompiles(t *testing.T) {
 		}
 	}
 
-	// The legacy log page is served by a redirect; the merged log renders
-	// inside build.html.
+	// The legacy log page is served by a redirect; the merged log with
+	// its resumable SSE client renders inside build.html (log.html was
+	// removed when its EventSource moved there).
 	paths := map[string]string{
 		"dashboard.html":    "/",
 		"packages.html":     "/packages",

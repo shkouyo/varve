@@ -90,6 +90,38 @@ func TestBuildInvalidID(t *testing.T) {
 	}
 }
 
+// TestBuildPageSSEClient asserts the merged log section carries the
+// live-log client: the #log anchor the legacy /log redirect lands on,
+// the aria-live increment region, the resumed byte offset in the
+// EventSource URL and the auto-refresh timer — and that a terminal
+// build renders neither the refresh script nor any meta refresh.
+func TestBuildPageSSEClient(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	term := seedBuild(t, store, pkg, "failed", nil, nil) // terminal frees the slot
+	active := seedActiveBuild(t, store, pkg, "running")
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\n"))
+
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(active.ID), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /builds/%s = %d, want 200", active.ID, rec.Code)
+	}
+	body := rec.Body.String()
+	mustContain(t, body,
+		`id="log"`,
+		`id="log-increments" aria-live="polite"`,
+		`data-lines="2"`,
+		`new EventSource("\/builds\/`+itoa(active.ID)+`\/log\/stream?after=6")`, // resume at the rendered tail
+		"location.reload()",
+	)
+
+	rec = get(t, s, http.MethodGet, "/builds/"+itoa(term.ID), nil)
+	body = rec.Body.String()
+	if strings.Contains(body, "<script") || strings.Contains(body, `http-equiv="refresh"`) {
+		t.Error("terminal build page must carry no refresh script or meta tag")
+	}
+}
+
 // TestBuildLogData asserts the merged log data contract: the rendered
 // line array, the SSE resume URL (at the end of the rendered content),
 // the activity flags for the auto-refresh and the short-id page title.

@@ -281,10 +281,12 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 	}
 
 	// The scrollable log region must be keyboard-focusable (WCAG 2.1.1);
-	// the merged log renders on the build page as a div with numbered lines.
+	// the merged log renders on the build page as a numbered div that
+	// doubles as the #log anchor and the SSE append target.
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
 	mustContain(t, rec.Body.String(),
-		`<div tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre`,
+		`id="log"`,
+		`max-h-[70vh] overflow-auto whitespace-pre`,
 		`<span class="mr-4 inline-block w-10 select-none text-right text-slate-500">1</span>==&gt; done`)
 
 	// 404 big status numeral: slate-500 on white (~4.8:1 >= 3:1 large text).

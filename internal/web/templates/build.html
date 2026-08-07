@@ -78,21 +78,21 @@
         <h2 id="log-heading" class="text-xl font-semibold">Command log</h2>
         <a class="text-sm font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.LogURL}}">Open live log</a>
       </div>
-      {{if .HasLog}}
-      <div tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-800">
+      <div id="log" data-lines="{{len .Lines}}" tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-800">
+{{- if .HasLog}}<div id="log-lines">
 {{- if .Lines -}}
 {{- range $i, $l := .Lines}}<span class="mr-4 inline-block w-10 select-none text-right text-slate-500">{{add $i 1}}</span>{{$l}}
 {{end -}}
 {{- else -}}
 {{- .Log -}}
 {{- end -}}
+</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-slate-400">No log content yet. Follow the live log for streaming output.</p>{{- end}}
+<div id="log-increments" aria-live="polite"></div>
       </div>
       {{if .Truncated}}
       <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">{{.TruncatedNote}}</p>
       {{end}}
-      {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">No log content yet. Follow the live log for streaming output.</p>
-      {{end}}
+      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-slate-400" role="status">{{if .Note}}{{.Note}}{{else if .Wait}}Waiting for log output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
     </section>
 
     <section aria-labelledby="usage-heading">
@@ -153,6 +153,61 @@
           }
         }, seconds * 1000);
       }
+
+      // Resumable SSE log stream. The page renders the log tail
+      // server-side and the stream resumes at its end (?after=), so the
+      // initial content is never re-sent or re-announced; new lines are
+      // numbered onward from the rendered count and appended to the
+      // aria-live region only (decision: increments announce, the
+      // initial log never does). The container follows the bottom while
+      // the reader stays pinned there; scrolling up pauses the follow.
+      var log = document.getElementById("log");
+      if (!log) {
+        return;
+      }
+      var inc = document.getElementById("log-increments");
+      var status = document.getElementById("log-status");
+      var lineNo = parseInt(log.getAttribute("data-lines") || "0", 10);
+      var pinned = true;
+      log.addEventListener("scroll", function () {
+        pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+      });
+      function appendLine(text) {
+        lineNo += 1;
+        var num = document.createElement("span");
+        num.className = "mr-4 inline-block w-10 select-none text-right text-slate-500";
+        num.textContent = String(lineNo);
+        inc.appendChild(num);
+        inc.appendChild(document.createTextNode(text + "\n"));
+        if (pinned) {
+          log.scrollTop = log.scrollHeight;
+        }
+      }
+      var es = new EventSource("{{.SSEURL}}");
+      es.addEventListener("log", function (e) {
+        var msg = JSON.parse(e.data);
+        var empty = document.getElementById("log-empty");
+        if (empty) {
+          empty.remove();
+        }
+        var parts = String(msg.data).split("\n");
+        for (var i = 0; i < parts.length; i++) {
+          if (i < parts.length - 1 || parts[i] !== "") {
+            appendLine(parts[i]);
+          }
+        }
+        status.textContent = "Connected. Live updates follow below.";
+      });
+      es.addEventListener("done", function () {
+        es.close();
+        status.textContent = "Log complete.";
+      });
+      es.onerror = function () {
+        status.textContent = "Connection interrupted. Retrying…";
+      };
+      window.addEventListener("beforeunload", function () {
+        es.close();
+      });
     })();
   </script>{{end}}
 </body>
