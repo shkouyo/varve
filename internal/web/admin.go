@@ -26,18 +26,6 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
-// adminData feeds admin.html: the public dashboard view plus the task
-// queue (queued/running, with cancel buttons) and action buttons on
-// recent builds and workers.
-type adminData struct {
-	base
-	Counts   []statusCount
-	QueueLen int
-	Recent   []recentBuildView
-	Workers  []workerView
-	Tasks    []taskView
-}
-
 // taskView is one queued/assigned/running task row.
 type taskView struct {
 	ID        string
@@ -69,36 +57,25 @@ type failedBuildView struct {
 	StartedAt string
 }
 
-// handleAdmin renders GET /admin.
+// handleAdmin redirects to the merged dashboard page; the admin content
+// renders there when the request is authenticated. The flash query string
+// of the last admin action survives the redirect.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	target := "/"
+	if r.URL.RawQuery != "" {
+		target = "/?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
 
-	stats, err := s.orch.Stats(ctx)
-	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load dashboard statistics.")
-		return
-	}
-	workers, err := s.store.ListWorkers(ctx)
-	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the worker list.")
-		return
-	}
-	tasks, err := s.store.ListActiveTasks(ctx)
-	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the task queue.")
-		return
-	}
-
-	data := adminData{
-		base:     s.page("Admin", flashFromQuery(r)),
-		Counts:   statusCounts(stats.ByStatus),
-		QueueLen: stats.QueueLen,
-		Workers:  workerViews(workers, time.Now()),
-		Recent:   s.recentBuildViews(ctx, stats.RecentBuilds, workers),
-		Tasks:    s.taskViews(ctx, tasks, workers),
-	}
-	data.Nav = "admin"
-	s.render(w, "admin.html", data)
+// handleLogout ends a stateless Basic Auth session the only way one can:
+// by answering 401 with a challenge so the browser drops its saved
+// credentials. The plain-text body tells the user what to do next.
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="varve admin", charset="UTF-8"`)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte("Logged out. Clear the credentials saved by your browser, then reload.\n"))
 }
 
 // taskViews resolves task rows into the template view (package name and
@@ -171,9 +148,19 @@ func (s *Server) handleAdminEnable(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" enabled")
 }
 
-// handleAdminRemove removes a worker record.
+// handleAdminRemove removes a worker record. The no-JavaScript form must
+// carry a confirm checkbox (value "1"); without it the removal is
+// cancelled so a stray click cannot delete a node.
 func (s *Server) handleAdminRemove(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if err := r.ParseForm(); err != nil {
+		s.redirectFlash(w, r, "/admin", "error", "Remove failed: invalid form.")
+		return
+	}
+	if r.Form.Get("confirm") != "1" {
+		s.redirectFlash(w, r, "/admin", "error", "Remove cancelled: confirmation required.")
+		return
+	}
 	if err := s.orch.RemoveWorker(r.Context(), name); err != nil {
 		s.redirectFlash(w, r, "/admin", "error", "Remove failed: "+err.Error())
 		return
@@ -182,10 +169,19 @@ func (s *Server) handleAdminRemove(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAdminBuilds renders GET /admin/builds?failed=1, the long-term
-// failed build retention list.
+// failed build retention list. The failed filter must be "1" when
+// present; the page number is validated and clamped to the last page.
 func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	page := parsePage(r.URL.Query().Get("page"))
+	if f := r.URL.Query().Get("failed"); f != "" && f != "1" {
+		s.renderError(w, http.StatusBadRequest, "Invalid failed filter.")
+		return
+	}
+	page, ok := parsePage(r.URL.Query().Get("page"))
+	if !ok {
+		s.renderError(w, http.StatusBadRequest, "Invalid page number.")
+		return
+	}
 	builds, total, err := s.store.ListBuilds(ctx, page, perPage, true)
 	if err != nil {
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the failed build list.")
@@ -196,11 +192,19 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the worker list.")
 		return
 	}
+	p := pages(total, perPage)
+	if page > p {
+		page = p
+		if builds, _, err = s.store.ListBuilds(ctx, page, perPage, true); err != nil {
+			s.renderError(w, http.StatusInternalServerError, "Failed to load the failed build list.")
+			return
+		}
+	}
 
 	data := adminBuildsData{
 		base:  s.page("Failed builds", flashFromQuery(r)),
 		Page:  page,
-		Pages: pages(total, perPage),
+		Pages: p,
 		Total: total,
 	}
 	workerNames := make(map[int64]string, len(workers))

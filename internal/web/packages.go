@@ -38,16 +38,32 @@ type packagesData struct {
 }
 
 // handlePackages renders GET /packages with ?q= search and ?page=
-// pagination.
+// pagination. The search term is length-capped and the page number is
+// validated and clamped to the last page.
 func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query().Get("q")
-	page := parsePage(r.URL.Query().Get("page"))
-
+	if len(q) > maxQueryLen {
+		s.renderError(w, http.StatusBadRequest, "Search query is too long.")
+		return
+	}
+	page, ok := parsePage(r.URL.Query().Get("page"))
+	if !ok {
+		s.renderError(w, http.StatusBadRequest, "Invalid page number.")
+		return
+	}
 	pkgs, total, err := s.store.ListPackages(ctx, q, page, perPage)
 	if err != nil {
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the package list.")
 		return
+	}
+	p := pages(total, perPage)
+	if page > p {
+		page = p
+		if pkgs, _, err = s.store.ListPackages(ctx, q, page, perPage); err != nil {
+			s.renderError(w, http.StatusInternalServerError, "Failed to load the package list.")
+			return
+		}
 	}
 
 	data := packagesData{
@@ -55,7 +71,7 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 		Query:    q,
 		Page:     page,
 		Total:    total,
-		Pages:    pages(total, perPage),
+		Pages:    p,
 		Packages: pkgs,
 	}
 	data.Nav = "packages"

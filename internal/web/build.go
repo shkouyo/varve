@@ -48,12 +48,15 @@ type resourceView struct {
 	Mem string
 }
 
-// handleBuild renders GET /builds/{id}.
+// handleBuild renders GET /builds/{id}. A malformed build id is a 400;
+// a well-formed but unknown one a 404. The failure error summary is not
+// exposed on this page (the live log carries the failure detail); the
+// Error field is zeroed so stale summaries never render.
 func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, ok := parseID(r.PathValue("id"))
 	if !ok {
-		s.renderError(w, http.StatusNotFound, "Invalid build id.")
+		s.renderError(w, http.StatusBadRequest, "Invalid build id.")
 		return
 	}
 
@@ -74,6 +77,7 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 		LogURL:      "/builds/" + id + "/log",
 		SampleCount: len(b.ResourceUsage),
 	}
+	data.Build.Error = "" // failure detail lives in the log, not the summary
 
 	// Executing machine name (builds.worker_name in plain text, with the
 	// workers table as a fallback for rows recorded before the column was

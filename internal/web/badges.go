@@ -23,9 +23,13 @@ import "html/template"
 // Badge markup is generated here so the status colors stay consistent
 // across pages; the markup is fully static apart from the status label.
 var funcs = template.FuncMap{
-	"buildBadge": buildBadge,
-	"add":        func(a, b int) int { return a + b },
-	"sub":        func(a, b int) int { return a - b },
+	"buildBadge":  buildBadge,
+	"add":         func(a, b int) int { return a + b },
+	"sub":         func(a, b int) int { return a - b },
+	"displayArch": displayArch,
+	"shortID":     shortID,
+	"relTime":     relTime,
+	"absTime":     absTime,
 }
 
 // buildBadge renders the status pill for a build/task status. Color is

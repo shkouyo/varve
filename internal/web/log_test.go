@@ -138,12 +138,12 @@ func TestSSEPingAndDisconnect(t *testing.T) {
 	}
 }
 
-// TestSSELogMissing asserts a missing log file yields an immediate
-// event: log with a message plus event: done.
+// TestSSELogMissing asserts a missing log file on a terminal build yields
+// an immediate event: log with a notice plus event: done.
 func TestSSELogMissing(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
-	build := seedActiveBuild(t, store, pkg, "running")
+	build := seedBuild(t, store, pkg, "cancelled", nil, nil) // terminal
 
 	logs := newFakeLogReader("")
 	logs.tailErr = dispatch.ErrNotFound
@@ -151,34 +151,76 @@ func TestSSELogMissing(t *testing.T) {
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log",
 		map[string]string{"Accept": "text/event-stream"})
 	body := rec.Body.String()
-	mustContain(t, body, "Build log not found", "event: done")
+	mustContain(t, body, "No log was recorded", "event: done")
 }
 
-// TestLogHTMLMissing asserts the HTML log page maps a missing log file
-// to a 404 error page.
+// TestSSELogMissingWaits asserts a missing log file on a still-active
+// build keeps the stream open with keep-alive pings instead of closing:
+// the first log segment may arrive at any moment.
+func TestSSELogMissingWaits(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedActiveBuild(t, store, pkg, "queued") // non-terminal
+
+	logs := newFakeLogReader("")
+	logs.tailErr = dispatch.ErrNotFound
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log")
+	req.Header.Set("Accept", "text/event-stream")
+	req = req.WithContext(ctx)
+	time.AfterFunc(120*time.Millisecond, cancel)
+	rec := serve(t, s, req)
+	body := rec.Body.String()
+	mustContain(t, body, ": ping")
+	if strings.Contains(body, "event: done") {
+		t.Error("active build with missing log must not close the stream")
+	}
+}
+
+// TestLogHTMLMissing asserts the HTML log page maps a missing log file to
+// a 200 with a waiting state (queued/not-started), and a terminal build
+// without a log renders a closing note.
 func TestLogHTMLMissing(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
-	build := seedActiveBuild(t, store, pkg, "running")
 
+	// Active build without a log: 200 + waiting.
+	build := seedActiveBuild(t, store, pkg, "queued")
 	logs := newFakeLogReader("")
 	logs.readErr = dispatch.ErrNotFound
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log", nil)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("log HTML = %d, want 404", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("log HTML (active) = %d, want 200", rec.Code)
 	}
-	mustContain(t, rec.Body.String(), "Build log not found")
+	if !strings.Contains(rec.Body.String(), "Waiting for log output") {
+		t.Error("active build log page must render the waiting state")
+	}
+
+	// Terminal build without a log: 200 + note.
+	other := seedPackage(t, store, "other-pkg", "A second package")
+	term := seedBuild(t, store, other, "cancelled", nil, nil)
+	rec = get(t, s, http.MethodGet, "/builds/"+itoa(term.ID)+"/log", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("log HTML (terminal) = %d, want 200", rec.Code)
+	}
 }
 
-// TestLogBuildMissing asserts a missing build is a 404 for both the HTML
-// page and the SSE stream.
+// TestLogBuildMissing asserts a missing build is a 404 and a malformed
+// build id a 400 for both the HTML page and the SSE stream.
 func TestLogBuildMissing(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
 	for _, accept := range []string{"", "text/event-stream"} {
-		rec := get(t, s, http.MethodGet, "/builds/99999/log", map[string]string{"Accept": accept})
+		rec := get(t, s, http.MethodGet, "/builds/ffffffffffffffff/log", map[string]string{"Accept": accept})
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("accept=%q: log page = %d, want 404", accept, rec.Code)
+		}
+		rec = get(t, s, http.MethodGet, "/builds/99999/log", map[string]string{"Accept": accept})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("accept=%q: malformed log id = %d, want 400", accept, rec.Code)
 		}
 	}
 }

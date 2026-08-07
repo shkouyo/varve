@@ -169,3 +169,94 @@ func TestDownloadFor(t *testing.T) {
 		t.Error("downloadFor must be nil without a build")
 	}
 }
+
+// TestPackageDetailMetadata asserts the .SRCINFO metadata (url, licenses,
+// conflicts, provides) stored on the package row flows into the package
+// page data for the template.
+func TestPackageDetailMetadata(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	err := store.WithTx(testCtx, func(tx *db.Tx) error {
+		return tx.UpdatePackageAfterBuild(testCtx, pkg.Pkgbase, db.PackageUpdate{
+			CurrentVersion: "1.2.3-1", Pkgdesc: "A demo package",
+			SrcinfoHash: "srcinfo-hash", UpstreamRef: "ref", BuildID: build.ID,
+			URL:       "https://example.org/demo-pkg",
+			Licenses:  []string{"GPL", "MIT"},
+			Conflicts: []string{"old-demo"},
+			Provides:  []string{"demo-lib"},
+		})
+	})
+	if err != nil {
+		t.Fatalf("update package metadata: %v", err)
+	}
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+
+	data, err := s.packageData(testCtx, "demo-pkg", 1)
+	if err != nil {
+		t.Fatalf("packageData: %v", err)
+	}
+	if data.Pkg.URL != "https://example.org/demo-pkg" {
+		t.Errorf("Pkg.URL = %q, want https://example.org/demo-pkg", data.Pkg.URL)
+	}
+	if len(data.Pkg.Licenses) != 2 || data.Pkg.Licenses[0] != "GPL" || data.Pkg.Licenses[1] != "MIT" {
+		t.Errorf("Pkg.Licenses = %v, want [GPL MIT]", data.Pkg.Licenses)
+	}
+	if len(data.Pkg.Conflicts) != 1 || data.Pkg.Conflicts[0] != "old-demo" {
+		t.Errorf("Pkg.Conflicts = %v, want [old-demo]", data.Pkg.Conflicts)
+	}
+	if len(data.Pkg.Provides) != 1 || data.Pkg.Provides[0] != "demo-lib" {
+		t.Errorf("Pkg.Provides = %v, want [demo-lib]", data.Pkg.Provides)
+	}
+}
+
+// TestPackageHistoryPagination asserts the build history paginates per
+// package: page 1 holds the newest 20, page 2 the rest, and an
+// out-of-range page is clamped to the last one.
+func TestPackageHistoryPagination(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	for i := 0; i < 25; i++ {
+		seedBuild(t, store, pkg, "succeeded", nil, nil)
+	}
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+
+	page1, err := s.packageData(testCtx, "demo-pkg", 1)
+	if err != nil {
+		t.Fatalf("packageData page 1: %v", err)
+	}
+	if page1.Total != 25 || page1.Pages != 2 || len(page1.Builds) != 20 {
+		t.Errorf("page 1 = total %d pages %d builds %d, want 25/2/20", page1.Total, page1.Pages, len(page1.Builds))
+	}
+	page2, err := s.packageData(testCtx, "demo-pkg", 2)
+	if err != nil {
+		t.Fatalf("packageData page 2: %v", err)
+	}
+	if len(page2.Builds) != 5 {
+		t.Errorf("page 2 builds = %d, want 5", len(page2.Builds))
+	}
+	clamped, err := s.packageData(testCtx, "demo-pkg", 99)
+	if err != nil {
+		t.Fatalf("packageData out-of-range page: %v", err)
+	}
+	if clamped.Page != 2 || len(clamped.Builds) != 5 {
+		t.Errorf("clamped page = %d builds %d, want page 2 with 5 builds", clamped.Page, len(clamped.Builds))
+	}
+}
+
+// TestPackagesValidation asserts malformed input is rejected with a 400:
+// over-long search terms and invalid page numbers.
+func TestPackagesValidation(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
+	long := strings.Repeat("a", 201)
+	rec := get(t, s, http.MethodGet, "/packages?q="+long, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("long q = %d, want 400", rec.Code)
+	}
+	for _, p := range []string{"0", "-1", "abc"} {
+		rec = get(t, s, http.MethodGet, "/packages?page="+p, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("page=%q = %d, want 400", p, rec.Code)
+		}
+	}
+}

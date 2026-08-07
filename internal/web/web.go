@@ -62,6 +62,9 @@ var templatesFS embed.FS
 //go:embed static/app.css
 var appCSS []byte
 
+//go:embed copying.txt
+var copyingText []byte
+
 // sanitizeCSS drops the tailwind version banner comment from the embedded
 // stylesheet. The banner is harmless but references a website; keeping it
 // out keeps every page free of external URL mentions.
@@ -107,16 +110,22 @@ func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store *db.Sto
 
 // Handler returns the full web route table. The /admin subtree is gated
 // by Basic Auth; every admin action is a plain form POST so the UI works
-// without JavaScript.
+// without JavaScript. GET /admin redirects to the merged dashboard page
+// (admin content renders there for authenticated requests) and
+// GET /admin/logout forces a 401 so the browser drops its saved
+// credentials.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
-	mux.HandleFunc("GET /packages", s.handlePackages)
-	mux.HandleFunc("GET /packages/{pkgbase}", s.handlePackage)
+	mux.HandleFunc("GET /builds", s.handleBuilds)
 	mux.HandleFunc("GET /builds/{id}", s.handleBuild)
 	mux.HandleFunc("GET /builds/{id}/log", s.handleLog)
+	mux.HandleFunc("GET /packages", s.handlePackages)
+	mux.HandleFunc("GET /packages/{pkgbase}", s.handlePackage)
+	mux.HandleFunc("GET /copying.txt", s.handleCopying)
 
 	mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))
+	mux.HandleFunc("GET /admin/logout", s.handleLogout)
 	mux.HandleFunc("POST /admin/packages/{pkgbase}/rebuild", s.requireAuth(s.handleAdminRebuild))
 	mux.HandleFunc("POST /admin/tasks/{id}/cancel", s.requireAuth(s.handleAdminCancel))
 	mux.HandleFunc("POST /admin/workers/{name}/disable", s.requireAuth(s.handleAdminDisable))
@@ -186,6 +195,14 @@ func (s *Server) renderError(w http.ResponseWriter, status int, message string) 
 // characters), mirroring the store's id generator.
 const buildIDLen = 16
 
+// handleCopying serves the embedded license text. The asset is a mirror
+// of the repository-root COPYING file; keep both in sync when the license
+// text changes.
+func (s *Server) handleCopying(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(copyingText)
+}
+
 // parseID validates a route path value as a build id: exactly 16
 // lowercase hex characters, the fixed shape the store generates.
 func parseID(raw string) (string, bool) {
@@ -201,13 +218,40 @@ func parseID(raw string) (string, bool) {
 	return raw, true
 }
 
-// parsePage parses a ?page= query value, defaulting to 1.
-func parsePage(raw string) int {
+// parsePage parses a ?page= query value. An absent value yields page 1;
+// a present value must be a positive integer (ok=false otherwise, mapped
+// to a 400 by the callers).
+func parsePage(raw string) (int, bool) {
+	if raw == "" {
+		return 1, true
+	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 1 {
-		return 1
+		return 0, false
 	}
-	return n
+	return n, true
+}
+
+// maxQueryLen caps the length of user-supplied search terms and package
+// names so a hostile query cannot push unbounded data into the store.
+const maxQueryLen = 200
+
+// validPkgbase reports whether raw is a well-formed package base name:
+// letters, digits and the AUR separator set (@ . _ + -), up to
+// maxQueryLen bytes.
+func validPkgbase(raw string) bool {
+	if raw == "" || len(raw) > maxQueryLen {
+		return false
+	}
+	for i := 0; i < len(raw); i++ {
+		switch c := raw[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '@' || c == '.' || c == '_' || c == '+' || c == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // isTerminalStatus reports whether a build status is final. Terminal

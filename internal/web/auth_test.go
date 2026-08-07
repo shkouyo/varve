@@ -27,7 +27,8 @@ import (
 
 // TestBasicAuthMatrix drives the credential matrix over /admin: no
 // credentials and wrong credentials are rejected with 401 + challenge,
-// correct credentials pass, and public routes stay open.
+// correct credentials are redirected to the dashboard, and public routes
+// stay open.
 func TestBasicAuthMatrix(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
 		newTestDB(t), newFakeLogReader(""))
@@ -44,7 +45,7 @@ func TestBasicAuthMatrix(t *testing.T) {
 		{"wrong user", "root", "s3cret", true, http.StatusUnauthorized},
 		{"wrong password", "admin", "wrong", true, http.StatusUnauthorized},
 		{"wrong both", "root", "wrong", true, http.StatusUnauthorized},
-		{"correct", "admin", "s3cret", true, http.StatusOK},
+		{"correct", "admin", "s3cret", true, http.StatusSeeOther},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,11 +74,34 @@ func TestBasicAuthMatrix(t *testing.T) {
 }
 
 // TestUnauthorizedRendersErrorPage asserts the 401 response carries the
-// error page markup.
+// error page markup with a readable message.
 func TestUnauthorizedRendersErrorPage(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
 		newTestDB(t), newFakeLogReader(""))
 	rec := get(t, s, http.MethodGet, "/admin", nil)
 	body := rec.Body.String()
 	mustContain(t, body, "Unauthorized", "Authentication required", "main")
+}
+
+// TestLogoutChallenges asserts GET /admin/logout answers 401 with the
+// Basic challenge and a plain-text hint for both anonymous and
+// authenticated requests (the endpoint must always force the browser to
+// drop its saved credentials).
+func TestLogoutChallenges(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
+		newTestDB(t), newFakeLogReader(""))
+
+	for _, hdr := range []map[string]string{nil, {"Authorization": "Basic YWRtaW46czNjcmV0"}} {
+		rec := get(t, s, http.MethodGet, "/admin/logout", hdr)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("GET /admin/logout = %d, want 401", rec.Code)
+		}
+		if got := rec.Header().Get("WWW-Authenticate"); !strings.HasPrefix(got, "Basic") {
+			t.Errorf("WWW-Authenticate = %q, want a Basic challenge", got)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+			t.Errorf("Content-Type = %q, want text/plain", ct)
+		}
+		mustContain(t, rec.Body.String(), "Clear the credentials saved")
+	}
 }

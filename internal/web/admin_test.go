@@ -20,49 +20,73 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// TestAdminRender asserts the admin page shows the dashboard data plus
-// the task queue with cancel forms and worker manage buttons.
-func TestAdminRender(t *testing.T) {
+// TestAdminRedirectsToDashboard asserts GET /admin demands auth and then
+// redirects to the merged dashboard page.
+func TestAdminRedirectsToDashboard(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
+		newTestDB(t), newFakeLogReader(""))
+
+	rec := get(t, s, http.MethodGet, "/admin", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /admin (anonymous) = %d, want 401", rec.Code)
+	}
+	rec = getAuth(t, s, http.MethodGet, "/admin", "admin", "s3cret")
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("GET /admin (authed) = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want /", loc)
+	}
+}
+
+// TestDashboardAdminData asserts the merged dashboard carries the admin
+// data (task queue, flash) only for authenticated requests.
+func TestDashboardAdminData(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
-	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	seedActiveTask(t, store, pkg, "queued", "t-abc")
 	seedWorker(t, store, "node-1")
 
-	// One active queued task for the same package (the terminal build
-	// above does not block a new active task).
-	seedActiveTask(t, store, pkg, "queued", "t-abc")
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
+		store, newFakeLogReader(""))
 
-	orch := &fakeOrchestrator{stats: &dispatch.Stats{
-		QueueLen: 1,
-		ByStatus: map[string]int{"succeeded": 1},
-		RecentBuilds: []db.Build{
-			{ID: build.ID, PackageID: pkg.ID, Status: "succeeded"},
-		},
-	}}
-	s := newTestServer(t, testConfig(), orch, store, newFakeLogReader(""))
-
-	rec := getAuth(t, s, http.MethodGet, "/admin", "admin", "s3cret")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /admin = %d, want 200", rec.Code)
+	// Anonymous: public view only.
+	anon := newRequest(t, http.MethodGet, "/")
+	data, err := s.dashboardData(anon)
+	if err != nil {
+		t.Fatalf("dashboardData(anonymous): %v", err)
 	}
-	body := rec.Body.String()
-	mustContain(t, body,
-		"Task queue",
-		"t-abc",                            // task id
-		"/admin/tasks/t-abc/cancel",        // cancel action
-		"/admin/packages/demo-pkg/rebuild", // rebuild action
-		"/admin/workers/node-1/disable",    // disable action
-		"/admin/workers/node-1/remove",     // remove action
-		"/admin/builds?failed=1",           // failed list link
-		"demo-pkg",
-	)
+	if data.Admin {
+		t.Error("anonymous dashboard must not be marked admin")
+	}
+	if len(data.Tasks) != 0 {
+		t.Errorf("anonymous dashboard Tasks = %v, want none", data.Tasks)
+	}
+
+	// Authenticated: admin flag, task queue and flash resolved.
+	auth := newRequest(t, http.MethodGet, "/?ok=Rebuild+queued")
+	auth.SetBasicAuth("admin", "s3cret")
+	data, err = s.dashboardData(auth)
+	if err != nil {
+		t.Fatalf("dashboardData(authed): %v", err)
+	}
+	if !data.Admin {
+		t.Error("authed dashboard must be marked admin")
+	}
+	if len(data.Tasks) != 1 || data.Tasks[0].ID != "t-abc" ||
+		data.Tasks[0].Pkgbase != "demo-pkg" || data.Tasks[0].CancelURL != "/admin/tasks/t-abc/cancel" {
+		t.Errorf("Tasks = %+v, want one queued task t-abc for demo-pkg", data.Tasks)
+	}
+	if data.Flash == nil || data.Flash.Kind != "ok" || data.Flash.Message != "Rebuild queued" {
+		t.Errorf("Flash = %+v, want ok flash Rebuild queued", data.Flash)
+	}
 }
 
 // TestAdminActions asserts each POST action reaches the orchestrator and
@@ -75,29 +99,30 @@ func TestAdminActions(t *testing.T) {
 		name   string
 		method string
 		path   string
+		form   map[string]string
 		assert func(t *testing.T)
 	}{
-		{"rebuild", http.MethodPost, "/admin/packages/demo-pkg/rebuild", func(t *testing.T) {
+		{"rebuild", http.MethodPost, "/admin/packages/demo-pkg/rebuild", nil, func(t *testing.T) {
 			if len(orch.rebuilds) != 1 || orch.rebuilds[0] != "demo-pkg" {
 				t.Fatalf("rebuilds = %v, want [demo-pkg]", orch.rebuilds)
 			}
 		}},
-		{"cancel", http.MethodPost, "/admin/tasks/t-1/cancel", func(t *testing.T) {
+		{"cancel", http.MethodPost, "/admin/tasks/t-1/cancel", nil, func(t *testing.T) {
 			if len(orch.cancels) != 1 || orch.cancels[0] != "t-1" {
 				t.Fatalf("cancels = %v, want [t-1]", orch.cancels)
 			}
 		}},
-		{"disable", http.MethodPost, "/admin/workers/node-1/disable", func(t *testing.T) {
+		{"disable", http.MethodPost, "/admin/workers/node-1/disable", nil, func(t *testing.T) {
 			if len(orch.disables) != 1 || orch.disables[0] != "node-1" {
 				t.Fatalf("disables = %v, want [node-1]", orch.disables)
 			}
 		}},
-		{"enable", http.MethodPost, "/admin/workers/node-1/enable", func(t *testing.T) {
+		{"enable", http.MethodPost, "/admin/workers/node-1/enable", nil, func(t *testing.T) {
 			if len(orch.enables) != 1 || orch.enables[0] != "node-1" {
 				t.Fatalf("enables = %v, want [node-1]", orch.enables)
 			}
 		}},
-		{"remove", http.MethodPost, "/admin/workers/node-1/remove", func(t *testing.T) {
+		{"remove", http.MethodPost, "/admin/workers/node-1/remove", map[string]string{"confirm": "1"}, func(t *testing.T) {
 			if len(orch.removes) != 1 || orch.removes[0] != "node-1" {
 				t.Fatalf("removes = %v, want [node-1]", orch.removes)
 			}
@@ -105,7 +130,12 @@ func TestAdminActions(t *testing.T) {
 	}
 	for _, tc := range actions {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := getAuth(t, s, http.MethodPost, tc.path, "admin", "s3cret")
+			var rec *httptest.ResponseRecorder
+			if tc.form != nil {
+				rec = postForm(t, s, tc.path, "admin", "s3cret", tc.form)
+			} else {
+				rec = getAuth(t, s, http.MethodPost, tc.path, "admin", "s3cret")
+			}
 			if rec.Code != http.StatusSeeOther {
 				t.Fatalf("POST %s = %d, want 303", tc.path, rec.Code)
 			}
@@ -117,8 +147,29 @@ func TestAdminActions(t *testing.T) {
 	}
 }
 
+// TestAdminRemoveRequiresConfirmation asserts the removal form must carry
+// the confirm checkbox; a missing confirmation redirects with an error
+// and never reaches the orchestrator.
+func TestAdminRemoveRequiresConfirmation(t *testing.T) {
+	orch := &fakeOrchestrator{stats: &dispatch.Stats{}}
+	s := newTestServer(t, testConfig(), orch, newTestDB(t), newFakeLogReader(""))
+
+	rec := postForm(t, s, "/admin/workers/node-1/remove", "admin", "s3cret", nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("POST remove without confirm = %d, want 303", rec.Code)
+	}
+	loc := rec.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/admin?error=") || !strings.Contains(loc, "confirmation") {
+		t.Errorf("Location = %q, want /admin?error=...confirmation...", loc)
+	}
+	if len(orch.removes) != 0 {
+		t.Errorf("removes = %v, want none without confirmation", orch.removes)
+	}
+}
+
 // TestAdminActionErrorFlash asserts a failing action redirects with the
-// error carried in the query string and the admin page displays it.
+// error carried in the query string and the merged dashboard surfaces it
+// as a flash for authenticated requests.
 func TestAdminActionErrorFlash(t *testing.T) {
 	store := newTestDB(t)
 	seedPackage(t, store, "demo-pkg", "A demo package")
@@ -134,11 +185,21 @@ func TestAdminActionErrorFlash(t *testing.T) {
 		t.Errorf("Location = %q, want /admin?error=...conflict...", loc)
 	}
 
+	// The flash survives the /admin redirect into the dashboard query.
 	rec = getAuth(t, s, http.MethodGet, loc, "admin", "s3cret")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET %s = %d, want 200", loc, rec.Code)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") == "" {
+		t.Fatalf("GET %s = %d, want a redirect to the dashboard", loc, rec.Code)
 	}
-	mustContain(t, rec.Body.String(), "Rebuild failed: conflict")
+	dash := strings.Replace(loc, "/admin", "/", 1)
+	req := newRequest(t, http.MethodGet, dash)
+	req.SetBasicAuth("admin", "s3cret")
+	data, err := s.dashboardData(req)
+	if err != nil {
+		t.Fatalf("dashboardData: %v", err)
+	}
+	if data.Flash == nil || data.Flash.Kind != "error" || !strings.Contains(data.Flash.Message, "conflict") {
+		t.Errorf("Flash = %+v, want an error flash mentioning conflict", data.Flash)
+	}
 }
 
 // TestAdminFailedBuilds asserts GET /admin/builds?failed=1 lists failed
@@ -161,12 +222,26 @@ func TestAdminFailedBuilds(t *testing.T) {
 	if strings.Contains(body, "good-pkg") {
 		t.Error("failed list must not contain succeeded builds")
 	}
+
+	// The failed filter must be "1" when present.
+	rec = getAuth(t, s, http.MethodGet, "/admin/builds?failed=2", "admin", "s3cret")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("GET /admin/builds?failed=2 = %d, want 400", rec.Code)
+	}
 }
 
-// TestAdminFlashRenders asserts an ?ok= flash renders as a green banner.
-func TestAdminFlashRenders(t *testing.T) {
+// TestAdminFlashSurvivesRedirect asserts the ok flash carried by an admin
+// action lands on the merged dashboard data.
+func TestAdminFlashSurvivesRedirect(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
 		newTestDB(t), newFakeLogReader(""))
-	rec := getAuth(t, s, http.MethodGet, "/admin?ok=Rebuild+queued", "admin", "s3cret")
-	mustContain(t, rec.Body.String(), "Rebuild queued", "role=\"alert\"")
+	req := newRequest(t, http.MethodGet, "/?ok=Rebuild+queued")
+	req.SetBasicAuth("admin", "s3cret")
+	data, err := s.dashboardData(req)
+	if err != nil {
+		t.Fatalf("dashboardData: %v", err)
+	}
+	if data.Flash == nil || data.Flash.Message != "Rebuild queued" {
+		t.Errorf("Flash = %+v, want ok flash Rebuild queued", data.Flash)
+	}
 }

@@ -18,6 +18,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -25,12 +26,16 @@ import (
 )
 
 // packageData feeds package.html: current version, metadata from SQLite
-// plus the latest build artifacts, the build history and the optional
-// download button.
+// plus the latest build artifacts, the paged build history and the
+// optional download button. The .SRCINFO metadata (url, licenses,
+// conflicts, provides) rides on the package row for the template.
 type packageData struct {
 	base
 	Pkg       db.Package
 	Builds    []db.Build
+	Page      int // build history page
+	Pages     int
+	Total     int
 	Download  *downloadLink // nil when downloads are disabled or there is no artifact
 	LatestArt []db.Artifact
 }
@@ -47,8 +52,16 @@ type downloadLink struct {
 func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pkgbase := r.PathValue("pkgbase")
-
-	pkg, err := s.store.GetPackageByBase(ctx, pkgbase)
+	if !validPkgbase(pkgbase) {
+		s.renderError(w, http.StatusBadRequest, "Invalid package name.")
+		return
+	}
+	page, ok := parsePage(r.URL.Query().Get("page"))
+	if !ok {
+		s.renderError(w, http.StatusBadRequest, "Invalid page number.")
+		return
+	}
+	data, err := s.packageData(ctx, pkgbase, page)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			s.renderError(w, http.StatusNotFound, "Package not found: "+pkgbase)
@@ -57,19 +70,31 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, http.StatusInternalServerError, "Failed to load the package.")
 		return
 	}
+	data.Nav = "packages"
+	s.render(w, "package.html", data)
+}
 
-	// Build history: the newest builds, restricted to this package (the
-	// store has no package-scoped list; GetPackageByBase + ListBuilds is
-	// the read path).
-	all, _, err := s.store.ListBuilds(ctx, 1, perPage, false)
+// packageData assembles the package page data: the package row (with its
+// .SRCINFO metadata), the newest build history for the package (paged, so
+// long histories are not truncated), the download link of the latest
+// build and its artifact list. The requested page is clamped to the last
+// one when it exceeds the range.
+func (s *Server) packageData(ctx context.Context, pkgbase string, page int) (packageData, error) {
+	pkg, err := s.store.GetPackageByBase(ctx, pkgbase)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the build history.")
-		return
+		return packageData{}, err
 	}
-	builds := make([]db.Build, 0, len(all))
-	for _, b := range all {
-		if b.PackageID == pkg.ID {
-			builds = append(builds, b)
+
+	// Build history, newest first, restricted to this package.
+	builds, total, err := s.store.ListBuildsByPackage(ctx, pkg.ID, page, perPage)
+	if err != nil {
+		return packageData{}, err
+	}
+	p := pages(total, perPage)
+	if page > p {
+		page = p
+		if builds, _, err = s.store.ListBuildsByPackage(ctx, pkg.ID, page, perPage); err != nil {
+			return packageData{}, err
 		}
 	}
 
@@ -85,15 +110,16 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 		latest = &builds[0]
 	}
 
-	data := packageData{
+	return packageData{
 		base:      s.page(pkg.Pkgbase, nil),
 		Pkg:       *pkg,
 		Builds:    builds,
+		Page:      page,
+		Pages:     p,
+		Total:     total,
 		Download:  downloadFor(s.cfg.Web.DownloadEnabled, s.cfg.Web.DownloadBaseURI, latest),
 		LatestArt: latestArtifacts(latest),
-	}
-	data.Nav = "packages"
-	s.render(w, "package.html", data)
+	}, nil
 }
 
 // latestArtifacts returns the artifact list of the latest build.

@@ -28,12 +28,13 @@ import (
 )
 
 // TestErrorPages asserts the 404 and 401 responses render the error page
-// with semantic markup and no JavaScript.
+// with semantic markup and no JavaScript, and that malformed input maps
+// to a 400.
 func TestErrorPages(t *testing.T) {
 	store := newTestDB(t)
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader(""))
 
-	for _, path := range []string{"/packages/nope", "/builds/12345"} {
+	for _, path := range []string{"/packages/nope", "/builds/ffffffffffffffff"} {
 		rec := get(t, s, http.MethodGet, path, nil)
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("%s = %d, want 404", path, rec.Code)
@@ -42,6 +43,13 @@ func TestErrorPages(t *testing.T) {
 		mustContain(t, body, "<main", "</main>", "Not Found", "Back to dashboard")
 		if strings.Contains(body, "<script") {
 			t.Errorf("%s error page must not contain scripts", path)
+		}
+	}
+
+	for _, path := range []string{"/packages/bad%20name", "/builds/12345", "/builds/not-hex"} {
+		rec := get(t, s, http.MethodGet, path, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s = %d, want 400", path, rec.Code)
 		}
 	}
 
@@ -74,7 +82,8 @@ func TestSemanticMarkup(t *testing.T) {
 		"package":     "/packages/demo-pkg",
 		"build":       "/builds/" + itoa(build.ID),
 		"log":         "/builds/" + itoa(build.ID) + "/log",
-		"admin":       "/admin",
+		"builds":      "/builds",
+		"admin":       "/",
 		"adminBuilds": "/admin/builds?failed=1",
 	}
 	for name, path := range pages {
@@ -100,7 +109,7 @@ func TestSemanticMarkup(t *testing.T) {
 			"<footer",      // landmark
 			`aria-label="Main"`,
 		)
-		if name != "adminBuilds" && name != "log" && name != "build" {
+		if name != "adminBuilds" && name != "log" && name != "build" && name != "builds" {
 			mustContain(t, body, "aria-labelledby")
 		}
 		assertIconsHidden(t, body, name)
@@ -117,7 +126,7 @@ func TestNoExternalResources(t *testing.T) {
 	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader(""))
 
-	for _, path := range []string{"/", "/packages", "/builds/" + itoa(build.ID)} {
+	for _, path := range []string{"/", "/packages", "/builds", "/builds/" + itoa(build.ID)} {
 		rec := get(t, s, http.MethodGet, path, nil)
 		body := rec.Body.String()
 		if strings.Contains(body, "<link") {
@@ -199,7 +208,8 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 		{"package", "/packages/demo-pkg", false, true},
 		{"build", "/builds/" + itoa(build.ID), false, true},
 		{"log", "/builds/" + itoa(build.ID) + "/log", false, true},
-		{"admin", "/admin", true, true},
+		{"builds", "/builds", false, true},
+		{"admin", "/", true, true},
 		{"adminBuilds", "/admin/builds?failed=1", true, true},
 		{"notfound", "/packages/nope", false, false},
 	}

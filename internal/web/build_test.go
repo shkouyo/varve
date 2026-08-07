@@ -79,6 +79,15 @@ func TestBuildNotFound(t *testing.T) {
 	mustContain(t, rec.Body.String(), "Not Found", "Build not found")
 }
 
+// TestBuildInvalidID asserts a malformed build id is a 400.
+func TestBuildInvalidID(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/builds/12345", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("GET /builds/12345 = %d, want 400", rec.Code)
+	}
+}
+
 // TestFormatBytesAndCPU covers the text metric formatting.
 func TestFormatBytesAndCPU(t *testing.T) {
 	cases := []struct {

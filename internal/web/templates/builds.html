@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{.Title}} · varve</title>
+  <style>{{.CSS}}</style>
+</head>
+<body class="min-h-screen bg-stone-100 text-stone-900 antialiased">
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header class="border-b border-stone-200 bg-white">
+    <nav class="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3" aria-label="Main">
+      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-stone-900">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700" aria-hidden="true" focusable="false">
+          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        varve
+      </a>
+      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "dashboard"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>Dashboard</a>
+      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
+      <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
+      <a href="/admin" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "admin"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "admin"}}aria-current="page"{{end}}>Admin</a>
+    </nav>
+  </header>
+
+  <main id="main" class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="mb-6 text-3xl font-bold tracking-tight">Builds</h1>
+
+    <section aria-labelledby="builds-heading">
+      <h2 id="builds-heading" class="sr-only">Build history</h2>
+      {{if not .Empty}}
+      <div class="overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm">
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">Builds with status, package, executing machine and timestamps</caption>
+          <thead>
+            <tr class="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
+              <th scope="col" class="px-4 py-3 font-semibold">Build</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Package</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Status</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Machine</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Started</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Finished</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Log</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Builds}}
+            <tr class="border-b border-stone-100 last:border-0">
+              <td class="px-4 py-3">
+                <a class="font-medium text-blue-800 underline underline-offset-2" href="/builds/{{.ID}}">#{{.ID}}</a>
+              </td>
+              <td class="px-4 py-3">
+                {{if .Pkgbase}}<a class="text-stone-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}
+              </td>
+              <td class="px-4 py-3">{{buildBadge .Status}}</td>
+              <td class="px-4 py-3 text-stone-600">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-stone-500">not assigned</span>{{end}}</td>
+              <td class="px-4 py-3 text-stone-600">{{.StartedAt}}</td>
+              <td class="px-4 py-3 text-stone-600">{{.FinishedAt}}</td>
+              <td class="px-4 py-3">
+                <a class="text-blue-800 underline underline-offset-2" href="/builds/{{.ID}}/log">View log</a>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+
+      {{if gt .Pages 1}}
+      <nav class="mt-6 flex items-center justify-between" aria-label="Build pages">
+        {{if gt .Page 1}}
+        <a class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50" href="/builds?page={{sub .Page 1}}">Previous</a>
+        {{else}}
+        <span></span>
+        {{end}}
+        <p class="text-sm text-stone-600" role="status">Page {{.Page}} of {{.Pages}} · {{.Total}} build{{if ne .Total 1}}s{{end}}</p>
+        {{if lt .Page .Pages}}
+        <a class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50" href="/builds?page={{add .Page 1}}">Next</a>
+        {{else}}
+        <span></span>
+        {{end}}
+      </nav>
+      {{end}}
+      {{else}}
+      <p class="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-stone-500">No builds yet.</p>
+      {{end}}
+    </section>
+  </main>
+
+  <footer class="border-t border-stone-200 py-6">
+    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+  </footer>
+</body>
+</html>

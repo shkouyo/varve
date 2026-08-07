@@ -94,6 +94,41 @@ func (s *Store) ListBuilds(ctx context.Context, page, perPage int, failedOnly bo
 	return out, total, nil
 }
 
+// ListBuildsByPackage returns the requested page of one package's builds,
+// newest first, with the total count. The package detail page uses it so
+// long build histories paginate instead of being truncated.
+func (s *Store) ListBuildsByPackage(ctx context.Context, packageID int64, page, perPage int) ([]Build, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 1
+	}
+	var total int
+	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM builds WHERE package_id = ?`, packageID).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("db: count package builds: %w", err)
+	}
+	rows, err := s.read.QueryContext(ctx,
+		`SELECT `+buildColumns+` FROM builds WHERE package_id = ? ORDER BY seq DESC LIMIT ? OFFSET ?`,
+		packageID, perPage, (page-1)*perPage)
+	if err != nil {
+		return nil, 0, fmt.Errorf("db: list package builds: %w", err)
+	}
+	defer rows.Close()
+	out := []Build{}
+	for rows.Next() {
+		b, err := scanBuild(rows)
+		if err != nil {
+			return nil, 0, fmt.Errorf("db: list package builds: %w", err)
+		}
+		out = append(out, *b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("db: list package builds: %w", err)
+	}
+	return out, total, nil
+}
+
 // scanBuild decodes one builds row.
 func scanBuild(rs rowScanner) (*Build, error) {
 	var b Build

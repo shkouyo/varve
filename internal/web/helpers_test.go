@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -300,8 +301,13 @@ func seedActiveBuild(t *testing.T, s *db.Store, pkg db.Package, state string) db
 func setPackageBuild(t *testing.T, s *db.Store, pkgbase string, buildID string) {
 	t.Helper()
 	err := s.WithTx(testCtx, func(tx *db.Tx) error {
-		return tx.UpdatePackageAfterBuild(testCtx, pkgbase, "1.2.3-1", "A demo package",
-			"srcinfo-hash", "upstream-ref", buildID)
+		return tx.UpdatePackageAfterBuild(testCtx, pkgbase, db.PackageUpdate{
+			CurrentVersion: "1.2.3-1",
+			Pkgdesc:        "A demo package",
+			SrcinfoHash:    "srcinfo-hash",
+			UpstreamRef:    "upstream-ref",
+			BuildID:        buildID,
+		})
 	})
 	if err != nil {
 		t.Fatalf("update package %q after build: %v", pkgbase, err)
@@ -359,6 +365,22 @@ func serve(t *testing.T, s *Server, req *http.Request) *httptest.ResponseRecorde
 func getAuth(t *testing.T, s *Server, method, path, user, pass string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
+	req.SetBasicAuth(user, pass)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// postForm issues an authenticated url-encoded form POST (no-JavaScript
+// admin actions).
+func postForm(t *testing.T, s *Server, path, user, pass string, values map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{}
+	for k, v := range values {
+		form.Set(k, v)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(user, pass)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)

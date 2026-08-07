@@ -28,13 +28,16 @@ import (
 
 // dashboardData feeds dashboard.html: build status counts, queue length,
 // recent builds with their executing node name, and the worker online
-// overview.
+// overview. Admin marks an authenticated request so the template renders
+// the task queue and admin actions; Tasks carries the queue then.
 type dashboardData struct {
 	base
 	Counts   []statusCount
 	QueueLen int
 	Recent   []recentBuildView
 	Workers  []workerView
+	Admin    bool
+	Tasks    []taskView
 }
 
 // statusCount is one entry of the build status breakdown, kept in a
@@ -104,29 +107,52 @@ type workerView struct {
 
 // handleDashboard renders GET /.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	stats, err := s.orch.Stats(ctx)
+	data, err := s.dashboardData(r)
 	if err != nil {
 		s.renderError(w, http.StatusInternalServerError, "Failed to load dashboard statistics.")
 		return
 	}
+	data.Nav = "dashboard"
+	s.render(w, "dashboard.html", data)
+}
+
+// dashboardData assembles the dashboard page data. The public view shows
+// status counts, the queue length, recent builds and the worker overview;
+// an authenticated request additionally marks the page as admin (the
+// template then renders the task queue and admin actions) and carries the
+// flash of the last admin action. The recent-build count comes from
+// web.recent_builds, never a hardcoded slice.
+func (s *Server) dashboardData(r *http.Request) (dashboardData, error) {
+	ctx := r.Context()
+	stats, err := s.orch.Stats(ctx)
+	if err != nil {
+		return dashboardData{}, err
+	}
 	workers, err := s.store.ListWorkers(ctx)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the worker list.")
-		return
+		return dashboardData{}, err
 	}
-
+	recent := stats.RecentBuilds
+	if n := s.cfg.Web.RecentBuilds; n > 0 && len(recent) > n {
+		recent = recent[:n]
+	}
 	data := dashboardData{
 		base:     s.page("Dashboard", nil),
 		Counts:   statusCounts(stats.ByStatus),
 		QueueLen: stats.QueueLen,
+		Recent:   s.recentBuildViews(ctx, recent, workers),
 		Workers:  workerViews(workers, time.Now()),
-		Recent:   s.recentBuildViews(ctx, stats.RecentBuilds, workers),
 	}
-	data.Nav = "dashboard"
-
-	s.render(w, "dashboard.html", data)
+	if s.authorized(r) {
+		data.Admin = true
+		data.Flash = flashFromQuery(r)
+		tasks, err := s.store.ListActiveTasks(ctx)
+		if err != nil {
+			return dashboardData{}, err
+		}
+		data.Tasks = s.taskViews(ctx, tasks, workers)
+	}
+	return data, nil
 }
 
 // recentBuildViews resolves recent build rows into the template view: the

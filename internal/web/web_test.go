@@ -22,14 +22,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
 // TestHandlerRouteTable exercises every route: public pages render, admin
-// routes demand Basic Auth (401 + challenge) and the missing-resource
-// pages are 404.
+// routes demand Basic Auth (401 + challenge), malformed input is a 400,
+// missing resources are 404 and the merged admin entry redirects.
 func TestHandlerRouteTable(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -46,12 +47,17 @@ func TestHandlerRouteTable(t *testing.T) {
 		want   int
 	}{
 		{"dashboard", http.MethodGet, "/", http.StatusOK},
+		{"builds list", http.MethodGet, "/builds", http.StatusOK},
 		{"packages list", http.MethodGet, "/packages", http.StatusOK},
 		{"package detail", http.MethodGet, "/packages/demo-pkg", http.StatusOK},
 		{"package missing", http.MethodGet, "/packages/nope", http.StatusNotFound},
+		{"package invalid", http.MethodGet, "/packages/bad%20name", http.StatusBadRequest},
 		{"build detail", http.MethodGet, "/builds/" + itoa(build.ID), http.StatusOK},
-		{"build missing", http.MethodGet, "/builds/99999", http.StatusNotFound},
+		{"build missing", http.MethodGet, "/builds/ffffffffffffffff", http.StatusNotFound},
+		{"build invalid", http.MethodGet, "/builds/99999", http.StatusBadRequest},
 		{"build log", http.MethodGet, "/builds/" + itoa(build.ID) + "/log", http.StatusOK},
+		{"copying", http.MethodGet, "/copying.txt", http.StatusOK},
+		{"logout", http.MethodGet, "/admin/logout", http.StatusUnauthorized},
 		{"admin unauth", http.MethodGet, "/admin", http.StatusUnauthorized},
 		{"admin builds unauth", http.MethodGet, "/admin/builds?failed=1", http.StatusUnauthorized},
 		{"admin rebuild unauth", http.MethodPost, "/admin/packages/demo-pkg/rebuild", http.StatusUnauthorized},
@@ -73,10 +79,10 @@ func TestHandlerRouteTable(t *testing.T) {
 		})
 	}
 
-	// Admin routes respond once authenticated.
+	// The admin entry redirects to the dashboard once authenticated.
 	rec := getAuth(t, s, http.MethodGet, "/admin", "admin", "s3cret")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /admin with auth = %d, want 200", rec.Code)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Fatalf("GET /admin with auth = %d %q, want 303 /", rec.Code, rec.Header().Get("Location"))
 	}
 	rec = getAuth(t, s, http.MethodGet, "/admin/builds?failed=1", "admin", "s3cret")
 	if rec.Code != http.StatusOK {
@@ -84,8 +90,24 @@ func TestHandlerRouteTable(t *testing.T) {
 	}
 }
 
-// TestTemplateSetCompiles asserts that the full eight-template set is
-// registered and each renders with a 200.
+// TestCopyingServesLicense asserts /copying.txt returns the embedded
+// license text as plain text.
+func TestCopyingServesLicense(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/copying.txt", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /copying.txt = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+	mustContain(t, rec.Body.String(), "GNU AFFERO GENERAL PUBLIC LICENSE", "mirror of the repository COPYING")
+}
+
+// TestTemplateSetCompiles asserts that the full template set is
+// registered and each servable page renders with a 200. admin.html is no
+// longer routed (the admin area merged into the dashboard) but stays in
+// the embedded set until the template cleanup removes it.
 func TestTemplateSetCompiles(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -95,7 +117,7 @@ func TestTemplateSetCompiles(t *testing.T) {
 
 	want := []string{
 		"dashboard.html", "packages.html", "package.html", "build.html",
-		"log.html", "admin.html", "admin_builds.html", "error.html",
+		"log.html", "admin.html", "admin_builds.html", "builds.html", "error.html",
 	}
 	for _, name := range want {
 		if s.tmpl.Lookup(name) == nil {
@@ -109,12 +131,12 @@ func TestTemplateSetCompiles(t *testing.T) {
 		"package.html":      "/packages/demo-pkg",
 		"build.html":        "/builds/" + itoa(build.ID),
 		"log.html":          "/builds/" + itoa(build.ID) + "/log",
-		"admin.html":        "/admin",
+		"builds.html":       "/builds",
 		"admin_builds.html": "/admin/builds?failed=1",
 	}
 	for name, path := range paths {
 		var rec *httptest.ResponseRecorder
-		if name == "admin.html" || name == "admin_builds.html" {
+		if name == "admin_builds.html" {
 			rec = getAuth(t, s, http.MethodGet, path, "admin", "s3cret")
 		} else {
 			rec = get(t, s, http.MethodGet, path, nil)
