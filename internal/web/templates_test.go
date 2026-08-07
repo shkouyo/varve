@@ -27,6 +27,42 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
+// TestRefreshGating pins the auto-refresh implementation to its WCAG
+// contract: the meta refresh lives inside <noscript> (axe never sees a
+// timed refresh on a JavaScript-enabled page) and only renders while
+// PageActive, error pages and terminal build pages carry neither the
+// meta tag nor the inline reload script, and RefreshSeconds=0 never
+// falls back to the 10s default.
+func TestRefreshGating(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	term := seedBuild(t, store, pkg, "failed", nil, nil)
+	active := seedActiveBuild(t, store, pkg, "running")
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader("line1\n"))
+
+	// Active pages: noscript meta refresh at the configured cadence plus
+	// the inline reload timer for JavaScript users.
+	for _, path := range []string{"/", "/packages", "/builds", "/builds/" + itoa(active.ID)} {
+		rec := get(t, s, http.MethodGet, path, nil)
+		body := rec.Body.String()
+		if !strings.Contains(body, `<noscript><meta http-equiv="refresh" content="10"></noscript>`) {
+			t.Errorf("%s: noscript meta refresh missing", path)
+		}
+		if !strings.Contains(body, "setInterval") || !strings.Contains(body, "location.reload()") {
+			t.Errorf("%s: inline reload script missing", path)
+		}
+	}
+
+	// Terminal build and error pages are frozen: no refresh tag, no script.
+	for _, path := range []string{"/builds/" + itoa(term.ID), "/packages/nope"} {
+		rec := get(t, s, http.MethodGet, path, nil)
+		body := rec.Body.String()
+		if strings.Contains(body, "http-equiv=\"refresh\"") || strings.Contains(body, "<script") {
+			t.Errorf("%s: frozen page must carry no refresh tag or script", path)
+		}
+	}
+}
+
 // TestErrorPages asserts the 404 and 401 responses render the error page
 // with semantic markup and no JavaScript, and that malformed input maps
 // to a 400.
