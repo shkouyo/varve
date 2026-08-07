@@ -39,10 +39,9 @@
  * template classes and are themed here: the focus ring (purple-600 is
  * too dim against dark surfaces) and the status pills emitted by the
  * buildBadge helper in Go (dark surfaces use the 900-level pill tints).
- * The stone pill rule stays even though the templates use the slate
- * palette: buildBadge still emits bg-stone-200 for the default and
- * cancelled statuses, and dropping the override would leave those pills
- * without a dark variant.
+ * The neutral pill rule is the dark variant for the default and
+ * cancelled statuses, which buildBadge renders as bg-neutral-200
+ * text-neutral-800 in the light theme.
  */
 @media (prefers-color-scheme: dark) {
   :focus-visible {
@@ -69,13 +68,9 @@
     background-color: #172554;
     color: #bfdbfe;
   }
-  .bg-stone-200.text-stone-800 {
-    background-color: #292524;
-    color: #e7e5e4;
-  }
-  .bg-slate-200.text-slate-800 {
-    background-color: #1e293b;
-    color: #cbd5e1;
+  .bg-neutral-200.text-neutral-800 {
+    background-color: #262626;
+    color: #e5e5e5;
   }
 }
 

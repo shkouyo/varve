@@ -37,14 +37,14 @@ var funcs = template.FuncMap{
 // paired with a status word so the badge never relies on color alone
 // (WCAG 2.2 AA, no-JavaScript safe).
 func buildBadge(status string) template.HTML {
-	cls, icon := "bg-stone-200 text-stone-800", "M18 12H6"
+	cls, icon := "bg-neutral-200 text-neutral-800", "M18 12H6"
 	switch status {
 	case "succeeded":
 		cls, icon = "bg-green-100 text-green-900", "M8 12l2.5 2.5L16 9"
 	case "failed":
 		cls, icon = "bg-red-100 text-red-900", "M8 8l8 8M16 8l-8 8"
 	case "cancelled":
-		cls, icon = "bg-stone-200 text-stone-800", "M18 12H6"
+		cls, icon = "bg-neutral-200 text-neutral-800", "M18 12H6"
 	case "queued":
 		cls, icon = "bg-amber-100 text-amber-900", "M12 6v6l4 2"
 	case "assigned":

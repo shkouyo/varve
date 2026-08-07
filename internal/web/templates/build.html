@@ -7,17 +7,17 @@
   <title>{{.Title}}·Varve</title>
   <style>{{.CSS}}</style>
 </head>
-<body class="min-h-screen bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+<body class="min-h-screen bg-slate-100 text-slate-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
   <a class="skip-link" href="#main">Skip to main content</a>
   {{template "header" .}}
 
   <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
     <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <nav class="mb-1 text-sm text-slate-600 dark:text-slate-300" aria-label="Breadcrumb">
+        <nav class="mb-1 text-sm text-slate-600 dark:text-neutral-300" aria-label="Breadcrumb">
           <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/">Home</a>
           <span aria-hidden="true"> / </span>
-          <span class="text-slate-700 dark:text-slate-200" aria-current="page">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
+          <span class="text-slate-700 dark:text-neutral-200" aria-current="page">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
         </nav>
         <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Build <span class="font-mono" title="{{.Build.ID}}">{{.Build.ID}}</span></h1>
       </div>
@@ -25,43 +25,43 @@
       <div class="flex flex-wrap items-center gap-2">
         {{if .CancelURL}}
         <form method="post" action="{{.CancelURL}}">
-          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Cancel build</button>
+          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Cancel build</button>
         </form>
         {{end}}
         {{if .Pkgbase}}
         <form method="post" action="/admin/packages/{{.Pkgbase}}/rebuild">
-          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Rebuild</button>
+          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Rebuild</button>
         </form>
         {{end}}
       </div>
       {{end}}
     </div>
 
-    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-neutral-900">
       <h2 id="summary-heading" class="mb-3 text-xl font-semibold">Summary</h2>
       <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Status</dt>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Status</dt>
         <dd>{{template "statusBadge" .Build.Status}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Package</dt>
-        <dd>{{if .Pkgbase}}<a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Machine</dt>
-        <dd class="text-slate-900 dark:text-slate-100">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-slate-400">not assigned</span>{{end}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Branch</dt>
-        <dd class="text-slate-900 dark:text-slate-100">{{.Build.Branch}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Commit</dt>
-        <dd class="break-all font-mono text-xs text-slate-700 dark:text-slate-300">{{.Build.Commit}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Upstream ref</dt>
-        <dd class="text-slate-900 dark:text-slate-100">{{if .Build.UpstreamRef}}{{.Build.UpstreamRef}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Started</dt>
-        <dd class="text-slate-900 dark:text-slate-100">{{absTime .Build.StartedAt}}</dd>
-        <dt class="font-medium text-slate-500 dark:text-slate-400">Finished</dt>
-        <dd class="text-slate-900 dark:text-slate-100">{{absTime .Build.FinishedAt}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Package</dt>
+        <dd>{{if .Pkgbase}}<a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Machine</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Branch</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">{{.Build.Branch}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Commit</dt>
+        <dd class="break-all font-mono text-xs text-slate-700 dark:text-neutral-300">{{.Build.Commit}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Upstream ref</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">{{if .Build.UpstreamRef}}{{.Build.UpstreamRef}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Started</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">{{absTime .Build.StartedAt}}</dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Finished</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">{{absTime .Build.FinishedAt}}</dd>
       </dl>
     </section>
 
     <section aria-labelledby="log" class="mb-8">
       <h2 id="log" class="mb-3 scroll-mt-6 text-xl font-semibold">Command log</h2>
-      <div id="log-pane" role="log" aria-label="Build log" tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100">
+      <div id="log-pane" role="log" aria-label="Build log" tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100">
 {{- if .HasLog}}<div id="log-lines">
 {{- if .Lines -}}
 {{- range .Lines}}{{.}}
@@ -69,23 +69,23 @@
 {{- else -}}
 {{- .Log -}}
 {{- end -}}
-</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-slate-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
+</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-neutral-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
 <div id="log-increments" aria-live="polite"></div>
       </div>
       {{if .Truncated}}
-      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{.TruncatedNote}}</p>
+      <p class="mt-2 text-sm text-slate-600 dark:text-neutral-300">{{.TruncatedNote}}</p>
       {{end}}
-      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-slate-300" role="status">{{if .Note}}{{else if .Wait}}Waiting for log output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
+      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-neutral-300" role="status">{{if .Note}}{{else if .Wait}}Waiting for log output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
     </section>
 
     <section aria-labelledby="usage-heading">
       <h2 id="usage-heading" class="mb-3 text-xl font-semibold">Resource usage</h2>
       {{if .Samples}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900" tabindex="0" aria-label="Resource usage samples">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900" tabindex="0" aria-label="Resource usage samples">
         <table class="w-full text-left text-sm">
           <caption class="sr-only">Resource samples with time, CPU utilization, memory and disk usage, newest first</caption>
           <thead>
-            <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
+            <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-neutral-400">
               <th scope="col" class="px-4 py-3 font-semibold">Time</th>
               <th scope="col" class="px-4 py-3 font-semibold">CPU</th>
               <th scope="col" class="px-4 py-3 font-semibold">Memory</th>
@@ -95,17 +95,17 @@
           <tbody>
             {{range .Samples}}
             <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
-              <th scope="row" class="px-4 py-3 text-left font-normal tabular-nums text-slate-600 dark:text-slate-300">{{.At}}</th>
-              <td class="px-4 py-3 text-slate-900 dark:text-slate-100">{{if .CPU}}{{.CPU}}{{else}}{{.CPUTotal}} total{{end}}</td>
-              <td class="px-4 py-3 text-slate-900 dark:text-slate-100">{{.Mem}} / peak {{.MemPeak}}</td>
-              <td class="px-4 py-3 text-slate-900 dark:text-slate-100">{{if .HasDisk}}{{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}}){{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
+              <th scope="row" class="px-4 py-3 text-left font-normal tabular-nums text-slate-600 dark:text-neutral-300">{{.At}}</th>
+              <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">{{if .CPU}}{{.CPU}}{{else}}{{.CPUTotal}} total{{end}}</td>
+              <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">{{.Mem}} / peak {{.MemPeak}}</td>
+              <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">{{if .HasDisk}}{{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}}){{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</td>
             </tr>
             {{end}}
           </tbody>
         </table>
       </div>
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-400">No resource samples recorded.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">No resource samples recorded.</p>
       {{end}}
     </section>
   </main>
