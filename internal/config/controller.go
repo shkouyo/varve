@@ -168,12 +168,14 @@ type rawWorker struct {
 }
 
 type rawActions struct {
-	Enabled  bool         `toml:"enabled"`
-	Token    secret       `toml:"token"`
-	Repo     string       `toml:"repo"`
-	Workflow string       `toml:"workflow"`
-	Ref      string       `toml:"ref"`
-	Cooldown tomlDuration `toml:"cooldown"`
+	Enabled        bool         `toml:"enabled"`
+	Token          secret       `toml:"token"`
+	Repo           string       `toml:"repo"`
+	Workflow       string       `toml:"workflow"`
+	Ref            string       `toml:"ref"`
+	Cooldown       tomlDuration `toml:"cooldown"` // deprecated: accepted for compatibility, ignored
+	MaxConcurrency int          `toml:"max_concurrency"`
+	ClaimTimeout   tomlDuration `toml:"claim_timeout"`
 }
 
 type rawMail struct {
@@ -238,9 +240,10 @@ func defaultRawConfig() rawConfig {
 			RetryMax:              3,
 			FailedRebuildCooldown: tomlDuration(time.Hour),
 			Actions: rawActions{
-				Workflow: "worker-actions.yml",
-				Ref:      "main",
-				Cooldown: tomlDuration(3 * time.Minute),
+				Workflow:       "worker-actions.yml",
+				Ref:            "main",
+				MaxConcurrency: 3,
+				ClaimTimeout:   tomlDuration(5 * time.Minute),
 			},
 		},
 		Mail: rawMail{
@@ -394,12 +397,13 @@ func (r *rawConfig) export() *ControllerConfig {
 			RetryMax:              r.Worker.RetryMax,
 			FailedRebuildCooldown: time.Duration(r.Worker.FailedRebuildCooldown),
 			Actions: WorkerActions{
-				Enabled:  r.Worker.Actions.Enabled,
-				Token:    string(r.Worker.Actions.Token),
-				Repo:     r.Worker.Actions.Repo,
-				Workflow: r.Worker.Actions.Workflow,
-				Ref:      r.Worker.Actions.Ref,
-				Cooldown: time.Duration(r.Worker.Actions.Cooldown),
+				Enabled:        r.Worker.Actions.Enabled,
+				Token:          string(r.Worker.Actions.Token),
+				Repo:           r.Worker.Actions.Repo,
+				Workflow:       r.Worker.Actions.Workflow,
+				Ref:            r.Worker.Actions.Ref,
+				MaxConcurrency: r.Worker.Actions.MaxConcurrency,
+				ClaimTimeout:   time.Duration(r.Worker.Actions.ClaimTimeout),
 			},
 		},
 		Mail: MailConfig{

@@ -58,12 +58,13 @@ retry_max = 3 # a failed task is retried up to this many times (default 3; 0 dis
 failed_rebuild_cooldown = "1h" # minimum wait before a failed package is rebuilt again (default "1h")
 
 [worker.actions]
-enabled = false # auto-start the runner workflow when tasks are queued and no worker is online (default false)
+enabled = false # dispatch one workflow run per queued task (default false)
 token = "" # GitHub PAT with actions:write permission on the runner repo; written directly in this file, so file permissions must be 0600
 repo = "" # repository of the runner workflow, e.g. "owner/runner-repo"; required when enabled
-workflow = "worker-actions.yml" # workflow file to dispatch (default "worker-actions.yml")
+workflow = "worker-actions.yml" # workflow file to dispatch (default "worker-actions.yml"); must declare the task_id/task_token inputs
 ref = "main" # git ref to dispatch on (default "main")
-cooldown = "3m" # minimum interval between dispatches (default "3m"; must be greater than zero)
+max_concurrency = 3 # maximum concurrent runner runs (default 3; must be greater than zero)
+claim_timeout = "5m" # a dispatched run must claim its task within this window or the task is re-dispatched (default "5m")
 
 [mail]
 enabled = false # failure notifications (default false; only sent when a build fails)

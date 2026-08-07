@@ -48,10 +48,11 @@ func validController() *ControllerConfig {
 			RetryMax:              3,
 			FailedRebuildCooldown: time.Hour,
 			Actions: WorkerActions{
-				Repo:     "owner/varve-runner",
-				Workflow: "worker-actions.yml",
-				Ref:      "main",
-				Cooldown: 3 * time.Minute,
+				Repo:           "owner/varve-runner",
+				Workflow:       "worker-actions.yml",
+				Ref:            "main",
+				MaxConcurrency: 3,
+				ClaimTimeout:   5 * time.Minute,
 			},
 		},
 		Mail: MailConfig{Port: 587, From: "varve@example.org", TLS: "starttls"},
@@ -204,14 +205,24 @@ func TestValidateErrors(t *testing.T) {
 			want: "worker.actions.repo",
 		},
 		{
-			name:   "zero actions cooldown",
-			mutate: func(c *ControllerConfig) { c.Worker.Actions.Cooldown = 0 },
-			want:   "worker.actions.cooldown",
+			name:   "zero actions max concurrency",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.MaxConcurrency = 0 },
+			want:   "worker.actions.max_concurrency",
 		},
 		{
-			name:   "negative actions cooldown",
-			mutate: func(c *ControllerConfig) { c.Worker.Actions.Cooldown = -time.Minute },
-			want:   "worker.actions.cooldown",
+			name:   "negative actions max concurrency",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.MaxConcurrency = -1 },
+			want:   "worker.actions.max_concurrency",
+		},
+		{
+			name:   "zero actions claim timeout",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.ClaimTimeout = 0 },
+			want:   "worker.actions.claim_timeout",
+		},
+		{
+			name:   "negative actions claim timeout",
+			mutate: func(c *ControllerConfig) { c.Worker.Actions.ClaimTimeout = -time.Minute },
+			want:   "worker.actions.claim_timeout",
 		},
 	}
 	for _, tt := range tests {
@@ -254,12 +265,13 @@ func TestValidateSignWithKeyFile(t *testing.T) {
 func TestValidateActionsEnabledOK(t *testing.T) {
 	cfg := validController()
 	cfg.Worker.Actions = WorkerActions{
-		Enabled:  true,
-		Token:    "t",
-		Repo:     "owner/varve-runner",
-		Workflow: "worker-actions.yml",
-		Ref:      "main",
-		Cooldown: 3 * time.Minute,
+		Enabled:        true,
+		Token:          "t",
+		Repo:           "owner/varve-runner",
+		Workflow:       "worker-actions.yml",
+		Ref:            "main",
+		MaxConcurrency: 3,
+		ClaimTimeout:   5 * time.Minute,
 	}
 	if err := validate(cfg); err != nil {
 		t.Fatalf("validate() = %v, want nil", err)

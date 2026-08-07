@@ -86,6 +86,9 @@ func validate(c *ControllerConfig) error {
 			return errors.New("worker.actions.repo: must not be empty when worker.actions.enabled is true")
 		}
 	}
+	if c.Worker.Actions.MaxConcurrency < 1 {
+		return fmt.Errorf("worker.actions.max_concurrency: must be greater than zero, got %d", c.Worker.Actions.MaxConcurrency)
+	}
 	if c.Logs.Dir == "" {
 		return errors.New("logs.dir: must not be empty")
 	}
@@ -98,7 +101,7 @@ func validate(c *ControllerConfig) error {
 		{"worker.stall_timeout", c.Worker.StallTimeout},
 		{"worker.build_timeout", c.Worker.BuildTimeout},
 		{"worker.failed_rebuild_cooldown", c.Worker.FailedRebuildCooldown},
-		{"worker.actions.cooldown", c.Worker.Actions.Cooldown},
+		{"worker.actions.claim_timeout", c.Worker.Actions.ClaimTimeout},
 		{"logs.retention", c.Logs.Retention},
 	} {
 		if d.val <= 0 {

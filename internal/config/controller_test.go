@@ -106,7 +106,8 @@ token = "ghp-example"
 repo = "owner/varve-runner"
 workflow = "worker-actions.yml"
 ref = "main"
-cooldown = "5m"
+max_concurrency = 5
+claim_timeout = "7m"
 
 [mail]
 enabled = false
@@ -209,7 +210,8 @@ func TestLoadControllerFullExample(t *testing.T) {
 		cfg.Worker.Actions.Repo != "owner/varve-runner" ||
 		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
 		cfg.Worker.Actions.Ref != "main" ||
-		cfg.Worker.Actions.Cooldown != 5*time.Minute {
+		cfg.Worker.Actions.MaxConcurrency != 5 ||
+		cfg.Worker.Actions.ClaimTimeout != 7*time.Minute {
 		t.Errorf("Worker.Actions = %+v", cfg.Worker.Actions)
 	}
 	if cfg.Mail.Enabled || cfg.Mail.Host != "" || cfg.Mail.Port != 587 ||
@@ -277,7 +279,8 @@ func TestLoadControllerDefaults(t *testing.T) {
 		cfg.Worker.Actions.Repo != "" ||
 		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
 		cfg.Worker.Actions.Ref != "main" ||
-		cfg.Worker.Actions.Cooldown != 3*time.Minute {
+		cfg.Worker.Actions.MaxConcurrency != 3 ||
+		cfg.Worker.Actions.ClaimTimeout != 5*time.Minute {
 		t.Errorf("Worker.Actions defaults = %+v", cfg.Worker.Actions)
 	}
 	if cfg.Mail.Enabled || cfg.Mail.Port != 587 || cfg.Mail.TLS != "starttls" ||
@@ -290,6 +293,24 @@ func TestLoadControllerDefaults(t *testing.T) {
 	}
 	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 {
 		t.Errorf("Logs defaults = %+v", cfg.Logs)
+	}
+}
+
+// TestLoadControllerLegacyActionsCooldown asserts the removed cooldown
+// key of [worker.actions] is still accepted by the strict TOML parser and
+// ignored: existing deployments can keep their config file unchanged and
+// the new defaults apply.
+func TestLoadControllerLegacyActionsCooldown(t *testing.T) {
+	content := minimalConfig + `
+[worker.actions]
+cooldown = "3m"
+`
+	cfg, err := LoadController(writeConfig(t, content))
+	if err != nil {
+		t.Fatalf("LoadController with legacy cooldown: %v", err)
+	}
+	if cfg.Worker.Actions.MaxConcurrency != 3 || cfg.Worker.Actions.ClaimTimeout != 5*time.Minute {
+		t.Errorf("Worker.Actions = %+v, want defaults 3/5m0s", cfg.Worker.Actions)
 	}
 }
 

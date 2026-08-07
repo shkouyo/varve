@@ -121,18 +121,22 @@ type WorkerLimits struct {
 	Actions               WorkerActions // autostart the runner workflow when work waits
 }
 
-// WorkerActions configures the automatic start of build workers through
-// the GitHub Actions workflow_dispatch API: when tasks are queued and no
-// worker is online, the controller triggers the configured runner
-// workflow so a worker can pick the queue up. The token is a password
-// class field (TOML only, no environment override).
+// WorkerActions configures the per-task start of build runners through
+// the GitHub Actions workflow_dispatch API: every queued task is
+// dispatched as its own workflow run (a one-shot runner), up to
+// MaxConcurrency concurrent runs. The token is a password class field
+// (TOML only, no environment override).
 type WorkerActions struct {
-	Enabled  bool          // trigger the runner workflow when work waits, false
-	Token    string        // GitHub PAT with actions:write permission on the runner repo
-	Repo     string        // owner/repo slug of the runner repository (required when enabled)
-	Workflow string        // workflow file name, "worker-actions.yml"
-	Ref      string        // git ref to dispatch on, "main"
-	Cooldown time.Duration // minimum interval between dispatches, "3m"
+	Enabled        bool          // dispatch one run per queued task, false
+	Token          string        // GitHub PAT with actions:write permission on the runner repo
+	Repo           string        // owner/repo slug of the runner repository (required when enabled)
+	Workflow       string        // workflow file name, "worker-actions.yml"
+	Ref            string        // git ref to dispatch on, "main"
+	MaxConcurrency int           // maximum concurrent runner runs, 3
+	ClaimTimeout   time.Duration // a dispatched run must claim its task within this window, "5m"
+	// Cooldown is deprecated and ignored; the TOML key is still accepted
+	// for compatibility.
+	Cooldown time.Duration
 }
 
 // MailConfig configures SMTP failure notifications.
