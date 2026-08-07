@@ -49,6 +49,10 @@ func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) e
 			Arch:    pkg.Arch,
 		},
 		Maintainers: pkg.Maintainers,
+		URL:         pkg.URL,
+		Licenses:    pkg.Licenses,
+		Conflicts:   pkg.Conflicts,
+		Provides:    pkg.Provides,
 		UpstreamRef: pkg.LastUpstreamRef,
 		Reason:      detect.ReasonManual,
 	}

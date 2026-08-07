@@ -85,8 +85,8 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 		versions = append(versions, v)
 	}
 	rows.Close()
-	if len(versions) != 3 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 {
-		t.Fatalf("schema_migrations = %v, want [1 2 3]", versions)
+	if len(versions) != 4 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 {
+		t.Fatalf("schema_migrations = %v, want [1 2 3 4]", versions)
 	}
 
 	// Build 1: deterministic hash id, rewritten log path, no worker name.
@@ -202,5 +202,9 @@ func TestNewColumnDefaults(t *testing.T) {
 	}
 	if p.LastFailedAt != nil || p.LastBuildID != "" {
 		t.Errorf("fresh package last_failed_at = %v last_build_id = %q, want unset", p.LastFailedAt, p.LastBuildID)
+	}
+	if p.URL != "" || len(p.Licenses) != 0 || len(p.Conflicts) != 0 || len(p.Provides) != 0 {
+		t.Errorf("fresh package metadata = url %q licenses %v conflicts %v provides %v, want empty defaults",
+			p.URL, p.Licenses, p.Conflicts, p.Provides)
 	}
 }

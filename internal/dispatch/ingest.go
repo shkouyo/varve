@@ -114,14 +114,23 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// 3. One SQLite transaction: finalize succeeded + update the package
 	// record (after repo-add, before staging cleanup).
 	samples := o.finalSamples(ctx, task.BuildID, res.ResourceUsage)
-	currentVersion, pkgdesc, srcinfoHash := o.packageUpdateFields(ctx, task.ID, res.Artifacts)
+	currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides := o.packageUpdateFields(ctx, task.ID, res.Artifacts)
 	err = o.store.WithTx(ctx, func(tx *db.Tx) error {
 		if err := tx.FinalizeTask(ctx, task.ID, "succeeded", "", o.now().UTC(),
 			toDBArtifacts(res.Artifacts), samples); err != nil {
 			return err
 		}
-		return tx.UpdatePackageAfterBuild(ctx, pkg.Pkgbase, currentVersion, pkgdesc,
-			srcinfoHash, build.UpstreamRef, task.BuildID)
+		return tx.UpdatePackageAfterBuild(ctx, pkg.Pkgbase, db.PackageUpdate{
+			CurrentVersion: currentVersion,
+			Pkgdesc:        pkgdesc,
+			SrcinfoHash:    srcinfoHash,
+			UpstreamRef:    build.UpstreamRef,
+			BuildID:        task.BuildID,
+			URL:            url,
+			Licenses:       licenses,
+			Conflicts:      conflicts,
+			Provides:       provides,
+		})
 	})
 	if err != nil {
 		// The ingest itself already moved artifacts; a failed transaction
@@ -313,8 +322,10 @@ func (o *OrchestratorImpl) finalSamples(ctx context.Context, buildID string, rep
 
 // packageUpdateFields derives the package record updates from the manifest:
 // current_version (first package artifact), pkgdesc (from the staged
-// .SRCINFO snapshot) and srcinfo_hash (the srcinfo entry's verified hash).
-func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID string, manifest []repo.Artifact) (currentVersion, pkgdesc, srcinfoHash string) {
+// .SRCINFO snapshot), srcinfo_hash (the srcinfo entry's verified hash) and
+// the .SRCINFO metadata (url, licenses, conflicts, provides) so the
+// verified build refreshes the package page fields.
+func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID string, manifest []repo.Artifact) (currentVersion, pkgdesc, srcinfoHash, url string, licenses, conflicts, provides []string) {
 	var src *repo.Artifact
 	for i := range manifest {
 		if manifest[i].Kind == "package" && currentVersion == "" {
@@ -330,6 +341,10 @@ func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID strin
 		if err := o.storage.Get(ctx, storage.StagingPath(taskID, src.File), &buf); err == nil {
 			if info, perr := srcinfo.Parse([]byte(buf.String())); perr == nil {
 				pkgdesc = info.Pkgdesc
+				url = info.URL
+				licenses = info.Licenses
+				conflicts = info.Conflicts
+				provides = info.Provides
 			} else {
 				log.Printf("dispatch: parse .SRCINFO for package update: %v", perr)
 			}
@@ -337,5 +352,5 @@ func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID strin
 			log.Printf("dispatch: read .SRCINFO for package update: %v", err)
 		}
 	}
-	return currentVersion, pkgdesc, srcinfoHash
+	return currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides
 }

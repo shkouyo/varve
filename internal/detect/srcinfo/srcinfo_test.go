@@ -23,17 +23,22 @@ import (
 )
 
 // TestParseValid covers the accepted .SRCINFO layout: scalar top-level
-// pkgbase, indented scalars, multi-value indented keys (arch, source) and
-// multiple pkgname blocks.
+// pkgbase, indented scalars, multi-value indented keys (arch, source,
+// license, conflict, provides) and multiple pkgname blocks.
 func TestParseValid(t *testing.T) {
 	data := []byte(`pkgbase = foo
 	pkgdesc = Foo bar
 	pkgver = 1.2.3
 	pkgrel = 4
+	url = https://example.org/foo
 	arch = x86_64
 	arch = aarch64
 	source = https://example.org/foo.tar.gz
 	source = git+https://github.com/foo/foo.git
+	license = GPL
+	license = MIT
+	conflict = bar
+	provides = foo-shim
 	unknown_key = ignored
 pkgname = foo
 pkgname = foo-docs
@@ -44,13 +49,17 @@ pkgname = foo-docs
 		t.Fatalf("Parse: %v", err)
 	}
 	want := &Info{
-		Pkgbase: "foo",
-		Pkgver:  "1.2.3",
-		Pkgrel:  "4",
-		Pkgdesc: "Foo bar",
-		Pkgname: []string{"foo", "foo-docs"},
-		Arch:    []string{"x86_64", "aarch64"},
-		Source:  []string{"https://example.org/foo.tar.gz", "git+https://github.com/foo/foo.git"},
+		Pkgbase:   "foo",
+		Pkgver:    "1.2.3",
+		Pkgrel:    "4",
+		Pkgdesc:   "Foo bar",
+		URL:       "https://example.org/foo",
+		Pkgname:   []string{"foo", "foo-docs"},
+		Arch:      []string{"x86_64", "aarch64"},
+		Source:    []string{"https://example.org/foo.tar.gz", "git+https://github.com/foo/foo.git"},
+		Licenses:  []string{"GPL", "MIT"},
+		Conflicts: []string{"bar"},
+		Provides:  []string{"foo-shim"},
 	}
 	if !reflect.DeepEqual(info, want) {
 		t.Errorf("Parse = %+v, want %+v", info, want)

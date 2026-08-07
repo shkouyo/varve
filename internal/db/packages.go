@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-const packageColumns = `id, pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
+const packageColumns = `id, pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, url, licenses, conflicts, provides, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
 
 // GetPackageByBase returns one package by its pkgbase with maintainers
 // decoded. ErrNotFound when the package does not exist.
@@ -114,17 +114,33 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 	if err != nil {
 		return fmt.Errorf("db: encode maintainers for package %q: %w", p.Pkgbase, err)
 	}
+	licenses, err := encodeJSON(p.Licenses)
+	if err != nil {
+		return fmt.Errorf("db: encode licenses for package %q: %w", p.Pkgbase, err)
+	}
+	conflicts, err := encodeJSON(p.Conflicts)
+	if err != nil {
+		return fmt.Errorf("db: encode conflicts for package %q: %w", p.Pkgbase, err)
+	}
+	provides, err := encodeJSON(p.Provides)
+	if err != nil {
+		return fmt.Errorf("db: encode provides for package %q: %w", p.Pkgbase, err)
+	}
 	var id int64
 	err = s.write.QueryRowContext(ctx, `INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, maintainers)
-		VALUES (?, ?, ?, ?, 1, ?)
+		(pkgbase, branch, vcs_kind, arch, enabled, maintainers, url, licenses, conflicts, provides)
+		VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
 		ON CONFLICT(pkgbase) DO UPDATE SET
 			branch = excluded.branch,
 			vcs_kind = excluded.vcs_kind,
 			arch = excluded.arch,
-			maintainers = excluded.maintainers
+			maintainers = excluded.maintainers,
+			url = excluded.url,
+			licenses = excluded.licenses,
+			conflicts = excluded.conflicts,
+			provides = excluded.provides
 		RETURNING id`,
-		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers).Scan(&id)
+		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers, p.URL, licenses, conflicts, provides).Scan(&id)
 	if err != nil {
 		return fmt.Errorf("db: upsert package %q: %w", p.Pkgbase, err)
 	}
@@ -133,15 +149,29 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 }
 
 // UpdatePackageAfterBuild records the outcome of a successful build on the
-// package row: the version/description/hash records advance and the
-// last_failed_at rebuild-cooldown marker is cleared (a success proves the
-// package builds again). It is only valid inside WithTx. ErrNotFound when
-// pkgbase is unknown.
-func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase, currentVersion, pkgdesc, srcinfoHash, upstreamRef string, buildID string) error {
+// package row: the version/description/hash records advance, the .SRCINFO
+// metadata is refreshed and the last_failed_at rebuild-cooldown marker is
+// cleared (a success proves the package builds again). It is only valid
+// inside WithTx. ErrNotFound when pkgbase is unknown.
+func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase string, u PackageUpdate) error {
+	licenses, err := encodeJSON(u.Licenses)
+	if err != nil {
+		return fmt.Errorf("db: encode licenses for package %q: %w", pkgbase, err)
+	}
+	conflicts, err := encodeJSON(u.Conflicts)
+	if err != nil {
+		return fmt.Errorf("db: encode conflicts for package %q: %w", pkgbase, err)
+	}
+	provides, err := encodeJSON(u.Provides)
+	if err != nil {
+		return fmt.Errorf("db: encode provides for package %q: %w", pkgbase, err)
+	}
 	res, err := t.tx.ExecContext(ctx, `UPDATE packages SET
-		current_version = ?, pkgdesc = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?, last_failed_at = NULL
+		current_version = ?, pkgdesc = ?, url = ?, licenses = ?, conflicts = ?, provides = ?,
+		last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?, last_failed_at = NULL
 		WHERE pkgbase = ?`,
-		currentVersion, pkgdesc, srcinfoHash, upstreamRef, buildID, pkgbase)
+		u.CurrentVersion, u.Pkgdesc, u.URL, licenses, conflicts, provides,
+		u.SrcinfoHash, u.UpstreamRef, u.BuildID, pkgbase)
 	if err != nil {
 		return fmt.Errorf("db: update package %q after build: %w", pkgbase, err)
 	}
@@ -152,10 +182,11 @@ func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase, currentVersio
 func scanPackage(rs rowScanner) (*Package, error) {
 	var p Package
 	var enabled int64
-	var maintainers string
+	var maintainers, licenses, conflicts, provides string
 	var lastFailedAt sql.NullString
 	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch, &enabled,
-		&p.CurrentVersion, &p.Pkgdesc, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID, &maintainers); err != nil {
+		&p.CurrentVersion, &p.Pkgdesc, &p.URL, &licenses, &conflicts, &provides,
+		&p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID, &maintainers); err != nil {
 		return nil, err
 	}
 	p.Enabled = enabled != 0
@@ -171,6 +202,21 @@ func scanPackage(rs rowScanner) (*Package, error) {
 		return nil, fmt.Errorf("db: decode maintainers for package %q: %w", p.Pkgbase, err)
 	}
 	p.Maintainers = ms
+	ls, err := decodeStrings(licenses)
+	if err != nil {
+		return nil, fmt.Errorf("db: decode licenses for package %q: %w", p.Pkgbase, err)
+	}
+	p.Licenses = ls
+	cs, err := decodeStrings(conflicts)
+	if err != nil {
+		return nil, fmt.Errorf("db: decode conflicts for package %q: %w", p.Pkgbase, err)
+	}
+	p.Conflicts = cs
+	ps, err := decodeStrings(provides)
+	if err != nil {
+		return nil, fmt.Errorf("db: decode provides for package %q: %w", p.Pkgbase, err)
+	}
+	p.Provides = ps
 	return &p, nil
 }
 

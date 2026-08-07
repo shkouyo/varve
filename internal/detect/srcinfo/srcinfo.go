@@ -31,23 +31,29 @@ import (
 
 // Info is the parsed representation of a .SRCINFO file.
 //
-// Pkgname and Arch are multi-valued; Source holds every "source =" entry
-// (used by the detect pipeline to locate VCS upstream URLs).
+// Pkgname, Arch and Source are multi-valued; URL is the single upstream
+// url entry and Licenses/Conflicts/Provides collect the same-named keys
+// (all multi-valued) for the package page metadata.
 type Info struct {
-	Pkgbase string
-	Pkgver  string
-	Pkgrel  string
-	Pkgdesc string
-	Pkgname []string
-	Arch    []string
-	Source  []string
+	Pkgbase   string
+	Pkgver    string
+	Pkgrel    string
+	Pkgdesc   string
+	URL       string
+	Pkgname   []string
+	Arch      []string
+	Source    []string
+	Licenses  []string
+	Conflicts []string
+	Provides  []string
 }
 
 // Parse parses .SRCINFO text in the strict "key = value" format: each
 // non-blank line must carry one assignment, scalar keys (pkgbase, pkgver,
-// pkgrel, pkgdesc) overwrite, multi-value keys (pkgname, arch, source)
-// append, and unknown keys are ignored for forward compatibility. An empty
-// input and a file without pkgbase are both errors.
+// pkgrel, pkgdesc, url) overwrite, multi-value keys (pkgname, arch, source,
+// license, conflict, provides) append, and unknown keys are ignored for
+// forward compatibility. An empty input and a file without pkgbase are
+// both errors.
 func Parse(data []byte) (*Info, error) {
 	info := &Info{}
 	lines := strings.Split(string(data), "\n")
@@ -76,12 +82,20 @@ func Parse(data []byte) (*Info, error) {
 			info.Pkgrel = value
 		case "pkgdesc":
 			info.Pkgdesc = value
+		case "url":
+			info.URL = value
 		case "pkgname":
 			info.Pkgname = append(info.Pkgname, value)
 		case "arch":
 			info.Arch = append(info.Arch, value)
 		case "source":
 			info.Source = append(info.Source, value)
+		case "license":
+			info.Licenses = append(info.Licenses, value)
+		case "conflict":
+			info.Conflicts = append(info.Conflicts, value)
+		case "provides":
+			info.Provides = append(info.Provides, value)
 		default:
 			// Unknown key: ignored (forward compatibility).
 		}

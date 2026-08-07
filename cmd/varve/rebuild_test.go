@@ -68,7 +68,9 @@ func TestRebuildIndex(t *testing.T) {
 		if err := tx.FinalizeTask(ctx, seedTask.ID, "succeeded", "", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), nil, nil); err != nil {
 			return err
 		}
-		return tx.UpdatePackageAfterBuild(ctx, "keep", "1.0-1", "old desc", "old-h", "old-ref", seedTask.BuildID)
+		return tx.UpdatePackageAfterBuild(ctx, "keep", db.PackageUpdate{
+			CurrentVersion: "1.0-1", Pkgdesc: "old desc", SrcinfoHash: "old-h", UpstreamRef: "old-ref", BuildID: seedTask.BuildID,
+		})
 	})
 	if err != nil {
 		t.Fatal(err)

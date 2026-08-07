@@ -508,3 +508,43 @@ func TestPlanBranchSrcinfoPath(t *testing.T) {
 		})
 	}
 }
+
+// TestPollOnceSrcinfoMetadata asserts the .SRCINFO metadata (url,
+// licenses, conflicts, provides) flows from the branch into the submitted
+// change.
+func TestPollOnceSrcinfoMetadata(t *testing.T) {
+	src := newSourceRepo(t, "meta-pkg", map[string]string{
+		".SRCINFO": "pkgbase = meta-pkg\n" +
+			"\tpkgdesc = metadata package\n" +
+			"\tpkgver = 1.0\n" +
+			"\tpkgrel = 1\n" +
+			"\turl = https://example.org/meta-pkg\n" +
+			"\tarch = x86_64\n" +
+			"\tlicense = GPL\n" +
+			"\tlicense = MIT\n" +
+			"\tconflict = old-meta\n" +
+			"\tprovides = meta-shim\n" +
+			"pkgname = meta-pkg\n",
+	})
+	store, _ := openStore(t)
+	sink := &fakeSink{}
+	d := newTestDetector(t, "file://"+src, store, sink)
+
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	changes := assertChangeCount(t, sink, 1)
+	c := changes[0]
+	if c.URL != "https://example.org/meta-pkg" {
+		t.Errorf("URL = %q, want https://example.org/meta-pkg", c.URL)
+	}
+	if !reflect.DeepEqual(c.Licenses, []string{"GPL", "MIT"}) {
+		t.Errorf("Licenses = %v, want [GPL MIT]", c.Licenses)
+	}
+	if !reflect.DeepEqual(c.Conflicts, []string{"old-meta"}) {
+		t.Errorf("Conflicts = %v, want [old-meta]", c.Conflicts)
+	}
+	if !reflect.DeepEqual(c.Provides, []string{"meta-shim"}) {
+		t.Errorf("Provides = %v, want [meta-shim]", c.Provides)
+	}
+}

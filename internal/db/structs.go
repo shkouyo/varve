@@ -51,11 +51,30 @@ type Package struct {
 	Enabled         bool
 	CurrentVersion  string
 	Pkgdesc         string
+	URL             string   // upstream url from .SRCINFO
+	Licenses        []string // .SRCINFO license entries
+	Conflicts       []string // .SRCINFO conflict entries
+	Provides        []string // .SRCINFO provides entries
 	LastSrcinfoHash string
 	LastUpstreamRef string
 	LastFailedAt    *time.Time // when the package's build last failed (rebuild cooldown marker)
 	LastBuildID     string     // 16-hex hash of the latest build row
 	Maintainers     []string
+}
+
+// PackageUpdate carries the outcome of a successful build onto the
+// package row: the version/description/hash records plus the verified
+// .SRCINFO metadata (url, licenses, conflicts, provides).
+type PackageUpdate struct {
+	CurrentVersion string
+	Pkgdesc        string
+	SrcinfoHash    string
+	UpstreamRef    string
+	BuildID        string
+	URL            string
+	Licenses       []string
+	Conflicts      []string
+	Provides       []string
 }
 
 // Build mirrors one builds row. ID is a 16-hex hash; WorkerName is the

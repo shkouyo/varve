@@ -19,6 +19,7 @@ package db
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -215,8 +216,13 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 	s := newTestStore(t)
 	mustSeedPackage(t, s, "upd")
 
+	upd := PackageUpdate{
+		CurrentVersion: "2.0.0-1", Pkgdesc: "new desc", SrcinfoHash: "hash2", UpstreamRef: "ref2",
+		BuildID: "000000000000002a", URL: "https://example.org/upd",
+		Licenses: []string{"GPL", "MIT"}, Conflicts: []string{"oldpkg"}, Provides: []string{"upd-lib"},
+	}
 	err := s.WithTx(testCtx, func(tx *Tx) error {
-		return tx.UpdatePackageAfterBuild(testCtx, "upd", "2.0.0-1", "new desc", "hash2", "ref2", "000000000000002a")
+		return tx.UpdatePackageAfterBuild(testCtx, "upd", upd)
 	})
 	if err != nil {
 		t.Fatalf("UpdatePackageAfterBuild: %v", err)
@@ -229,10 +235,19 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 		got.LastSrcinfoHash != "hash2" || got.LastUpstreamRef != "ref2" || got.LastBuildID != "000000000000002a" {
 		t.Errorf("updated fields mismatch: %+v", got)
 	}
+	if got.URL != "https://example.org/upd" {
+		t.Errorf("URL = %q, want https://example.org/upd", got.URL)
+	}
+	if !reflect.DeepEqual(got.Licenses, []string{"GPL", "MIT"}) ||
+		!reflect.DeepEqual(got.Conflicts, []string{"oldpkg"}) ||
+		!reflect.DeepEqual(got.Provides, []string{"upd-lib"}) {
+		t.Errorf("metadata = licenses %v conflicts %v provides %v, want GPL/MIT oldpkg upd-lib",
+			got.Licenses, got.Conflicts, got.Provides)
+	}
 
 	// Unknown pkgbase -> ErrNotFound (transaction still commits cleanly).
 	err = s.WithTx(testCtx, func(tx *Tx) error {
-		return tx.UpdatePackageAfterBuild(testCtx, "nope", "1", "d", "h", "r", "0000000000000001")
+		return tx.UpdatePackageAfterBuild(testCtx, "nope", PackageUpdate{CurrentVersion: "1", Pkgdesc: "d", SrcinfoHash: "h", UpstreamRef: "r", BuildID: "0000000000000001"})
 	})
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdatePackageAfterBuild(missing) = %v, want ErrNotFound", err)
@@ -252,7 +267,7 @@ func TestUpdatePackageAfterBuildClearsCooldown(t *testing.T) {
 		t.Fatalf("FinalizeFailed: %v", err)
 	}
 	if err := s.WithTx(testCtx, func(tx *Tx) error {
-		return tx.UpdatePackageAfterBuild(testCtx, "rec", "1.0-1", "d", "hash", "ref", "000000000000002a")
+		return tx.UpdatePackageAfterBuild(testCtx, "rec", PackageUpdate{CurrentVersion: "1.0-1", Pkgdesc: "d", SrcinfoHash: "hash", UpstreamRef: "ref", BuildID: "000000000000002a"})
 	}); err != nil {
 		t.Fatalf("UpdatePackageAfterBuild: %v", err)
 	}
@@ -275,5 +290,54 @@ func TestGetPackageByBaseCorruptMaintainers(t *testing.T) {
 	_, err := s.GetPackageByBase(testCtx, "corrupt")
 	if err == nil {
 		t.Fatal("GetPackageByBase on corrupt JSON: want error, got nil")
+	}
+}
+
+// TestGetPackageByBaseCorruptMetadata guards the same no-panic contract
+// for the .SRCINFO metadata JSON columns.
+func TestGetPackageByBaseCorruptMetadata(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "corrupt-meta")
+	for _, col := range []string{"licenses", "conflicts", "provides"} {
+		if _, err := s.write.Exec(`UPDATE packages SET `+col+` = 'not json' WHERE id = ?`, pkg.ID); err != nil {
+			t.Fatalf("corrupt %s: %v", col, err)
+		}
+		if _, err := s.GetPackageByBase(testCtx, "corrupt-meta"); err == nil {
+			t.Fatalf("GetPackageByBase with corrupt %s: want error, got nil", col)
+		}
+	}
+}
+
+// TestUpsertPackageMetadata asserts the metadata survives the upsert
+// round trip and is refreshed on conflict.
+func TestUpsertPackageMetadata(t *testing.T) {
+	s := newTestStore(t)
+	p := &Package{
+		Pkgbase: "meta", Branch: "main", Arch: "x86_64",
+		URL: "https://example.org/meta", Licenses: []string{"MIT"}, Provides: []string{"meta-lib"},
+	}
+	if err := s.UpsertPackage(testCtx, p); err != nil {
+		t.Fatalf("UpsertPackage: %v", err)
+	}
+	got, err := s.GetPackageByBase(testCtx, "meta")
+	if err != nil {
+		t.Fatalf("GetPackageByBase: %v", err)
+	}
+	if got.URL != "https://example.org/meta" || !reflect.DeepEqual(got.Licenses, []string{"MIT"}) ||
+		!reflect.DeepEqual(got.Provides, []string{"meta-lib"}) || len(got.Conflicts) != 0 {
+		t.Errorf("metadata round trip = url %q licenses %v provides %v conflicts %v", got.URL, got.Licenses, got.Provides, got.Conflicts)
+	}
+
+	// An upsert on the same pkgbase refreshes the metadata.
+	p2 := &Package{Pkgbase: "meta", Branch: "main", Arch: "x86_64", URL: "https://new.example.org/meta"}
+	if err := s.UpsertPackage(testCtx, p2); err != nil {
+		t.Fatalf("UpsertPackage refresh: %v", err)
+	}
+	got, err = s.GetPackageByBase(testCtx, "meta")
+	if err != nil {
+		t.Fatalf("GetPackageByBase after refresh: %v", err)
+	}
+	if got.URL != "https://new.example.org/meta" || len(got.Licenses) != 0 || len(got.Provides) != 0 {
+		t.Errorf("refreshed metadata = url %q licenses %v provides %v, want empty refresh", got.URL, got.Licenses, got.Provides)
 	}
 }

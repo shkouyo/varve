@@ -82,6 +82,10 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 		VCSKind:     c.Package.VCSKind,
 		Arch:        c.Package.Arch,
 		Maintainers: c.Maintainers,
+		URL:         c.URL,
+		Licenses:    c.Licenses,
+		Conflicts:   c.Conflicts,
+		Provides:    c.Provides,
 	}
 	if err := o.store.UpsertPackage(ctx, &pkg); err != nil {
 		return fmt.Errorf("dispatch: enqueue %s: %w", c.Package.Pkgbase, err)
