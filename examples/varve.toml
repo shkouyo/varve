@@ -54,6 +54,8 @@ stall_timeout = "10m" # a task without progress for this long is reclaimed and r
 build_timeout = "30m" # maximum duration of a single build task (default "30m")
 cpu_limit = 0 # container CPU limit (default 0 = unlimited; e.g. 4)
 memory_limit = 0 # container memory limit (default 0 = unlimited; e.g. "8GiB")
+retry_max = 3 # a failed task is retried up to this many times (default 3; 0 disables retries)
+failed_rebuild_cooldown = "1h" # minimum wait before a failed package is rebuilt again (default "1h")
 
 [worker.actions]
 enabled = false # auto-start the runner workflow when tasks are queued and no worker is online (default false)
@@ -75,8 +77,13 @@ tls = "starttls" # TLS mode (default "starttls"; "none" | "starttls" | "implicit
 [web]
 download_enabled = true # show download buttons (default true); when true, download_base_uri below is required
 download_base_uri = "https://downloads.example.org/varve" # direct-link URI prefix (e.g. a CDN or public bucket); required when download_enabled is true
-admin_user = "admin" # /admin Basic Auth username (default "admin")
-admin_password = "change-me" # /admin Basic Auth password (required, empty fails validation); written directly in this file, so file permissions must be 0600
+recent_builds = 20 # how many recent builds the dashboard shows (default 20; must be greater than zero)
+
+[[web.admins]]
+user = "admin" # one Basic Auth account guarding /admin; at least one entry is required, users must be unique
+password = "change-me" # account password (required); written directly in this file, so file permissions must be 0600
+
+# Add another account with a second [[web.admins]] block.
 
 [logs]
 dir = "/data/logs" # build log directory (default "/data/logs")

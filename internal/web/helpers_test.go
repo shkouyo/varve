@@ -173,8 +173,8 @@ func testConfig() *config.ControllerConfig {
 		Web: config.WebConfig{
 			DownloadEnabled: true,
 			DownloadBaseURI: "https://dl.example.org/pool",
-			AdminUser:       "admin",
-			AdminPassword:   "s3cret",
+			RecentBuilds:    20,
+			Admins:          []config.WebAdmin{{User: "admin", Password: "s3cret"}},
 		},
 	}
 }

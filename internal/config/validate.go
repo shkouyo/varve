@@ -50,8 +50,27 @@ func validate(c *ControllerConfig) error {
 	if c.API.Token == "" {
 		return errors.New("api.token: must not be empty (set it in the config file, via token_file, or VARVE_API_TOKEN)")
 	}
-	if c.Web.AdminPassword == "" {
-		return errors.New("web.admin_password: must not be empty")
+	if len(c.Web.Admins) == 0 {
+		return errors.New("web.admins: at least one entry is required")
+	}
+	seenUsers := make(map[string]bool, len(c.Web.Admins))
+	for i, a := range c.Web.Admins {
+		if a.User == "" {
+			return fmt.Errorf("web.admins[%d].user: must not be empty", i)
+		}
+		if seenUsers[a.User] {
+			return fmt.Errorf("web.admins: duplicate user %q", a.User)
+		}
+		seenUsers[a.User] = true
+		if a.Password == "" {
+			return fmt.Errorf("web.admins[%d].password: must not be empty", i)
+		}
+	}
+	if c.Web.RecentBuilds < 1 {
+		return fmt.Errorf("web.recent_builds: must be greater than zero, got %d", c.Web.RecentBuilds)
+	}
+	if c.Worker.RetryMax < 0 {
+		return fmt.Errorf("worker.retry_max: must not be negative, got %d", c.Worker.RetryMax)
 	}
 	if c.Repo.Sign != "off" && c.GPG.KeyID == "" && c.GPG.KeyFile == "" {
 		return errors.New("gpg.key_id/gpg.key_file: at least one is required when repo.sign is not \"off\"")
@@ -78,6 +97,7 @@ func validate(c *ControllerConfig) error {
 		{"worker.heartbeat_timeout", c.Worker.HeartbeatTimeout},
 		{"worker.stall_timeout", c.Worker.StallTimeout},
 		{"worker.build_timeout", c.Worker.BuildTimeout},
+		{"worker.failed_rebuild_cooldown", c.Worker.FailedRebuildCooldown},
 		{"worker.actions.cooldown", c.Worker.Actions.Cooldown},
 		{"logs.retention", c.Logs.Retention},
 	} {

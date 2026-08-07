@@ -35,8 +35,11 @@ token = "t"
 url = "git@x:y.git"
 
 [web]
-admin_password = "p"
 download_base_uri = "https://dl.example.org"
+
+[[web.admins]]
+user = "admin"
+password = "p"
 
 [logs]
 dir = "/data/logs"
@@ -94,6 +97,8 @@ stall_timeout = "10m"
 build_timeout = "30m"
 cpu_limit = 0
 memory_limit = 0
+retry_max = 3
+failed_rebuild_cooldown = "1h"
 
 [worker.actions]
 enabled = true
@@ -115,8 +120,11 @@ tls = "starttls"
 [web]
 download_enabled = true
 download_base_uri = "https://dl.example.org"
-admin_user = "admin"
-admin_password = "change-me"
+recent_builds = 20
+
+[[web.admins]]
+user = "admin"
+password = "change-me"
 
 [logs]
 dir = "/data/logs"
@@ -194,6 +202,9 @@ func TestLoadControllerFullExample(t *testing.T) {
 	if cfg.Worker.CPULimit != 0 || cfg.Worker.MemoryLimit != "" {
 		t.Errorf("Worker limits = %d/%q", cfg.Worker.CPULimit, cfg.Worker.MemoryLimit)
 	}
+	if cfg.Worker.RetryMax != 3 || cfg.Worker.FailedRebuildCooldown != time.Hour {
+		t.Errorf("Worker retry policy = %d/%v, want 3/1h0m0s", cfg.Worker.RetryMax, cfg.Worker.FailedRebuildCooldown)
+	}
 	if !cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "ghp-example" ||
 		cfg.Worker.Actions.Repo != "owner/varve-runner" ||
 		cfg.Worker.Actions.Workflow != "worker-actions.yml" ||
@@ -207,7 +218,8 @@ func TestLoadControllerFullExample(t *testing.T) {
 		t.Errorf("Mail = %+v", cfg.Mail)
 	}
 	if !cfg.Web.DownloadEnabled || cfg.Web.DownloadBaseURI != "https://dl.example.org" ||
-		cfg.Web.AdminUser != "admin" || cfg.Web.AdminPassword != "change-me" {
+		cfg.Web.RecentBuilds != 20 || len(cfg.Web.Admins) != 1 ||
+		cfg.Web.Admins[0].User != "admin" || cfg.Web.Admins[0].Password != "change-me" {
 		t.Errorf("Web = %+v", cfg.Web)
 	}
 	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 {
@@ -257,7 +269,8 @@ func TestLoadControllerDefaults(t *testing.T) {
 	if cfg.Worker.HeartbeatTimeout != 90*time.Second ||
 		cfg.Worker.StallTimeout != 10*time.Minute ||
 		cfg.Worker.BuildTimeout != 30*time.Minute ||
-		cfg.Worker.CPULimit != 0 || cfg.Worker.MemoryLimit != "" {
+		cfg.Worker.CPULimit != 0 || cfg.Worker.MemoryLimit != "" ||
+		cfg.Worker.RetryMax != 3 || cfg.Worker.FailedRebuildCooldown != time.Hour {
 		t.Errorf("Worker defaults = %+v", cfg.Worker)
 	}
 	if cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "" ||
@@ -271,7 +284,8 @@ func TestLoadControllerDefaults(t *testing.T) {
 		cfg.Mail.From != "varve@example.org" {
 		t.Errorf("Mail defaults = %+v", cfg.Mail)
 	}
-	if !cfg.Web.DownloadEnabled || cfg.Web.AdminUser != "admin" {
+	if !cfg.Web.DownloadEnabled || cfg.Web.RecentBuilds != 20 ||
+		len(cfg.Web.Admins) != 1 || cfg.Web.Admins[0].User != "admin" || cfg.Web.Admins[0].Password != "p" {
 		t.Errorf("Web defaults = %+v", cfg.Web)
 	}
 	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 {
@@ -370,8 +384,11 @@ url = "git@x:y.git"
 exclude_branches = []
 
 [web]
-admin_password = "p"
 download_enabled = false
+
+[[web.admins]]
+user = "admin"
+password = "p"
 
 [logs]
 dir = "/data/logs"
@@ -405,7 +422,10 @@ tokn = "x"
 url = "git@x:y.git"
 
 [web]
-admin_password = "p"
+
+[[web.admins]]
+user = "admin"
+password = "p"
 
 [logs]
 dir = "/data/logs"
@@ -487,8 +507,11 @@ url = "git@x:y.git"
 fetch_key = "toml-fetch"
 
 [web]
-admin_password = "p"
 download_base_uri = "https://dl.example.org"
+
+[[web.admins]]
+user = "admin"
+password = "p"
 
 [logs]
 dir = "/data/logs"
@@ -626,8 +649,11 @@ host = "smtp.example.org"
 password = "mail-pass"
 
 [web]
-admin_password = "admin-pass"
 download_base_uri = "https://dl.example.org"
+
+[[web.admins]]
+user = "admin"
+password = "admin-pass"
 
 [worker.actions]
 enabled = true
@@ -641,7 +667,8 @@ dir = "/data/logs"
 	if err != nil {
 		t.Fatalf("LoadController: %v", err)
 	}
-	if cfg.GPG.Passphrase != "gpg-pass" || cfg.Mail.Password != "mail-pass" || cfg.Web.AdminPassword != "admin-pass" {
+	if cfg.GPG.Passphrase != "gpg-pass" || cfg.Mail.Password != "mail-pass" ||
+		len(cfg.Web.Admins) != 1 || cfg.Web.Admins[0].User != "admin" || cfg.Web.Admins[0].Password != "admin-pass" {
 		t.Errorf("passwords not preserved: %+v %+v %+v", cfg.GPG, cfg.Mail, cfg.Web)
 	}
 	if cfg.Worker.Actions.Token != "actions-pass" {
@@ -659,8 +686,11 @@ url = "git@x:y.git"
 poll_interval = "abc"
 
 [web]
-admin_password = "p"
 download_base_uri = "https://dl.example.org"
+
+[[web.admins]]
+user = "admin"
+password = "p"
 
 [logs]
 dir = "/data/logs"

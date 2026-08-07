@@ -157,12 +157,14 @@ type rawSource struct {
 }
 
 type rawWorker struct {
-	HeartbeatTimeout tomlDuration `toml:"heartbeat_timeout"`
-	StallTimeout     tomlDuration `toml:"stall_timeout"`
-	BuildTimeout     tomlDuration `toml:"build_timeout"`
-	CPULimit         int          `toml:"cpu_limit"`
-	MemoryLimit      tomlMemory   `toml:"memory_limit"`
-	Actions          rawActions   `toml:"actions"`
+	HeartbeatTimeout      tomlDuration `toml:"heartbeat_timeout"`
+	StallTimeout          tomlDuration `toml:"stall_timeout"`
+	BuildTimeout          tomlDuration `toml:"build_timeout"`
+	CPULimit              int          `toml:"cpu_limit"`
+	MemoryLimit           tomlMemory   `toml:"memory_limit"`
+	RetryMax              int          `toml:"retry_max"`
+	FailedRebuildCooldown tomlDuration `toml:"failed_rebuild_cooldown"`
+	Actions               rawActions   `toml:"actions"`
 }
 
 type rawActions struct {
@@ -185,10 +187,18 @@ type rawMail struct {
 }
 
 type rawWeb struct {
-	DownloadEnabled bool   `toml:"download_enabled"`
-	DownloadBaseURI string `toml:"download_base_uri"`
-	AdminUser       string `toml:"admin_user"`
-	AdminPassword   secret `toml:"admin_password"`
+	DownloadEnabled bool       `toml:"download_enabled"`
+	DownloadBaseURI string     `toml:"download_base_uri"`
+	RecentBuilds    int        `toml:"recent_builds"`
+	Admins          []rawAdmin `toml:"admins"`
+}
+
+// rawAdmin is one [[web.admins]] entry. The password is a password-class
+// field: it is held in a secret buffer, never overridden from the
+// environment and wiped after export.
+type rawAdmin struct {
+	User     string `toml:"user"`
+	Password secret `toml:"password"`
 }
 
 type rawLogs struct {
@@ -222,9 +232,11 @@ func defaultRawConfig() rawConfig {
 			ExcludeBranches: []string{"main"},
 		},
 		Worker: rawWorker{
-			HeartbeatTimeout: tomlDuration(90 * time.Second),
-			StallTimeout:     tomlDuration(10 * time.Minute),
-			BuildTimeout:     tomlDuration(30 * time.Minute),
+			HeartbeatTimeout:      tomlDuration(90 * time.Second),
+			StallTimeout:          tomlDuration(10 * time.Minute),
+			BuildTimeout:          tomlDuration(30 * time.Minute),
+			RetryMax:              3,
+			FailedRebuildCooldown: tomlDuration(time.Hour),
 			Actions: rawActions{
 				Workflow: "worker-actions.yml",
 				Ref:      "main",
@@ -238,7 +250,7 @@ func defaultRawConfig() rawConfig {
 		},
 		Web: rawWeb{
 			DownloadEnabled: true,
-			AdminUser:       "admin",
+			RecentBuilds:    20,
 		},
 		Logs: rawLogs{
 			Dir:       "/data/logs",
@@ -305,8 +317,8 @@ func LoadController(path string) (*ControllerConfig, error) {
 // applyEnvOverrides applies the documented environment overrides: a
 // set-and-non-empty environment variable wins over everything else;
 // token_file is only consulted when VARVE_API_TOKEN is absent. Password-class
-// fields (admin_password, mail.password, gpg.passphrase) are never overridden
-// from the environment.
+// fields (web admin passwords, mail.password, gpg.passphrase) are never
+// overridden from the environment.
 func applyEnvOverrides(r *rawConfig) error {
 	if v, ok := os.LookupEnv("VARVE_API_TOKEN"); ok && v != "" {
 		r.API.Token = v
@@ -374,11 +386,13 @@ func (r *rawConfig) export() *ControllerConfig {
 			ExcludeBranches: r.Source.ExcludeBranches,
 		},
 		Worker: WorkerLimits{
-			HeartbeatTimeout: time.Duration(r.Worker.HeartbeatTimeout),
-			StallTimeout:     time.Duration(r.Worker.StallTimeout),
-			BuildTimeout:     time.Duration(r.Worker.BuildTimeout),
-			CPULimit:         r.Worker.CPULimit,
-			MemoryLimit:      string(r.Worker.MemoryLimit),
+			HeartbeatTimeout:      time.Duration(r.Worker.HeartbeatTimeout),
+			StallTimeout:          time.Duration(r.Worker.StallTimeout),
+			BuildTimeout:          time.Duration(r.Worker.BuildTimeout),
+			CPULimit:              r.Worker.CPULimit,
+			MemoryLimit:           string(r.Worker.MemoryLimit),
+			RetryMax:              r.Worker.RetryMax,
+			FailedRebuildCooldown: time.Duration(r.Worker.FailedRebuildCooldown),
 			Actions: WorkerActions{
 				Enabled:  r.Worker.Actions.Enabled,
 				Token:    string(r.Worker.Actions.Token),
@@ -400,8 +414,8 @@ func (r *rawConfig) export() *ControllerConfig {
 		Web: WebConfig{
 			DownloadEnabled: r.Web.DownloadEnabled,
 			DownloadBaseURI: r.Web.DownloadBaseURI,
-			AdminUser:       r.Web.AdminUser,
-			AdminPassword:   string(r.Web.AdminPassword),
+			RecentBuilds:    r.Web.RecentBuilds,
+			Admins:          exportAdmins(r.Web.Admins),
 		},
 		Logs: LogsConfig{
 			Dir:       r.Logs.Dir,
@@ -411,12 +425,27 @@ func (r *rawConfig) export() *ControllerConfig {
 	}
 }
 
+// exportAdmins copies the decoded admin list into immutable strings, so
+// the secret buffers can be wiped afterwards.
+func exportAdmins(in []rawAdmin) []WebAdmin {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]WebAdmin, 0, len(in))
+	for _, a := range in {
+		out = append(out, WebAdmin{User: a.User, Password: string(a.Password)})
+	}
+	return out
+}
+
 // wipeSecrets scrubs the password buffers held by the raw decode struct.
 func (r *rawConfig) wipeSecrets() {
 	WipeBytes(r.GPG.Passphrase)
 	WipeBytes(r.Mail.Password)
-	WipeBytes(r.Web.AdminPassword)
 	WipeBytes(r.Worker.Actions.Token)
+	for i := range r.Web.Admins {
+		WipeBytes(r.Web.Admins[i].Password)
+	}
 }
 
 // WipeBytes zeroes the contents of b. It is exported so that password

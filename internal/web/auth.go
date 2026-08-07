@@ -38,17 +38,22 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// authorized verifies the request credentials against cfg.Web with
-// constant-time comparisons, so a timing side channel cannot leak the
-// configured username or password.
+// authorized verifies the request credentials against every configured
+// admin with constant-time comparisons, so a timing side channel cannot
+// leak a configured username or password. All entries are evaluated so
+// the runtime is independent of which entry matches.
 func (s *Server) authorized(r *http.Request) bool {
 	user, pass, ok := r.BasicAuth()
 	if !ok {
 		return false
 	}
-	wantUser := s.cfg.Web.AdminUser
-	wantPass := s.cfg.Web.AdminPassword
-	userOK := subtle.ConstantTimeCompare([]byte(user), []byte(wantUser)) == 1
-	passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(wantPass)) == 1
-	return userOK && passOK
+	matched := 0
+	for _, a := range s.cfg.Web.Admins {
+		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.User)) == 1
+		passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(a.Password)) == 1
+		if userOK && passOK {
+			matched = 1
+		}
+	}
+	return matched == 1
 }

@@ -87,8 +87,11 @@ tls = "starttls"
 [web]
 download_enabled = false
 download_base_uri = ""
-admin_user = "admin"
-admin_password = "test-password"
+recent_builds = 20
+
+[[web.admins]]
+user = "admin"
+password = "test-password"
 
 [logs]
 dir = %q

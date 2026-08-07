@@ -42,9 +42,11 @@ func validController() *ControllerConfig {
 			ExcludeBranches: []string{"main"},
 		},
 		Worker: WorkerLimits{
-			HeartbeatTimeout: 90 * time.Second,
-			StallTimeout:     10 * time.Minute,
-			BuildTimeout:     30 * time.Minute,
+			HeartbeatTimeout:      90 * time.Second,
+			StallTimeout:          10 * time.Minute,
+			BuildTimeout:          30 * time.Minute,
+			RetryMax:              3,
+			FailedRebuildCooldown: time.Hour,
 			Actions: WorkerActions{
 				Repo:     "owner/varve-runner",
 				Workflow: "worker-actions.yml",
@@ -53,7 +55,7 @@ func validController() *ControllerConfig {
 			},
 		},
 		Mail: MailConfig{Port: 587, From: "varve@example.org", TLS: "starttls"},
-		Web:  WebConfig{DownloadEnabled: true, DownloadBaseURI: "https://dl.example.org", AdminUser: "admin", AdminPassword: "p"},
+		Web:  WebConfig{DownloadEnabled: true, DownloadBaseURI: "https://dl.example.org", RecentBuilds: 20, Admins: []WebAdmin{{User: "admin", Password: "p"}}},
 		Logs: LogsConfig{Dir: "/data/logs", Retention: 90 * 24 * time.Hour, MaxBuilds: 1000},
 	}
 }
@@ -102,9 +104,41 @@ func TestValidateErrors(t *testing.T) {
 			want:   "api.token",
 		},
 		{
-			name:   "empty web.admin_password",
-			mutate: func(c *ControllerConfig) { c.Web.AdminPassword = "" },
-			want:   "web.admin_password",
+			name:   "no web.admins",
+			mutate: func(c *ControllerConfig) { c.Web.Admins = nil },
+			want:   "web.admins",
+		},
+		{
+			name:   "empty admin user",
+			mutate: func(c *ControllerConfig) { c.Web.Admins = []WebAdmin{{User: "", Password: "p"}} },
+			want:   "web.admins",
+		},
+		{
+			name: "duplicate admin user",
+			mutate: func(c *ControllerConfig) {
+				c.Web.Admins = []WebAdmin{{User: "admin", Password: "p"}, {User: "admin", Password: "q"}}
+			},
+			want: "web.admins",
+		},
+		{
+			name:   "empty admin password",
+			mutate: func(c *ControllerConfig) { c.Web.Admins = []WebAdmin{{User: "admin", Password: ""}} },
+			want:   "web.admins",
+		},
+		{
+			name:   "zero web.recent_builds",
+			mutate: func(c *ControllerConfig) { c.Web.RecentBuilds = 0 },
+			want:   "web.recent_builds",
+		},
+		{
+			name:   "negative worker.retry_max",
+			mutate: func(c *ControllerConfig) { c.Worker.RetryMax = -1 },
+			want:   "worker.retry_max",
+		},
+		{
+			name:   "zero failed_rebuild_cooldown",
+			mutate: func(c *ControllerConfig) { c.Worker.FailedRebuildCooldown = 0 },
+			want:   "worker.failed_rebuild_cooldown",
 		},
 		{
 			name: "sign packages without gpg key",

@@ -113,8 +113,8 @@ func (o *OrchestratorImpl) Stats(ctx context.Context) (*Stats, error) {
 		byStatus[b.Status]++
 	}
 	recent := all
-	if len(recent) > 20 {
-		recent = recent[:20]
+	if n := o.cfg.Web.RecentBuilds; n > 0 && len(recent) > n {
+		recent = recent[:n]
 	}
 	workers, err := o.store.ListWorkers(ctx)
 	if err != nil {

@@ -108,14 +108,17 @@ type SourceConfig struct {
 }
 
 // WorkerLimits configures worker-side timeouts and resource limits plus
-// the actions-based autostart policy ([worker.actions]).
+// the task retry policy and the actions-based autostart policy
+// ([worker.actions]).
 type WorkerLimits struct {
-	HeartbeatTimeout time.Duration // seconds without heartbeat before a worker is offline, "90s"
-	StallTimeout     time.Duration // task without progress considered stalled, "10m"
-	BuildTimeout     time.Duration // per-task build timeout, "30m"
-	CPULimit         int           // container CPU limit, 0 = unlimited
-	MemoryLimit      string        // container memory limit (e.g. "8GiB"), "" = unlimited
-	Actions          WorkerActions // autostart the runner workflow when work waits
+	HeartbeatTimeout      time.Duration // seconds without heartbeat before a worker is offline, "90s"
+	StallTimeout          time.Duration // task without progress considered stalled, "10m"
+	BuildTimeout          time.Duration // per-task build timeout, "30m"
+	CPULimit              int           // container CPU limit, 0 = unlimited
+	MemoryLimit           string        // container memory limit (e.g. "8GiB"), "" = unlimited
+	RetryMax              int           // failed tasks are retried up to this many times, 3
+	FailedRebuildCooldown time.Duration // minimum wait before a failed package is rebuilt again, "1h"
+	Actions               WorkerActions // autostart the runner workflow when work waits
 }
 
 // WorkerActions configures the automatic start of build workers through
@@ -143,12 +146,20 @@ type MailConfig struct {
 	TLS      string // "none" | "starttls" | "implicit", "starttls"
 }
 
-// WebConfig configures the Web UI and artifact downloads.
+// WebConfig configures the Web UI and artifact downloads. Admins is the
+// list of Basic Auth accounts guarding the admin area; RecentBuilds
+// limits how many recent builds the dashboard shows.
 type WebConfig struct {
-	DownloadEnabled bool   // show download buttons, true
+	DownloadEnabled bool
 	DownloadBaseURI string // direct-link URI prefix (required when download_enabled)
-	AdminUser       string // /admin Basic Auth username, "admin"
-	AdminPassword   string // /admin Basic Auth password (required, TOML only)
+	RecentBuilds    int    // dashboard recent-build count, 20
+	Admins          []WebAdmin
+}
+
+// WebAdmin is one Basic Auth account of the admin area.
+type WebAdmin struct {
+	User     string
+	Password string // TOML only, no env override
 }
 
 // LogsConfig configures build log retention.
