@@ -501,6 +501,54 @@ func TestTaskLateReportConflictIgnored(t *testing.T) {
 	}
 }
 
+// TestTaskPackagerInjection asserts the configured packager identity is
+// injected as PACKAGER into the build commands' environment, and that a
+// task without a packager leaves the build environment untouched.
+func TestTaskPackagerInjection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		packager string
+		want     string // exact PACKAGER entry expected; "" = must not appear
+	}{
+		{"configured", "Jane Packager <jane@example.org>", "PACKAGER=Jane Packager <jane@example.org>"},
+		{"unset", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeClient{taskDetail: taskFor("t-1")}
+			r := runOneShotRunner(t, f)
+			exec := flowExec(t, r.workDir, "t-1", testSrcinfo, []string{"foo-1.0-1-x86_64.pkg.tar.zst"}, nil)
+			r.execCommand = exec.command
+
+			task := taskFor("t-1")
+			task.Packager = tc.packager
+			f.taskDetail = task
+
+			if err := r.Run(context.Background()); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+
+			env := exec.callEnv("makepkg")
+			if tc.want == "" {
+				for _, e := range env {
+					if strings.HasPrefix(e, "PACKAGER=") {
+						t.Errorf("makepkg env contains unexpected PACKAGER entry %q", e)
+					}
+				}
+				return
+			}
+			found := false
+			for _, e := range env {
+				if e == tc.want {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("makepkg env = %v, want entry %q", env, tc.want)
+			}
+		})
+	}
+}
+
 func assertHookCalled(t *testing.T, exec *fakeExec, hook string) {
 	t.Helper()
 	for _, args := range exec.callArgs("sh") {

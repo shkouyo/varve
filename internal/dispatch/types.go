@@ -171,6 +171,10 @@ type TaskDetail struct {
 	Collect        CollectInfo     `json:"collect"`
 	Signing        SigningInfo     `json:"signing"`
 	Build          BuildInfo       `json:"build"`
+	// Packager is the configured build identity, "Name <email>". The
+	// agent injects it as PACKAGER into the build environment; empty
+	// means no PACKAGER is set.
+	Packager string `json:"packager"`
 }
 
 // LogSegment is one buffered log batch. Progress is optional and carries

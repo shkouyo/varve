@@ -45,6 +45,9 @@ func TestGetTaskTransitions(t *testing.T) {
 	if detail.Build.Deadline.IsZero() {
 		t.Error("deadline missing")
 	}
+	if detail.Packager != "" {
+		t.Errorf("packager = %q, want empty by default", detail.Packager)
+	}
 	task, err := env.store.GetTask(ctx(), taskID)
 	if err != nil {
 		t.Fatalf("GetTask: %v", err)
@@ -180,5 +183,24 @@ func TestAppendLogProgress(t *testing.T) {
 	}
 	if len(build.ResourceUsage) != 1 || build.ResourceUsage[0].CPUTimeNS != 999 {
 		t.Errorf("samples = %+v, want one sample with cpu 999", build.ResourceUsage)
+	}
+}
+
+// TestTaskDetailPackager asserts the configured worker.packager identity
+// is carried onto the dispatched task detail (and thus into the agent's
+// build environment).
+func TestTaskDetailPackager(t *testing.T) {
+	env := newTestEnv(t)
+	env.cfg.Worker.Packager = "Jane Packager <jane@example.org>"
+	env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	taskID, token := env.claim(t, "w1")
+
+	detail, err := env.o.GetTask(ctx(), taskID, token)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if detail.Packager != "Jane Packager <jane@example.org>" {
+		t.Errorf("packager = %q, want the configured identity", detail.Packager)
 	}
 }

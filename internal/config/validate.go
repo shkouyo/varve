@@ -20,6 +20,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -72,6 +73,9 @@ func validate(c *ControllerConfig) error {
 	if c.Worker.RetryMax < 0 {
 		return fmt.Errorf("worker.retry_max: must not be negative, got %d", c.Worker.RetryMax)
 	}
+	if err := validatePackager(c.Worker.Packager); err != nil {
+		return err
+	}
 	if c.Repo.Sign != "off" && c.GPG.KeyID == "" && c.GPG.KeyFile == "" {
 		return errors.New("gpg.key_id/gpg.key_file: at least one is required when repo.sign is not \"off\"")
 	}
@@ -107,6 +111,28 @@ func validate(c *ControllerConfig) error {
 		if d.val <= 0 {
 			return fmt.Errorf("%s: must be greater than zero, got %s", d.name, d.val)
 		}
+	}
+	return nil
+}
+
+// validatePackager checks the worker.packager identity: empty is valid
+// (no PACKAGER is injected), a non-empty value must be the pacman
+// "Name <email>" shape so the value is safe to export into a build
+// environment.
+func validatePackager(packager string) error {
+	if packager == "" {
+		return nil
+	}
+	open := strings.IndexByte(packager, '<')
+	close := strings.LastIndexByte(packager, '>')
+	if open < 0 || close <= open {
+		return fmt.Errorf("worker.packager: must be \"Name <email>\", got %q", packager)
+	}
+	if strings.TrimSpace(packager[:open]) == "" || strings.TrimSpace(packager[open+1:close]) == "" {
+		return fmt.Errorf("worker.packager: must be \"Name <email>\", got %q", packager)
+	}
+	if strings.TrimSpace(packager[close+1:]) != "" {
+		return fmt.Errorf("worker.packager: must be \"Name <email>\", got %q", packager)
 	}
 	return nil
 }

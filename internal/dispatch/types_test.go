@@ -63,7 +63,8 @@ func TestTaskDetailJSONGolden(t *testing.T) {
 		`"hooks":{"pre_build":["scripts/pre.sh"],"post_build":["scripts/post.sh"],"on_success":["scripts/ok.sh"],"on_failure":["scripts/fail.sh"]},` +
 		`"collect":{"exclude":["*-debug"]},` +
 		`"signing":{"required":true,"mode":"packages"},` +
-		`"build":{"timeout_seconds":1800,"deadline":"2026-08-05T10:30:00Z"}}`
+		`"build":{"timeout_seconds":1800,"deadline":"2026-08-05T10:30:00Z"},` +
+		`"packager":""}`
 	if string(got) != want {
 		t.Errorf("TaskDetail JSON mismatch\n got: %s\nwant: %s", got, want)
 	}

@@ -114,6 +114,10 @@ type Runner struct {
 	// execCommand constructs every external command (git/makepkg/hooks/
 	// gpg/tar); tests replace it with a recorder.
 	execCommand func(ctx context.Context, name string, arg ...string) *exec.Cmd
+	// taskEnv holds the extra environment entries of the currently
+	// executed task (the configured PACKAGER identity); empty when the
+	// task has none. See setTaskPackager.
+	taskEnv []string
 	// envOnce/env cache the environment handed to build commands: HOME
 	// redirected to a writable directory when the inherited one is
 	// unusable, nil otherwise (children inherit). Resolved once on the

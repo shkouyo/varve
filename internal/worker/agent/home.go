@@ -27,14 +27,31 @@ import (
 )
 
 // command builds an external command with the agent environment applied
-// (a writable HOME, see childEnv). Every external command in the agent
-// flow goes through here so a later call site cannot bypass the fix.
+// (a writable HOME, see childEnv) plus the current task's extra
+// environment entries (the configured PACKAGER identity, see
+// setTaskPackager). Every external command in the agent flow goes
+// through here so a later call site cannot bypass the fix.
 func (r *Runner) command(ctx context.Context, name string, arg ...string) *exec.Cmd {
 	cmd := r.execCommand(ctx, name, arg...)
 	if env := r.childEnv(); env != nil {
 		cmd.Env = env
 	}
+	if extra := r.taskEnv; len(extra) > 0 {
+		cmd.Env = append(cmd.Env, extra...)
+	}
 	return cmd
+}
+
+// setTaskPackager configures the environment entries of the currently
+// executed task: the configured PACKAGER identity when non-empty, none
+// otherwise. The agent runs one task at a time, so the single taskEnv
+// slot is safe without further synchronization.
+func (r *Runner) setTaskPackager(packager string) {
+	if packager == "" {
+		r.taskEnv = nil
+		return
+	}
+	r.taskEnv = []string{"PACKAGER=" + packager}
 }
 
 // childEnv returns the environment handed to build commands. Build tools

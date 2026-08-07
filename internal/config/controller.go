@@ -164,6 +164,7 @@ type rawWorker struct {
 	MemoryLimit           tomlMemory   `toml:"memory_limit"`
 	RetryMax              int          `toml:"retry_max"`
 	FailedRebuildCooldown tomlDuration `toml:"failed_rebuild_cooldown"`
+	Packager              string       `toml:"packager"`
 	Actions               rawActions   `toml:"actions"`
 }
 
@@ -396,6 +397,7 @@ func (r *rawConfig) export() *ControllerConfig {
 			MemoryLimit:           string(r.Worker.MemoryLimit),
 			RetryMax:              r.Worker.RetryMax,
 			FailedRebuildCooldown: time.Duration(r.Worker.FailedRebuildCooldown),
+			Packager:              r.Worker.Packager,
 			Actions: WorkerActions{
 				Enabled:        r.Worker.Actions.Enabled,
 				Token:          string(r.Worker.Actions.Token),

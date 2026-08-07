@@ -180,6 +180,7 @@ func (o *OrchestratorImpl) taskDetail(ctx context.Context, t *db.Task) (*TaskDet
 			TimeoutSeconds: int64(o.cfg.Worker.BuildTimeout.Seconds()),
 			Deadline:       deadline,
 		},
+		Packager: o.cfg.Worker.Packager,
 	}
 	if dot.PkgbuildSource != nil {
 		detail.PkgbuildSource = &PkgbuildSource{

@@ -100,9 +100,24 @@ func TestValidateErrors(t *testing.T) {
 			want:   "repo.keep_versions",
 		},
 		{
-			name:   "empty api.token",
-			mutate: func(c *ControllerConfig) { c.API.Token = "" },
-			want:   "api.token",
+			name:   "invalid worker.packager",
+			mutate: func(c *ControllerConfig) { c.Worker.Packager = "no angle brackets" },
+			want:   "worker.packager",
+		},
+		{
+			name:   "empty worker.packager name",
+			mutate: func(c *ControllerConfig) { c.Worker.Packager = " <you@example.org>" },
+			want:   "worker.packager",
+		},
+		{
+			name:   "empty worker.packager email",
+			mutate: func(c *ControllerConfig) { c.Worker.Packager = "Your Name <>" },
+			want:   "worker.packager",
+		},
+		{
+			name:   "worker.packager trailing junk",
+			mutate: func(c *ControllerConfig) { c.Worker.Packager = "Your Name <you@example.org> extra" },
+			want:   "worker.packager",
 		},
 		{
 			name:   "no web.admins",
@@ -237,6 +252,20 @@ func TestValidateErrors(t *testing.T) {
 				t.Errorf("error %q does not contain field %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidatePackagerOK(t *testing.T) {
+	for _, packager := range []string{
+		"", // unset: no PACKAGER injected
+		"Your Name <you@example.org>",
+		"Jane Packager <jane@example.org>",
+	} {
+		cfg := validController()
+		cfg.Worker.Packager = packager
+		if err := validate(cfg); err != nil {
+			t.Errorf("validate() with packager %q: %v", packager, err)
+		}
 	}
 }
 

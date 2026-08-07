@@ -57,6 +57,8 @@ memory_limit = 0 # container memory limit (default 0 = unlimited; e.g. "8GiB")
 retry_max = 3 # a failed task is retried up to this many times (default 3; 0 disables retries)
 failed_rebuild_cooldown = "1h" # minimum wait before a failed package is rebuilt again (default "1h")
 
+# packager = "Your Name <you@example.org>" # build identity injected as PACKAGER into every build environment (default empty = not injected; format "Name <email>")
+
 [worker.actions]
 enabled = false # dispatch one workflow run per queued task (default false)
 token = "" # GitHub PAT with actions:write permission on the runner repo; written directly in this file, so file permissions must be 0600

@@ -99,6 +99,7 @@ cpu_limit = 0
 memory_limit = 0
 retry_max = 3
 failed_rebuild_cooldown = "1h"
+packager = "Your Name <you@example.org>"
 
 [worker.actions]
 enabled = true
@@ -205,6 +206,9 @@ func TestLoadControllerFullExample(t *testing.T) {
 	}
 	if cfg.Worker.RetryMax != 3 || cfg.Worker.FailedRebuildCooldown != time.Hour {
 		t.Errorf("Worker retry policy = %d/%v, want 3/1h0m0s", cfg.Worker.RetryMax, cfg.Worker.FailedRebuildCooldown)
+	}
+	if cfg.Worker.Packager != "Your Name <you@example.org>" {
+		t.Errorf("Worker.Packager = %q", cfg.Worker.Packager)
 	}
 	if !cfg.Worker.Actions.Enabled || cfg.Worker.Actions.Token != "ghp-example" ||
 		cfg.Worker.Actions.Repo != "owner/varve-runner" ||

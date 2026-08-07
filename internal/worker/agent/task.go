@@ -49,6 +49,11 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	stateCh := r.state.begin(task.ID)
 	defer r.state.end()
 
+	// Apply the configured PACKAGER identity to every build command of
+	// this task (makepkg reads it for the built-in packaging identity).
+	r.setTaskPackager(task.Packager)
+	defer r.setTaskPackager("")
+
 	// Log buffer: batched 1–2s/64KiB; one-shot segments carry a resource
 	// sample in their progress field.
 	var progress progressFn

@@ -118,6 +118,7 @@ type WorkerLimits struct {
 	MemoryLimit           string        // container memory limit (e.g. "8GiB"), "" = unlimited
 	RetryMax              int           // failed tasks are retried up to this many times, 3
 	FailedRebuildCooldown time.Duration // minimum wait before a failed package is rebuilt again, "1h"
+	Packager              string        // build identity injected as PACKAGER into the build environment, "Name <email>"; empty = not injected
 	Actions               WorkerActions // autostart the runner workflow when work waits
 }
 
