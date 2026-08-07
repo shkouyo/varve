@@ -65,11 +65,19 @@ func seedPackage(t *testing.T, s *Store, p Package) Package {
 	if err != nil {
 		t.Fatalf("encode maintainers: %v", err)
 	}
+	pkgname, err := encodeJSON(p.Pkgname)
+	if err != nil {
+		t.Fatalf("encode pkgname: %v", err)
+	}
+	source, err := encodeJSON(p.Source)
+	if err != nil {
+		t.Fatalf("encode source: %v", err)
+	}
 	res, err := s.write.Exec(`INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, pkgname, source, pkgver, pkgrel, last_commit, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
 		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, p.CurrentVersion, p.Pkgdesc,
-		p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
+		pkgname, source, p.Pkgver, p.Pkgrel, p.LastCommit, p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
 	if err != nil {
 		t.Fatalf("seed package %q: %v", p.Pkgbase, err)
 	}

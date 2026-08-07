@@ -108,7 +108,9 @@ func (s *Store) RebuildIndex(ctx context.Context, pkgs []RebuildPackage) error {
 }
 
 // insertRebuiltPackage inserts one packages row from the record and returns
-// its id. pkgbase is UNIQUE, so the caller's dedupe is the backstop.
+// its id. pkgbase is UNIQUE, so the caller's dedupe is the backstop. The
+// last_commit record is the record's latest build commit, so a branch tip
+// that still matches it does not re-trigger detection after the rebuild.
 func (s *Store) insertRebuiltPackage(ctx context.Context, tx *sql.Tx, p *RebuildPackage) (int64, error) {
 	maintainers, err := encodeJSON(p.Maintainers)
 	if err != nil {
@@ -116,10 +118,10 @@ func (s *Store) insertRebuiltPackage(ctx context.Context, tx *sql.Tx, p *Rebuild
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO packages
 		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
-		 last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		 last_commit, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
 		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, p.CurrentVersion, p.Pkgdesc,
-		p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
+		p.Commit, p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return 0, fmt.Errorf("db: rebuild index: duplicate pkgbase %q", p.Pkgbase)

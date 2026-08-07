@@ -85,8 +85,8 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 		versions = append(versions, v)
 	}
 	rows.Close()
-	if len(versions) != 5 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 {
-		t.Fatalf("schema_migrations = %v, want [1 2 3 4 5]", versions)
+	if len(versions) != 6 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 {
+		t.Fatalf("schema_migrations = %v, want [1 2 3 4 5 6]", versions)
 	}
 
 	// Build 1: deterministic hash id, rewritten log path, no worker name.
@@ -123,6 +123,18 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 	}
 	if pkg.LastFailedAt != nil {
 		t.Errorf("last_failed_at = %v, want nil default", pkg.LastFailedAt)
+	}
+	// Migration 006 columns: the legacy row keeps its srcinfo hash, the
+	// new commit record and metadata columns fall back to their defaults.
+	if pkg.LastCommit != "" {
+		t.Errorf("last_commit = %q, want empty default", pkg.LastCommit)
+	}
+	if pkg.LastSrcinfoHash != "h" {
+		t.Errorf("last_srcinfo_hash = %q, want the legacy value h", pkg.LastSrcinfoHash)
+	}
+	if len(pkg.Pkgname) != 0 || len(pkg.Source) != 0 || pkg.Pkgver != "" || pkg.Pkgrel != "" {
+		t.Errorf("migrated metadata = pkgname %v source %v pkgver %q pkgrel %q, want empty defaults",
+			pkg.Pkgname, pkg.Source, pkg.Pkgver, pkg.Pkgrel)
 	}
 
 	// Task row: build_id converted, fail_count default zero.
@@ -206,5 +218,9 @@ func TestNewColumnDefaults(t *testing.T) {
 	if p.URL != "" || len(p.Licenses) != 0 || len(p.Conflicts) != 0 || len(p.Provides) != 0 {
 		t.Errorf("fresh package metadata = url %q licenses %v conflicts %v provides %v, want empty defaults",
 			p.URL, p.Licenses, p.Conflicts, p.Provides)
+	}
+	if p.LastCommit != "" || len(p.Pkgname) != 0 || len(p.Source) != 0 || p.Pkgver != "" || p.Pkgrel != "" {
+		t.Errorf("fresh package commit/metadata = last_commit %q pkgname %v source %v pkgver %q pkgrel %q, want empty defaults",
+			p.LastCommit, p.Pkgname, p.Source, p.Pkgver, p.Pkgrel)
 	}
 }

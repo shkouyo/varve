@@ -216,6 +216,8 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 		CurrentVersion: "2.0.0-1", Pkgdesc: "new desc", SrcinfoHash: "hash2", UpstreamRef: "ref2",
 		BuildID: "000000000000002a", URL: "https://example.org/upd",
 		Licenses: []string{"GPL", "MIT"}, Conflicts: []string{"oldpkg"}, Provides: []string{"upd-lib"},
+		Pkgname: []string{"upd", "upd-lib"}, Source: []string{"https://example.org/upd.tar.gz"},
+		Pkgver: "2.0.0", Pkgrel: "1", Commit: "deadbeef",
 	}
 	err := s.WithTx(testCtx, func(tx *Tx) error {
 		return tx.UpdatePackageAfterBuild(testCtx, "upd", upd)
@@ -239,6 +241,16 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 		!reflect.DeepEqual(got.Provides, []string{"upd-lib"}) {
 		t.Errorf("metadata = licenses %v conflicts %v provides %v, want GPL/MIT oldpkg upd-lib",
 			got.Licenses, got.Conflicts, got.Provides)
+	}
+	if !reflect.DeepEqual(got.Pkgname, []string{"upd", "upd-lib"}) ||
+		!reflect.DeepEqual(got.Source, []string{"https://example.org/upd.tar.gz"}) {
+		t.Errorf("pkgname/source = %v/%v, want upd/upd-lib and the source list", got.Pkgname, got.Source)
+	}
+	if got.Pkgver != "2.0.0" || got.Pkgrel != "1" {
+		t.Errorf("pkgver/pkgrel = %q/%q, want 2.0.0/1", got.Pkgver, got.Pkgrel)
+	}
+	if got.LastCommit != "deadbeef" {
+		t.Errorf("last_commit = %q, want deadbeef", got.LastCommit)
 	}
 
 	// Unknown pkgbase -> ErrNotFound (transaction still commits cleanly).
@@ -294,7 +306,7 @@ func TestGetPackageByBaseCorruptMaintainers(t *testing.T) {
 func TestGetPackageByBaseCorruptMetadata(t *testing.T) {
 	s := newTestStore(t)
 	pkg := mustSeedPackage(t, s, "corrupt-meta")
-	for _, col := range []string{"licenses", "conflicts", "provides"} {
+	for _, col := range []string{"licenses", "conflicts", "provides", "pkgname", "source"} {
 		if _, err := s.write.Exec(`UPDATE packages SET `+col+` = 'not json' WHERE id = ?`, pkg.ID); err != nil {
 			t.Fatalf("corrupt %s: %v", col, err)
 		}
@@ -311,6 +323,7 @@ func TestUpsertPackageMetadata(t *testing.T) {
 	p := &Package{
 		Pkgbase: "meta", Branch: "main", Arch: "x86_64",
 		URL: "https://example.org/meta", Licenses: []string{"MIT"}, Provides: []string{"meta-lib"},
+		Pkgname: []string{"meta"}, Source: []string{"https://example.org/meta.tar.gz"}, Pkgver: "1.0", Pkgrel: "1",
 	}
 	if err := s.UpsertPackage(testCtx, p); err != nil {
 		t.Fatalf("UpsertPackage: %v", err)
@@ -322,6 +335,11 @@ func TestUpsertPackageMetadata(t *testing.T) {
 	if got.URL != "https://example.org/meta" || !reflect.DeepEqual(got.Licenses, []string{"MIT"}) ||
 		!reflect.DeepEqual(got.Provides, []string{"meta-lib"}) || len(got.Conflicts) != 0 {
 		t.Errorf("metadata round trip = url %q licenses %v provides %v conflicts %v", got.URL, got.Licenses, got.Provides, got.Conflicts)
+	}
+	if !reflect.DeepEqual(got.Pkgname, []string{"meta"}) ||
+		!reflect.DeepEqual(got.Source, []string{"https://example.org/meta.tar.gz"}) ||
+		got.Pkgver != "1.0" || got.Pkgrel != "1" {
+		t.Errorf("pkgname/source/pkgver/pkgrel round trip = %v/%v/%q/%q", got.Pkgname, got.Source, got.Pkgver, got.Pkgrel)
 	}
 
 	// An upsert on the same pkgbase refreshes the metadata.

@@ -54,6 +54,11 @@ type Package struct {
 	Licenses        []string // .SRCINFO license entries
 	Conflicts       []string // .SRCINFO conflict entries
 	Provides        []string // .SRCINFO provides entries
+	Pkgname         []string // .SRCINFO package names
+	Source          []string // .SRCINFO source entries
+	Pkgver          string   // .SRCINFO pkgver, split from current_version
+	Pkgrel          string   // .SRCINFO pkgrel, split from current_version
+	LastCommit      string   // branch tip commit of the last successful build
 	LastSrcinfoHash string
 	LastUpstreamRef string
 	LastFailedAt    *time.Time // when the package's build last failed (rebuild cooldown marker)
@@ -63,7 +68,8 @@ type Package struct {
 
 // PackageUpdate carries the outcome of a successful build onto the
 // package row: the version/description/hash records plus the verified
-// .SRCINFO metadata (url, licenses, conflicts, provides).
+// .SRCINFO metadata (url, licenses, conflicts, provides, pkgname,
+// source, pkgver, pkgrel) and the commit that was actually built.
 type PackageUpdate struct {
 	CurrentVersion string
 	Pkgdesc        string
@@ -74,6 +80,11 @@ type PackageUpdate struct {
 	Licenses       []string
 	Conflicts      []string
 	Provides       []string
+	Pkgname        []string
+	Source         []string
+	Pkgver         string
+	Pkgrel         string
+	Commit         string
 }
 
 // Build mirrors one builds row. ID is a 16-hex hash; WorkerName is the
@@ -129,11 +140,14 @@ type Task struct {
 	FailCount       int
 }
 
-// Sample is one cgroup resource sample. It is stored inside the builds.resource_usage JSON column.
+// Sample is one resource sample. It is stored inside the builds.resource_usage JSON column; the disk fields are omitempty so records written before disk sampling decode with zero values.
 type Sample struct {
-	At          time.Time `json:"at"`
-	CPUTimeNS   int64     `json:"cpu_time_ns"`
-	MemoryBytes int64     `json:"memory_bytes"`
+	At                 time.Time `json:"at"`
+	CPUTimeNS          int64     `json:"cpu_time_ns"`
+	MemoryBytes        int64     `json:"memory_bytes"`
+	DiskTotalBytes     int64     `json:"disk_total_bytes,omitempty"`
+	DiskAvailableBytes int64     `json:"disk_available_bytes,omitempty"`
+	DiskUsedBytes      int64     `json:"disk_used_bytes,omitempty"`
 }
 
 // Artifact describes one uploaded build artifact. It is stored inside the

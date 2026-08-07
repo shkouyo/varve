@@ -19,10 +19,40 @@ package db
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+// TestSampleJSONBackwardCompat guards the resource_usage JSON contract:
+// records written before disk sampling (no disk keys) decode with zero
+// disk values, and records with disk keys round-trip.
+func TestSampleJSONBackwardCompat(t *testing.T) {
+	// Old wire form: no disk fields.
+	old, err := decodeSamples(`[{"at":"2026-08-05T10:00:00Z","cpu_time_ns":1,"memory_bytes":2}]`)
+	if err != nil {
+		t.Fatalf("decode legacy sample: %v", err)
+	}
+	if len(old) != 1 || old[0].CPUTimeNS != 1 || old[0].MemoryBytes != 2 ||
+		old[0].DiskTotalBytes != 0 || old[0].DiskAvailableBytes != 0 || old[0].DiskUsedBytes != 0 {
+		t.Errorf("legacy sample = %+v, want cpu 1 mem 2 and zero disk values", old)
+	}
+
+	// New wire form round-trips through encode/decode.
+	full := []Sample{{At: at(time.Second), CPUTimeNS: 3, MemoryBytes: 4, DiskTotalBytes: 100, DiskAvailableBytes: 40, DiskUsedBytes: 55}}
+	raw, err := encodeJSON(full)
+	if err != nil {
+		t.Fatalf("encode sample: %v", err)
+	}
+	back, err := decodeSamples(raw)
+	if err != nil {
+		t.Fatalf("decode sample: %v", err)
+	}
+	if !reflect.DeepEqual(back, full) {
+		t.Errorf("sample round trip = %+v, want %+v", back, full)
+	}
+}
 
 // TestGetBuild asserts a full build round trip including optional fields
 // and JSON columns.
