@@ -46,7 +46,7 @@ func TestBuildDetailRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	mustContain(t, body,
-		"Build #"+itoa(build.ID),
+		"Build "+shortBuildID(itoa(build.ID)),
 		"demo-pkg",                       // package context
 		"not assigned",                   // machine fallback (no worker)
 		"making package: demo-pkg",       // log history

@@ -40,7 +40,7 @@ func TestErrorPages(t *testing.T) {
 			t.Errorf("%s = %d, want 404", path, rec.Code)
 		}
 		body := rec.Body.String()
-		mustContain(t, body, "<main", "</main>", "Not Found", "Back to dashboard")
+		mustContain(t, body, "<main", "</main>", "Not Found", "Back to overview")
 		if strings.Contains(body, "<script") {
 			t.Errorf("%s error page must not contain scripts", path)
 		}
@@ -58,7 +58,7 @@ func TestErrorPages(t *testing.T) {
 		t.Fatalf("GET /admin = %d, want 401", rec.Code)
 	}
 	body := rec.Body.String()
-	mustContain(t, body, "Unauthorized", "<main", "Back to dashboard")
+	mustContain(t, body, "Unauthorized", "<main", "Back to overview")
 	if strings.Contains(body, "<script") {
 		t.Error("401 error page must not contain scripts")
 	}
@@ -190,9 +190,9 @@ func truncate(s string, n int) string {
 // TestA11yContrastAndKeyboard pins the WCAG 2.2 AA fixes from the
 // axe-core audit to the rendered HTML:
 //
-//   - no sub-threshold secondary text (stone-400, 2.59:1 on white) and
-//     footer links use stone-600 text instead of stone-500 (4.39:1 on the
-//     stone-100 page background), WCAG 1.4.3;
+//   - no sub-threshold secondary text (slate-400, ~2.6:1 on white) and
+//     footer links use slate-600 text instead of slate-500 (slate-600 keeps
+//     ~6.9:1 on the slate-100 page background), WCAG 1.4.3;
 //   - every in-text link is always underlined rather than only on hover,
 //     so links are distinguishable without relying on color (WCAG 1.4.1
 //     link-in-text-block);
@@ -232,10 +232,10 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 			rec = get(t, s, http.MethodGet, pg.path, nil)
 		}
 		body := rec.Body.String()
-		if strings.Contains(body, `class="text-stone-400"`) {
-			t.Errorf("%s: sub-threshold text-stone-400 still rendered", pg.name)
+		if strings.Contains(body, `class="text-slate-400"`) {
+			t.Errorf("%s: sub-threshold text-slate-400 still rendered", pg.name)
 		}
-		mustContain(t, body, `href="/copying.txt"`, "License: AGPL-3.0-or-later", "https://git.0x0f.dev/shkouyo/varve") // footer links
+		mustContain(t, body, `href="/COPYING.txt"`, "License: AGPL-3.0-or-later", "https://git.0x0f.dev/shkouyo/varve") // footer links
 		if pg.links {
 			mustContain(t, body, "underline underline-offset-2")
 			if strings.Contains(body, "underline-offset-2 hover:underline") {
@@ -244,15 +244,17 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 		}
 	}
 
-	// Scrollable log regions must be keyboard-focusable (WCAG 2.1.1);
-	// the merged log renders on the build page now.
+	// The scrollable log region must be keyboard-focusable (WCAG 2.1.1);
+	// the merged log renders on the build page as a div with numbered lines.
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
-	mustContain(t, rec.Body.String(), `<pre tabindex="0"`)
+	mustContain(t, rec.Body.String(),
+		`<div tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre`,
+		`<span class="mr-4 inline-block w-10 select-none text-right text-slate-500">1</span>==&gt; done`)
 
-	// 404 big status numeral: stone-500 on white (4.79:1 >= 3:1 large text).
+	// 404 big status numeral: slate-500 on white (~4.8:1 >= 3:1 large text).
 	rec = get(t, s, http.MethodGet, "/packages/nope", nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("404 page = %d, want 404", rec.Code)
 	}
-	mustContain(t, rec.Body.String(), `text-6xl font-bold tracking-tight text-stone-500`)
+	mustContain(t, rec.Body.String(), `text-6xl font-bold tracking-tight text-slate-500`)
 }

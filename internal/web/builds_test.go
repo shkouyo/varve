@@ -43,14 +43,14 @@ func TestBuildsListRenders(t *testing.T) {
 		"demo-pkg",
 		"/builds/"+itoa(build.ID)+"/log",
 	)
-	if strings.Contains(body, "No builds yet") {
+	if strings.Contains(body, "No builds recorded yet") {
 		t.Error("builds page must not show the empty state with rows present")
 	}
 
 	// Empty store renders the empty message.
 	empty := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
 	rec = get(t, empty, http.MethodGet, "/builds", nil)
-	mustContain(t, rec.Body.String(), "No builds yet")
+	mustContain(t, rec.Body.String(), "No builds recorded yet")
 }
 
 // TestBuildsListPagination asserts the builds page paginates and clamps

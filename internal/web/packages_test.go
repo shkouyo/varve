@@ -133,9 +133,9 @@ func TestDownloadButtonMatrix(t *testing.T) {
 			rec := get(t, s, http.MethodGet, "/packages/demo-pkg", nil)
 			body := rec.Body.String()
 			if tc.wantLink {
-				mustContain(t, body, tc.baseURI+"/p.pkg.tar.zst")
-			} else if strings.Contains(body, "Download") {
-				t.Error("download button rendered although downloads should be hidden")
+				mustContain(t, body, tc.baseURI+"/p.pkg.tar.zst", "Download p.pkg.tar.zst")
+			} else if strings.Contains(body, tc.baseURI+"/p.pkg.tar.zst") {
+				t.Error("download link rendered although downloads should be hidden")
 			}
 		})
 	}
