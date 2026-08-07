@@ -1,4 +1,11 @@
-# Full-duty CI pipeline.
+# Full-duty CI pipeline, layered for short feedback: a fast gate
+# (formatting, vet, plain tests and the binary build) runs first; the
+# heavier jobs (race-detector run, web standards compliance, container
+# images) all depend on the gate alone, so they start as soon as it
+# passes, and publishing is last. There are no caching steps: every job
+# installs its toolchain fresh, which keeps the matrix simple and
+# reproducible.
+#
 # Triggered on push to main (publish tag: latest), on tags
 # (publish tag: SemVer), and manually via workflow_dispatch. Runs on
 # a github-runner (container-mode runner, Ubuntu 24.04 job container).
@@ -14,9 +21,12 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  # Stage 1: Go tests and builds.
+  # Stage 1a: the fast gate. Formatting, vet and a plain (no race
+  # detector) test run fail the pipeline quickly; the binaries are
+  # built and uploaded here so the downstream jobs can start as soon as
+  # the gate is green.
   test:
-    name: Go test and build
+    name: Go fast gate (fmt, vet, test, build)
     runs-on: github-runner
     steps:
       - uses: actions/checkout@v7
@@ -56,8 +66,8 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test (race detector)
-        run: go test -race ./...
+      - name: Test
+        run: go test ./...
 
       - name: Build binaries
         run: |
@@ -81,6 +91,36 @@ jobs:
           path: |
             varve
             varve-worker
+
+  # Stage 1b: full validation. The race detector over the whole module
+  # takes noticeably longer than the gate, so it runs as its own job
+  # after the gate and overlaps the web-quality and image jobs.
+  full-check:
+    name: Full validation (race detector)
+    needs: test
+    runs-on: github-runner
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Go 1.26 toolchain
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      # Version must match the //go:generate directive in internal/web;
+      # bump both together (see the fast gate for the rationale).
+      - name: Install tailwindcss CLI
+        run: npm install --no-save tailwindcss@4.3.3 @tailwindcss/cli@4.3.3
+
+      # The embedded stylesheet is a generated, gitignored file, so
+      # every job that compiles Go must generate it first.
+      - name: Generate embedded assets
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          go generate ./...
+
+      - name: Test (race detector)
+        run: go test -race ./...
 
   # Stage 2: Web standards compliance. Raw templates are linted with
   # html-validate; W3C Nu and axe-core validate real rendered pages, so
