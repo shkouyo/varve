@@ -57,11 +57,14 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 			sm := r.sampler.Sample()
 			r.state.addSample(sm)
 			return &api.TaskProgress{
-				TaskID:      task.ID,
-				Stage:       r.state.currentStage(),
-				CPUTimeNS:   sm.CPUTimeNS,
-				MemoryBytes: sm.MemoryBytes,
-				At:          sm.At,
+				TaskID:             task.ID,
+				Stage:              r.state.currentStage(),
+				CPUTimeNS:          sm.CPUTimeNS,
+				MemoryBytes:        sm.MemoryBytes,
+				DiskTotalBytes:     sm.DiskTotalBytes,
+				DiskAvailableBytes: sm.DiskAvailableBytes,
+				DiskUsedBytes:      sm.DiskUsedBytes,
+				At:                 sm.At,
 			}
 		}
 	}

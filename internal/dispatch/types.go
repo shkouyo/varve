@@ -54,13 +54,20 @@ type Metrics struct {
 }
 
 // TaskProgress is one running task's progress plus a resource sample; it
-// doubles as the one-shot agent's sample channel.
+// doubles as the one-shot agent's sample channel. The disk fields ride
+// along so the sample recorded for a task always carries the disk usage
+// even when the build ends shortly after the last flush (the final sample
+// collides with the last progress sample by timestamp and is dropped by
+// the merge, so the fields must already be on the progress payload).
 type TaskProgress struct {
-	TaskID      string    `json:"task_id"`
-	Stage       string    `json:"stage"`
-	CPUTimeNS   int64     `json:"cpu_time_ns"`
-	MemoryBytes int64     `json:"memory_bytes"`
-	At          time.Time `json:"at"`
+	TaskID             string    `json:"task_id"`
+	Stage              string    `json:"stage"`
+	CPUTimeNS          int64     `json:"cpu_time_ns"`
+	MemoryBytes        int64     `json:"memory_bytes"`
+	DiskTotalBytes     int64     `json:"disk_total_bytes,omitempty"`
+	DiskAvailableBytes int64     `json:"disk_available_bytes,omitempty"`
+	DiskUsedBytes      int64     `json:"disk_used_bytes,omitempty"`
+	At                 time.Time `json:"at"`
 }
 
 // ContainerState describes one container tracked by a host node. The

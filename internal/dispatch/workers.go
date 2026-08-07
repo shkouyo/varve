@@ -175,7 +175,14 @@ func (o *OrchestratorImpl) processProgress(ctx context.Context, p TaskProgress) 
 	if err := o.store.TouchTaskProgress(ctx, p.TaskID, o.now().UTC()); err != nil {
 		return err
 	}
-	sample := db.Sample{At: p.At, CPUTimeNS: p.CPUTimeNS, MemoryBytes: p.MemoryBytes}
+	sample := db.Sample{
+		At:                 p.At,
+		CPUTimeNS:          p.CPUTimeNS,
+		MemoryBytes:        p.MemoryBytes,
+		DiskTotalBytes:     p.DiskTotalBytes,
+		DiskAvailableBytes: p.DiskAvailableBytes,
+		DiskUsedBytes:      p.DiskUsedBytes,
+	}
 	if err := o.store.AppendResourceSamples(ctx, task.BuildID, []db.Sample{sample}); err != nil {
 		return err
 	}

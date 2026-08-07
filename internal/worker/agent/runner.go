@@ -305,11 +305,14 @@ func (s *taskState) heartbeatTasks(sampler *CgroupSampler) []api.TaskProgress {
 	sm := sampler.Sample()
 	s.samples = append(s.samples, sm)
 	return []api.TaskProgress{{
-		TaskID:      s.id,
-		Stage:       s.stage,
-		CPUTimeNS:   sm.CPUTimeNS,
-		MemoryBytes: sm.MemoryBytes,
-		At:          sm.At,
+		TaskID:             s.id,
+		Stage:              s.stage,
+		CPUTimeNS:          sm.CPUTimeNS,
+		MemoryBytes:        sm.MemoryBytes,
+		DiskTotalBytes:     sm.DiskTotalBytes,
+		DiskAvailableBytes: sm.DiskAvailableBytes,
+		DiskUsedBytes:      sm.DiskUsedBytes,
+		At:                 sm.At,
 	}}
 }
 

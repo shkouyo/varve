@@ -211,11 +211,14 @@ func TestHeartbeatProgressAndCancel(t *testing.T) {
 	hb := HeartbeatReq{
 		Name: "w1",
 		Tasks: []TaskProgress{{
-			TaskID:      claimed,
-			Stage:       "makepkg",
-			CPUTimeNS:   123,
-			MemoryBytes: 456,
-			At:          env.now,
+			TaskID:             claimed,
+			Stage:              "makepkg",
+			CPUTimeNS:          123,
+			MemoryBytes:        456,
+			DiskTotalBytes:     789,
+			DiskAvailableBytes: 1011,
+			DiskUsedBytes:      1213,
+			At:                 env.now,
 		}},
 	}
 	resp, err := env.o.Heartbeat(ctx(), hb)
@@ -238,6 +241,15 @@ func TestHeartbeatProgressAndCancel(t *testing.T) {
 	}
 	if len(build.ResourceUsage) != 1 || build.ResourceUsage[0].CPUTimeNS != 123 {
 		t.Errorf("resource samples = %+v, want one sample", build.ResourceUsage)
+	}
+	// The progress payload carries the disk fields so a build ending
+	// shortly after the last flush still records disk usage (the final
+	// sample collides with the last progress sample by timestamp and the
+	// merge keeps the existing entry).
+	if build.ResourceUsage[0].DiskTotalBytes != 789 ||
+		build.ResourceUsage[0].DiskAvailableBytes != 1011 ||
+		build.ResourceUsage[0].DiskUsedBytes != 1213 {
+		t.Errorf("progress sample disk fields = %+v, want 789/1011/1213", build.ResourceUsage[0])
 	}
 
 	// Cancel the running task: both heartbeat and poll carry the signal.
