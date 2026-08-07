@@ -10,7 +10,7 @@
 @layer base {
   /* Keyboard users always get a visible focus ring (WCAG 2.2 AA). */
   :focus-visible {
-    outline: 2px solid #1d4ed8;
+    outline: 2px solid #9333ea;
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -36,8 +36,8 @@
 /*
  * Dark mode follows the system preference (prefers-color-scheme), the
  * Tailwind v4 default for the `dark:` variant. Two things cannot use
- * template classes and are themed here: the focus ring (blue-700 is too
- * dim against dark surfaces) and the status pills emitted by the
+ * template classes and are themed here: the focus ring (purple-600 is
+ * too dim against dark surfaces) and the status pills emitted by the
  * buildBadge helper in Go (dark surfaces use the 900-level pill tints).
  * The stone pill rule stays even though the templates use the slate
  * palette: buildBadge still emits bg-stone-200 for the default and
@@ -46,7 +46,7 @@
  */
 @media (prefers-color-scheme: dark) {
   :focus-visible {
-    outline-color: #60a5fa;
+    outline-color: #c084fc;
   }
 
   .bg-green-100.text-green-900 {
@@ -82,9 +82,8 @@
 /*
  * Motion: the only animation on the site is the running-status spinner;
  * it is decorative (the status word carries the meaning), so it stops for
- * users who prefer reduced motion (WCAG 2.3.3 AA). The SSE log follow and
- * the auto-refresh reload are instant, not animated, so nothing else
- * needs guarding.
+ * users who prefer reduced motion (WCAG 2.3.3 AA). The SSE log follow is
+ * instant, not animated, so nothing else needs guarding.
  */
 @media (prefers-reduced-motion: reduce) {
   .animate-spin {

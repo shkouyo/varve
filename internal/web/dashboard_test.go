@@ -22,7 +22,6 @@ import (
 	"errors"
 	"net/http"
 	"testing"
-	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
@@ -112,28 +111,3 @@ func TestRecentBuildViews(t *testing.T) {
 		t.Errorf("Status = %q, want failed", views[0].Status)
 	}
 }
-
-// TestFormatWhen covers the relative time rendering.
-func TestFormatWhen(t *testing.T) {
-	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
-	cases := []struct {
-		t    *time.Time
-		want string
-	}{
-		{nil, "never"},
-		{ptrTime(now.Add(-30 * time.Second)), "just now"},
-		{ptrTime(now.Add(-5 * time.Minute)), "5m ago"},
-		{ptrTime(now.Add(-3 * time.Hour)), "3h ago"},
-		{ptrTime(now.Add(-72 * time.Hour)), "3d ago"},
-		// A future timestamp renders as absolute wall-clock time instead
-		// of a nonsense relative age.
-		{ptrTime(now.Add(2 * time.Hour)), now.Add(2 * time.Hour).Local().Format("2006-01-02 15:04")},
-	}
-	for _, tc := range cases {
-		if got := formatWhen(tc.t, now); got != tc.want {
-			t.Errorf("formatWhen(%v) = %q, want %q", tc.t, got, tc.want)
-		}
-	}
-}
-
-func ptrTime(t time.Time) *time.Time { return &t }

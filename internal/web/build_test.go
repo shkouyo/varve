@@ -52,15 +52,13 @@ func TestBuildDetailRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	mustContain(t, body,
-		"Build "+shortBuildID(itoa(build.ID)),
-		"demo-pkg",                       // package context
-		"not assigned",                   // machine fallback (no worker)
-		"making package: demo-pkg",       // log history
-		"CPU 37%",                        // utilization from adjacent samples
-		"Memory 512 MiB, peak 512 MiB",   // current vs run peak
-		"26.8 GB used of 53.7 GB (50%)",  // humanized disk used/total
-		"available 26.8 GB",              // humanized disk free
-		"/builds/"+itoa(build.ID)+"/log", // live log link
+		"Build "+itoa(build.ID),           // full build id in the heading
+		"demo-pkg",                        // package context
+		"not assigned",                    // machine fallback (no worker)
+		"making package: demo-pkg",        // log history
+		"37%",                             // utilization from adjacent samples
+		"512 MiB / peak 512 MiB",          // current vs run peak
+		"25.0 GiB used of 50.0 GiB (50%)", // humanized disk used/total
 	)
 }
 
@@ -118,9 +116,7 @@ func TestBuildPageSSEClient(t *testing.T) {
 	mustContain(t, body,
 		`id="log"`,
 		`id="log-increments" aria-live="polite"`,
-		`data-lines="2"`,
 		`new EventSource("\/builds\/`+itoa(active.ID)+`\/log\/stream?after=6")`, // resume at the rendered tail
-		"location.reload()",
 	)
 
 	rec = get(t, s, http.MethodGet, "/builds/"+itoa(term.ID), nil)
@@ -157,11 +153,8 @@ func TestBuildLogData(t *testing.T) {
 	if data.PageActive {
 		t.Error("terminal build must not be marked active")
 	}
-	if data.RefreshSeconds != 0 {
-		t.Errorf("RefreshSeconds = %d, want 0 on a terminal build", data.RefreshSeconds)
-	}
-	if data.Title != "Build "+shortBuildID(itoa(build.ID)) {
-		t.Errorf("Title = %q, want the 7-char short build id", data.Title)
+	if data.Title != "Build "+itoa(build.ID) {
+		t.Errorf("Title = %q, want the full 16-hex build id", data.Title)
 	}
 }
 
@@ -200,8 +193,8 @@ func TestBuildLogTruncation(t *testing.T) {
 	if data.SSEURL != wantURL {
 		t.Errorf("SSEURL = %q, want %q", data.SSEURL, wantURL)
 	}
-	if !data.PageActive || data.RefreshSeconds != 10 {
-		t.Errorf("active build: PageActive %v RefreshSeconds %d, want true/10", data.PageActive, data.RefreshSeconds)
+	if !data.PageActive {
+		t.Errorf("active build must stay marked active")
 	}
 }
 
@@ -271,10 +264,10 @@ func TestHumanSize(t *testing.T) {
 	}{
 		{0, "0.0 B"},
 		{512, "512.0 B"},
-		{2048, "2.0 KB"},
-		{1234, "1.2 KB"},
-		{1048576, "1.0 MB"},
-		{1610612736, "1.6 GB"},
+		{2048, "2.0 KiB"},
+		{1234, "1.2 KiB"},
+		{1048576, "1.0 MiB"},
+		{1610612736, "1.5 GiB"},
 	}
 	for _, tc := range cases {
 		if got := humanSize(tc.in); got != tc.want {
@@ -303,20 +296,23 @@ func TestResourceViews(t *testing.T) {
 	if len(data.Samples) != 2 {
 		t.Fatalf("got %d views, want 2", len(data.Samples))
 	}
-	first, second := data.Samples[0], data.Samples[1]
-	if first.CPU != "" || first.CPUTotal != "0s" {
-		t.Errorf("first sample CPU = %q/%q, want degraded cumulative", first.CPU, first.CPUTotal)
+	// Newest first: the second sample renders on top with the CPU rate and
+	// the node-wide disk figures; the first sample degrades to cumulative
+	// CPU time and carries no disk card.
+	newest, oldest := data.Samples[0], data.Samples[1]
+	if newest.CPU != "37%" {
+		t.Errorf("newest sample CPU = %q, want 37%%", newest.CPU)
 	}
-	if second.CPU != "37%" {
-		t.Errorf("second sample CPU = %q, want 37%%", second.CPU)
+	if newest.Mem != "512 MiB" || newest.MemPeak != "512 MiB" {
+		t.Errorf("newest sample memory = %q/%q, want 512 MiB peak 512 MiB", newest.Mem, newest.MemPeak)
 	}
-	if second.Mem != "512 MiB" || second.MemPeak != "512 MiB" {
-		t.Errorf("second sample memory = %q/%q, want 512 MiB peak 512 MiB", second.Mem, second.MemPeak)
+	if !newest.HasDisk || newest.DiskPct != "55%" || newest.DiskUsed != "55.0 B" {
+		t.Errorf("newest sample disk = %+v, want used 55.0 B at 55%%", newest)
 	}
-	if !second.HasDisk || second.DiskPct != "55%" || second.DiskUsed != "55.0 B" {
-		t.Errorf("second sample disk = %+v, want used 55.0 B at 55%%", second)
+	if oldest.CPU != "" || oldest.CPUTotal != "0s" {
+		t.Errorf("oldest sample CPU = %q/%q, want degraded cumulative", oldest.CPU, oldest.CPUTotal)
 	}
-	if first.HasDisk {
-		t.Error("first sample must not carry the disk card")
+	if oldest.HasDisk {
+		t.Error("oldest sample must not carry the disk row")
 	}
 }

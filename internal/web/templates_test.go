@@ -27,12 +27,10 @@ import (
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
-// TestRefreshGating pins the auto-refresh implementation to its WCAG
-// contract: the meta refresh lives inside <noscript> (axe never sees a
-// timed refresh on a JavaScript-enabled page) and only renders while
-// PageActive, error pages and terminal build pages carry neither the
-// meta tag nor the inline reload script, and RefreshSeconds=0 never
-// falls back to the 10s default.
+// TestRefreshGating pins the removal of auto-refresh: no page renders a
+// meta refresh or a reload timer, the build page carries the resumable
+// SSE log client only while the build is active (PageActive), and
+// terminal build and error pages render no script at all.
 func TestRefreshGating(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -40,25 +38,27 @@ func TestRefreshGating(t *testing.T) {
 	active := seedActiveBuild(t, store, pkg, "running")
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader("line1\n"))
 
-	// Active pages: noscript meta refresh at the configured cadence plus
-	// the inline reload timer for JavaScript users.
+	// No page auto-refreshes: no meta tag, no reload timer.
 	for _, path := range []string{"/", "/packages", "/builds", "/builds/" + itoa(active.ID)} {
 		rec := get(t, s, http.MethodGet, path, nil)
 		body := rec.Body.String()
-		if !strings.Contains(body, `<noscript><meta http-equiv="refresh" content="10"></noscript>`) {
-			t.Errorf("%s: noscript meta refresh missing", path)
-		}
-		if !strings.Contains(body, "setInterval") || !strings.Contains(body, "location.reload()") {
-			t.Errorf("%s: inline reload script missing", path)
+		if strings.Contains(body, "http-equiv=\"refresh\"") || strings.Contains(body, "setInterval") || strings.Contains(body, "location.reload()") {
+			t.Errorf("%s: auto-refresh tag or timer still rendered", path)
 		}
 	}
 
-	// Terminal build and error pages are frozen: no refresh tag, no script.
+	// The active build page is the only page with a script: the SSE
+	// log client.
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(active.ID), nil)
+	if !strings.Contains(rec.Body.String(), "new EventSource(") {
+		t.Error("active build page must carry the SSE log client")
+	}
+
+	// Terminal build and error pages are frozen: no script at all.
 	for _, path := range []string{"/builds/" + itoa(term.ID), "/packages/nope"} {
 		rec := get(t, s, http.MethodGet, path, nil)
-		body := rec.Body.String()
-		if strings.Contains(body, "http-equiv=\"refresh\"") || strings.Contains(body, "<script") {
-			t.Errorf("%s: frozen page must carry no refresh tag or script", path)
+		if strings.Contains(rec.Body.String(), "<script") {
+			t.Errorf("%s: frozen page must carry no script", path)
 		}
 	}
 }
@@ -280,14 +280,16 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 		}
 	}
 
-	// The scrollable log region must be keyboard-focusable (WCAG 2.1.1);
-	// the merged log renders on the build page as a numbered div that
-	// doubles as the #log anchor and the SSE append target.
+	// The scrollable log region must be keyboard-focusable (WCAG 2.1.1)
+	// and exposed as a log region; the merged log renders on the build
+	// page with the #log anchor on its heading.
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
 	mustContain(t, rec.Body.String(),
 		`id="log"`,
 		`max-h-[70vh] overflow-auto whitespace-pre`,
-		`<span class="mr-4 inline-block w-10 select-none text-right text-slate-400">1</span>==&gt; done`)
+		`role="log"`,
+		`aria-label="Build log"`,
+		`==&gt; done`)
 
 	// 404 big status numeral: slate-500 on white (~4.8:1 >= 3:1 large text).
 	rec = get(t, s, http.MethodGet, "/packages/nope", nil)

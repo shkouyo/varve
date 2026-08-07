@@ -34,7 +34,9 @@ const maxScanPackages = 1 << 30
 // packagesData feeds packages.html: the searchable, paginated package
 // list. Search matches pkgbase and/or pkgdesc depending on Scope, and
 // can be narrowed to a single architecture by Arch; both filters ride
-// on the data so the template can keep them in the pagination links.
+// on the data so the template can keep them selected and in the
+// pagination links. Admin marks an authenticated request so the
+// template renders the per-row rebuild action.
 type packagesData struct {
 	base
 	Query    string
@@ -44,6 +46,7 @@ type packagesData struct {
 	Total    int
 	Pages    int
 	Packages []db.Package
+	Admin    bool
 }
 
 // parseScope validates a ?scope= search filter: name, desc or both (the
@@ -177,6 +180,7 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 		Total:    total,
 		Pages:    pages(total, perPage),
 		Packages: pkgs,
+		Admin:    s.authorized(r),
 	}
 	data.Nav = "packages"
 	s.render(w, "packages.html", data)

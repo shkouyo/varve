@@ -27,7 +27,9 @@ import (
 // packageData feeds package.html: current version, metadata from SQLite
 // plus the latest build artifacts, the paged build history and the
 // optional download button. The .SRCINFO metadata (url, licenses,
-// conflicts, provides) rides on the package row for the template.
+// conflicts, provides) rides on the package row for the template. Admin
+// marks an authenticated request so the template renders the rebuild
+// action.
 type packageData struct {
 	base
 	Pkg       db.Package
@@ -37,6 +39,7 @@ type packageData struct {
 	Total     int
 	Download  *downloadLink // nil when downloads are disabled or there is no artifact
 	LatestArt []db.Artifact
+	Admin     bool
 }
 
 // downloadLink is the artifact download destination: DownloadBaseURI +
@@ -116,6 +119,7 @@ func (s *Server) packageData(r *http.Request, pkgbase string, page int) (package
 		Total:     total,
 		Download:  downloadFor(s.cfg.Web.DownloadEnabled, s.cfg.Web.DownloadBaseURI, latest),
 		LatestArt: latestArtifacts(latest),
+		Admin:     s.authorized(r),
 	}, nil
 }
 

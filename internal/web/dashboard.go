@@ -21,7 +21,6 @@ import (
 	"context"
 	"net/http"
 	"sort"
-	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 )
@@ -141,7 +140,7 @@ func (s *Server) dashboardData(r *http.Request) (dashboardData, error) {
 		Counts:   statusCounts(stats.ByStatus),
 		QueueLen: stats.QueueLen,
 		Recent:   s.recentBuildViews(ctx, recent, workers),
-		Workers:  workerViews(workers, time.Now()),
+		Workers:  workerViews(workers),
 	}
 	if s.authorized(r) {
 		data.Admin = true
@@ -157,22 +156,22 @@ func (s *Server) dashboardData(r *http.Request) (dashboardData, error) {
 
 // recentBuildViews resolves recent build rows into the template view: the
 // executing node name (builds.worker_id joins workers.name) and the
-// pkgbase of the package row.
+// pkgbase of the package row. Timestamps render as local wall-clock
+// time (absTime), the site-wide format.
 func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, workers []db.Worker) []recentBuildView {
 	workerNames := make(map[int64]string, len(workers))
 	for _, w := range workers {
 		workerNames[w.ID] = w.Name
 	}
 	pkgNames := make(map[int64]string)
-	now := time.Now()
 	out := make([]recentBuildView, 0, len(builds))
 	for _, b := range builds {
 		view := recentBuildView{
 			ID:         b.ID,
 			Status:     b.Status,
 			WorkerName: workerNameOf(b, workerNames),
-			StartedAt:  formatWhen(b.StartedAt, now),
-			FinishedAt: formatWhen(b.FinishedAt, now),
+			StartedAt:  absTime(b.StartedAt),
+			FinishedAt: absTime(b.FinishedAt),
 		}
 		if name, ok := pkgNames[b.PackageID]; ok {
 			view.Pkgbase = name
@@ -186,8 +185,9 @@ func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, worker
 }
 
 // workerViews converts worker rows into the template view, marking a node
-// online when its recorded status is online.
-func workerViews(workers []db.Worker, now time.Time) []workerView {
+// online when its recorded status is online. The heartbeat renders as
+// local wall-clock time (absTime).
+func workerViews(workers []db.Worker) []workerView {
 	out := make([]workerView, 0, len(workers))
 	for _, w := range workers {
 		out = append(out, workerView{
@@ -199,48 +199,9 @@ func workerViews(workers []db.Worker, now time.Time) []workerView {
 			Arch:          w.Arch,
 			Capacity:      w.Capacity,
 			Version:       w.Version,
-			LastHeartbeat: formatWhen(w.LastHeartbeat, now),
+			LastHeartbeat: absTime(w.LastHeartbeat),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
-}
-
-// formatWhen renders an optional timestamp as a relative age ("2m ago")
-// or "never". A timestamp in the future (clock skew, scheduled values)
-// renders as absolute wall-clock time instead of a nonsense age.
-func formatWhen(t *time.Time, now time.Time) string {
-	if t == nil {
-		return "never"
-	}
-	if t.After(now) {
-		return absTime(t)
-	}
-	d := now.Sub(*t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmtInt(int(d.Minutes())) + "m ago"
-	case d < 24*time.Hour:
-		return fmtInt(int(d.Hours())) + "h ago"
-	default:
-		return fmtInt(int(d.Hours()/24)) + "d ago"
-	}
-}
-
-// fmtInt is a tiny helper avoiding strconv imports in templates (the
-// values are always non-negative).
-func fmtInt(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }

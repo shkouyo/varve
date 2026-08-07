@@ -31,14 +31,16 @@ import (
 
 // buildData feeds build.html: the build summary, the merged live log
 // (rendered as a line array with SSE increments appended by the
-// template), and the cgroup resource samples rendered as text (no
-// charts). Lines holds the truncated log tail split on newlines; the
-// first line is the partial remainder when the log was cut. LogURL is
-// the legacy log page (it redirects to the #log anchor) and SSEURL the
-// resumable event stream, with ?after= resuming at the end of the
-// rendered content. Wait marks a build that has no log yet but is still
-// active; Note carries the closing message for a terminal build that
-// never produced a log.
+// template), and the cgroup resource samples rendered as a table
+// (newest first, capped at maxSamples). Lines holds the truncated log
+// tail split on newlines; the first line is the partial remainder when
+// the log was cut. SSEURL is the resumable event stream, with ?after=
+// resuming at the end of the rendered content. Wait marks a build that
+// has no log yet but is still active; Note carries the closing message
+// for a terminal build that never produced a log. Admin marks an
+// authenticated request so the template renders the inline cancel and
+// rebuild actions; CancelURL holds the cancel endpoint of the build's
+// active task, empty when none exists.
 type buildData struct {
 	base
 	Build         db.Build
@@ -52,35 +54,35 @@ type buildData struct {
 	Wait          bool
 	Note          string
 	Samples       []resourceView
-	SampleCount   int
 	BuildID       string
-	LogURL        string
 	SSEURL        string
+	Admin         bool
+	CancelURL     string
 }
 
-// resourceView is one cgroup sample rendered as a card. CPU holds the
-// utilization since the previous sample (cpu_time_ns delta over wall
-// time), CPUBar its clamped 0-100 bar width and CPUTotal the cumulative
-// CPU seconds, used as the degraded display when no rate is derivable
-// (the first sample, or a single-sample run). Mem is the current usage
-// and MemPeak the highest across the run. The disk figures are
-// node-wide and identical across samples, so they ride on the last
-// sample's card only.
+// resourceView is one cgroup sample rendered as a table row. CPU holds
+// the utilization since the previous sample (cpu_time_ns delta over wall
+// time) and CPUTotal the cumulative CPU seconds, used as the degraded
+// display when no rate is derivable (the first sample, or a single
+// sample run). Mem is the current usage and MemPeak the highest across
+// the run. The disk figures are node-wide and identical across samples,
+// so they ride on the newest sample's row only.
 type resourceView struct {
 	At        string
 	CPU       string
-	CPUBar    int
 	CPUTotal  string
 	Mem       string
 	MemPeak   string
-	MemBar    int
 	HasDisk   bool
 	DiskUsed  string
-	DiskAvail string
 	DiskTotal string
 	DiskPct   string
-	DiskBar   int
 }
+
+// maxSamples caps the resource table at the most recent 200 samples.
+// The store already truncates at the same bound; the web cap is a
+// defensive duplicate so the rendered table stays bounded either way.
+const maxSamples = 200
 
 // handleBuild renders GET /builds/{id}. A malformed build id is a 400;
 // a well-formed but unknown one a 404. The failure error summary is not
@@ -113,21 +115,16 @@ func (s *Server) buildData(r *http.Request, id string) (buildData, error) {
 	}
 
 	data := buildData{
-		base:        s.page(r, "Build "+shortBuildID(id), nil),
-		Build:       *b,
-		BuildID:     id,
-		LogURL:      "/builds/" + id + "/log",
-		SSEURL:      "/builds/" + id + "/log/stream",
-		SampleCount: len(b.ResourceUsage),
+		base:    s.page(r, "Build "+id, nil),
+		Build:   *b,
+		BuildID: id,
+		SSEURL:  "/builds/" + id + "/log/stream",
 	}
 	data.Build.Error = "" // failure detail lives in the log, not the summary
 
-	// The log stream and the auto-refresh stay live only while the build
-	// runs; a terminal build freezes the page.
+	// The log stream stays live only while the build runs; a terminal
+	// build freezes the page (no SSE client).
 	data.PageActive = !isTerminalStatus(b.Status)
-	if !data.PageActive {
-		data.RefreshSeconds = 0
-	}
 
 	// Executing machine name (builds.worker_name in plain text, with the
 	// workers table as a fallback for rows recorded before the column was
@@ -142,18 +139,43 @@ func (s *Server) buildData(r *http.Request, id string) (buildData, error) {
 		}
 	}
 
+	// Inline admin actions: cancel rides on the build's active task,
+	// rebuild on the package. Both are plain form POSTs (no JavaScript).
+	if s.authorized(r) {
+		data.Admin = true
+		tasks, err := s.store.ListActiveTasks(ctx)
+		if err == nil {
+			for _, t := range tasks {
+				if t.BuildID == id {
+					data.CancelURL = "/admin/tasks/" + t.ID + "/cancel"
+					break
+				}
+			}
+		}
+	}
+
 	// Log history from the log store, truncated to the most recent
 	// maxInlineLog bytes; the SSE stream resumes at the rendered end.
 	if err := s.loadBuildLog(ctx, b, &data); err != nil {
 		return buildData{}, err
 	}
 
-	// Cgroup resource samples rendered as cards: CPU utilization is the
-	// cpu_time_ns delta between adjacent samples over the wall time
-	// between them (the first sample has no predecessor and degrades to
-	// the cumulative seconds), memory shows current vs run peak, and the
-	// node-wide disk figures come from the last sample only.
-	samples := b.ResourceUsage
+	// Cgroup resource samples rendered as a table, newest first: CPU
+	// utilization is the cpu_time_ns delta between adjacent samples over
+	// the wall time between them (the first sample has no predecessor and
+	// degrades to the cumulative seconds), memory shows current vs run
+	// peak, and the node-wide disk figures come from the newest sample.
+	data.Samples = resourceViews(b.ResourceUsage)
+	return data, nil
+}
+
+// resourceViews derives the table views from the stored samples,
+// keeping only the most recent maxSamples and ordering newest first.
+func resourceViews(samples []db.Sample) []resourceView {
+	if len(samples) > maxSamples {
+		samples = samples[len(samples)-maxSamples:]
+	}
+	views := make([]resourceView, 0, len(samples))
 	var peak int64
 	for _, smp := range samples {
 		if smp.MemoryBytes > peak {
@@ -166,28 +188,27 @@ func (s *Server) buildData(r *http.Request, id string) (buildData, error) {
 			CPUTotal: formatCPU(smp.CPUTimeNS),
 			Mem:      formatBytes(smp.MemoryBytes),
 			MemPeak:  formatBytes(peak),
-			MemBar:   barPct(smp.MemoryBytes, peak),
 		}
 		if i > 0 {
 			if dCPU := smp.CPUTimeNS - samples[i-1].CPUTimeNS; dCPU >= 0 {
 				if dWall := smp.At.Sub(samples[i-1].At); dWall > 0 {
-					pct := float64(dCPU) / float64(dWall) * 100
-					v.CPU = fmtFloat(pct) + "%"
-					v.CPUBar = barPctF(pct)
+					v.CPU = fmtFloat(float64(dCPU)/float64(dWall)*100) + "%"
 				}
 			}
 		}
 		if i == len(samples)-1 && smp.DiskTotalBytes > 0 {
 			v.HasDisk = true
 			v.DiskUsed = humanSize(smp.DiskUsedBytes)
-			v.DiskAvail = humanSize(smp.DiskAvailableBytes)
 			v.DiskTotal = humanSize(smp.DiskTotalBytes)
 			v.DiskPct = fmtFloat(float64(smp.DiskUsedBytes)*100/float64(smp.DiskTotalBytes)) + "%"
-			v.DiskBar = barPct(smp.DiskUsedBytes, smp.DiskTotalBytes)
 		}
-		data.Samples = append(data.Samples, v)
+		views = append(views, v)
 	}
-	return data, nil
+	// Newest first.
+	for i, j := 0, len(views)-1; i < j; i, j = i+1, j-1 {
+		views[i], views[j] = views[j], views[i]
+	}
+	return views
 }
 
 // loadBuildLog fills the merged log fields from the log store: the
@@ -222,26 +243,6 @@ func (s *Server) loadBuildLog(ctx context.Context, b *db.Build, data *buildData)
 		return fmt.Errorf("web: read build log: %w", err)
 	}
 	return nil
-}
-
-// barPct clamps a part/whole percentage to the 0-100 bar range.
-func barPct(part, whole int64) int {
-	if whole <= 0 {
-		return 0
-	}
-	return barPctF(float64(part) * 100 / float64(whole))
-}
-
-// barPctF clamps a raw percentage to the 0-100 bar range; the rendered
-// text may exceed 100 on multi-core hosts, the bar width cannot.
-func barPctF(pct float64) int {
-	if pct < 0 {
-		return 0
-	}
-	if pct > 100 {
-		return 100
-	}
-	return int(pct)
 }
 
 // formatCPU renders a cumulative CPU time in nanoseconds as seconds with

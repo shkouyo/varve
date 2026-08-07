@@ -5,72 +5,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{{.Title}}·Varve</title>
-  <!-- No-JavaScript fallback: without script support the page
-       re-fetches itself on the refresh cadence; the <noscript> wrapper
-       keeps JavaScript users (and axe) from seeing a timed refresh
-       (WCAG 2.2.1), and pages that must never refresh (terminal builds,
-       error pages) render nothing at all. -->
-  <noscript>{{if .PageActive}}<meta http-equiv="refresh" content="{{.RefreshSeconds}}">{{end}}</noscript>
   <style>{{.CSS}}</style>
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
   <a class="skip-link" href="#main">Skip to main content</a>
-  <header class="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3" aria-label="Main">
-      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false">
-          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-          <line x1="12" y1="22.08" x2="12" y2="12"></line>
-        </svg>
-        Varve
-      </a>
-      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}" {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}aria-current="page"{{end}}>Overview</a>
-      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
-      <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
-      <div class="ml-auto flex items-center gap-2">
-        {{if .LoggedIn}}
-        <span class="px-2 text-sm font-medium text-slate-600 dark:text-slate-300">{{.User}}</span>
-        <a class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" href="/admin/logout">Logout</a>
-        {{else}}
-        <a class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" href="/admin">Login</a>
-        {{end}}
-      </div>
-    </nav>
-  </header>
+  {{template "header" .}}
 
   <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
     <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <nav class="mb-1 text-sm text-slate-600 dark:text-slate-400" aria-label="Breadcrumb">
-          <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages">Packages</a>
+        <nav class="mb-1 text-sm text-slate-600 dark:text-slate-300" aria-label="Breadcrumb">
+          <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/">Home</a>
           <span aria-hidden="true"> / </span>
-          <span class="text-slate-700 dark:text-slate-300">{{.Pkg.Pkgbase}}</span>
+          <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages">Packages</a>
+          <span aria-hidden="true"> / </span>
+          <span class="text-slate-700 dark:text-slate-200" aria-current="page">{{.Pkg.Pkgbase}}</span>
         </nav>
         <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">{{.Pkg.Pkgbase}}</h1>
-        <p class="mt-1 text-slate-600 dark:text-slate-400">{{.Pkg.Pkgdesc}}</p>
+        <p class="mt-1 text-slate-600 dark:text-slate-300">{{.Pkg.Pkgdesc}}</p>
       </div>
-      {{if .Download}}
-      <a href="{{.Download.URL}}" class="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        Download {{.Download.File}}
-      </a>
-      {{end}}
+      <div class="flex flex-wrap items-center gap-2">
+        {{if .Admin}}
+        <form method="post" action="/admin/packages/{{.Pkg.Pkgbase}}/rebuild">
+          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Rebuild</button>
+        </form>
+        {{end}}
+        {{if .Download}}
+        <a href="{{.Download.URL}}" class="inline-flex items-center gap-2 rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800 dark:bg-purple-600 dark:hover:bg-purple-500">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Download {{.Download.File}}
+        </a>
+        {{end}}
+      </div>
     </div>
 
     <div class="grid gap-6 lg:grid-cols-2">
-      <section aria-labelledby="meta-heading" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section aria-labelledby="meta-heading" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
         <h2 id="meta-heading" class="mb-3 text-xl font-semibold">Metadata</h2>
         <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <dt class="font-medium text-slate-500 dark:text-slate-400">Version</dt>
-          <dd class="text-slate-900 dark:text-slate-100">{{if .Pkg.Pkgver}}{{.Pkg.Pkgver}}{{if .Pkg.Pkgrel}}-{{.Pkg.Pkgrel}}{{end}}{{else}}{{.Pkg.CurrentVersion}}{{end}}</dd>
+          <dd class="text-slate-900 dark:text-slate-100">{{if epoch .Pkg}}{{epoch .Pkg}}{{else if .Pkg.Pkgver}}{{.Pkg.Pkgver}}{{if .Pkg.Pkgrel}}-{{.Pkg.Pkgrel}}{{end}}{{else}}{{.Pkg.CurrentVersion}}{{end}}</dd>
           {{if .Pkg.Pkgname}}
           <dt class="font-medium text-slate-500 dark:text-slate-400">Package names</dt>
           <dd class="text-slate-900 dark:text-slate-100">{{range $i, $n := .Pkg.Pkgname}}{{if $i}}, {{end}}{{$n}}{{end}}</dd>
           {{end}}
           {{if .Pkg.Source}}
           <dt class="font-medium text-slate-500 dark:text-slate-400">Sources</dt>
-          <dd class="break-all text-slate-900 dark:text-slate-100">{{range $i, $s := .Pkg.Source}}{{if $i}}, {{end}}{{$s}}{{end}}</dd>
+          <dd>
+            <ul class="space-y-1">
+              {{range .Pkg.Source}}<li class="break-all text-slate-900 dark:text-slate-100">{{.}}</li>{{end}}
+            </ul>
+          </dd>
           {{end}}
           <dt class="font-medium text-slate-500 dark:text-slate-400">Branch</dt>
           <dd class="text-slate-900 dark:text-slate-100">{{.Pkg.Branch}}</dd>
@@ -82,7 +67,7 @@
           <dd class="text-slate-900 dark:text-slate-100">{{range $i, $m := .Pkg.Maintainers}}{{if $i}}, {{end}}{{$m}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
           {{if .Pkg.URL}}
           <dt class="font-medium text-slate-500 dark:text-slate-400">Upstream</dt>
-          <dd><a class="break-all text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.Pkg.URL}}" target="_blank" rel="noopener noreferrer">{{.Pkg.URL}}</a></dd>
+          <dd><a class="break-all text-purple-800 underline underline-offset-2 dark:text-purple-300" href="{{.Pkg.URL}}" target="_blank" rel="noopener noreferrer">{{.Pkg.URL}}</a></dd>
           {{end}}
           {{if .Pkg.Licenses}}
           <dt class="font-medium text-slate-500 dark:text-slate-400">Licenses</dt>
@@ -103,45 +88,25 @@
         </dl>
       </section>
 
-      <section aria-labelledby="art-heading" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section aria-labelledby="art-heading" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
         <h2 id="art-heading" class="mb-3 text-xl font-semibold">Latest artifacts</h2>
         {{if .LatestArt}}
-        <div class="overflow-x-auto" tabindex="0">
-          <table class="w-full text-left text-sm">
-            <caption class="sr-only">Artifacts of the latest build with type, version, architecture and size</caption>
-            <thead>
-              <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                <th scope="col" class="px-4 py-3 font-semibold">File</th>
-                <th scope="col" class="px-4 py-3 font-semibold">Type</th>
-                <th scope="col" class="px-4 py-3 font-semibold">Version</th>
-                <th scope="col" class="px-4 py-3 font-semibold">Arch</th>
-                <th scope="col" class="px-4 py-3 font-semibold">Size</th>
-                <th scope="col" class="px-4 py-3 font-semibold">Download</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .LatestArt}}
-              <tr class="border-b border-slate-100 last:border-0 dark:border-slate-800">
-                <td class="px-4 py-3">
-                  <p class="font-medium break-all text-slate-900 dark:text-slate-100">{{.File}}</p>
-                  <p class="mt-0.5 break-all font-mono text-xs text-slate-500 dark:text-slate-400" title="{{.SHA256}}">sha256: {{if .SHA256}}{{slice .SHA256 0 16}}…{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</p>
-                </td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{.Kind}}</td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Version}}{{.Version}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Arch}}{{.Arch}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
-                <td class="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-400">{{humanSize .Size}}</td>
-                <td class="px-4 py-3">
-                  {{if and $.Download (eq .File $.Download.File)}}
-                  <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{$.Download.URL}}">Download</a>
-                  {{else}}
-                  <span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>
-                  {{end}}
-                </td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
+        <ul class="space-y-4">
+          {{range .LatestArt}}
+          <li class="rounded-lg border border-slate-200 p-4 dark:border-white/10">
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-sm">
+              <dt class="font-medium text-slate-500 dark:text-slate-400">File</dt>
+              <dd class="break-all font-medium text-slate-900 dark:text-slate-100">{{.File}}</dd>
+              <dt class="font-medium text-slate-500 dark:text-slate-400">Type</dt>
+              <dd class="text-slate-900 dark:text-slate-100">{{.Kind}}</dd>
+              <dt class="font-medium text-slate-500 dark:text-slate-400">Size</dt>
+              <dd class="tabular-nums text-slate-900 dark:text-slate-100">{{humanSize .Size}}</dd>
+              <dt class="font-medium text-slate-500 dark:text-slate-400">SHA256</dt>
+              <dd class="break-all font-mono text-xs text-slate-700 dark:text-slate-300" title="{{.SHA256}}">{{if .SHA256}}{{slice .SHA256 0 16}}…{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
+            </dl>
+          </li>
+          {{end}}
+        </ul>
         {{else}}
         <p class="text-sm text-slate-500 dark:text-slate-400">No artifacts from the latest build.</p>
         {{end}}
@@ -151,11 +116,11 @@
     <section aria-labelledby="history-heading" class="mt-8">
       <h2 id="history-heading" class="mb-3 text-xl font-semibold">Build history</h2>
       {{if .Builds}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900" tabindex="0" aria-label="Build history">
         <table class="w-full text-left text-sm">
           <caption class="sr-only">Build history with status, executing machine and timestamps</caption>
           <thead>
-            <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
               <th scope="col" class="px-4 py-3 font-semibold">Build</th>
               <th scope="col" class="px-4 py-3 font-semibold">Status</th>
               <th scope="col" class="px-4 py-3 font-semibold">Started</th>
@@ -165,50 +130,43 @@
           </thead>
           <tbody>
             {{range .Builds}}
-            <tr class="border-b border-slate-100 last:border-0 dark:border-slate-800">
-              <td class="px-4 py-3">
-                <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
-              </td>
+            <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
+              <th scope="row" class="px-4 py-3 text-left font-normal">
+                <a class="font-mono font-medium text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/builds/{{.ID}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
+              </th>
               <td class="px-4 py-3">{{template "statusBadge" .Status}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .StartedAt}}{{.StartedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .FinishedAt}}{{.FinishedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{if .StartedAt}}{{absTime .StartedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{if .FinishedAt}}{{absTime .FinishedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
               <td class="px-4 py-3">
-                <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}/log">View log</a>
+                <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/builds/{{.ID}}/log">View log</a>
               </td>
             </tr>
             {{end}}
           </tbody>
         </table>
       </div>
+      {{if gt .Pages 1}}
+      <nav class="mt-6 flex flex-wrap items-center justify-between gap-3" aria-label="Build history pages">
+        {{if gt .Page 1}}
+        <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700" href="/packages/{{.Pkg.Pkgbase}}?page={{sub .Page 1}}">Previous</a>
+        {{else}}
+        <span></span>
+        {{end}}
+        <p class="text-sm text-slate-600 dark:text-slate-300" role="status">Page {{.Page}} of {{.Pages}}, {{.Total}} build{{if ne .Total 1}}s{{end}}</p>
+        {{if lt .Page .Pages}}
+        <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700" href="/packages/{{.Pkg.Pkgbase}}?page={{add .Page 1}}">Next</a>
+        {{else}}
+        <span></span>
+        {{end}}
+      </nav>
+      {{end}}
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">No builds recorded yet.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-400">No builds recorded yet.</p>
       {{end}}
     </section>
   </main>
 
-  <footer class="border-t border-slate-200 py-6 dark:border-slate-800">
-    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 text-sm text-slate-600 dark:text-slate-400" aria-label="Footer">
-      <a class="underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-200" href="/COPYING.txt">License: AGPL-3.0-or-later</a>
-      <a class="underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-200" href="https://git.0x0f.dev/shkouyo/varve" target="_blank" rel="noopener noreferrer">Source code</a>
-    </nav>
-  </footer>
-  {{if .PageActive}}<script>
-    (function () {
-      "use strict";
-      // Auto-refresh for JavaScript users on the same cadence the
-      // <noscript> meta refresh gives no-JavaScript users; the reload is
-      // skipped while the tab is hidden, so background tabs stay quiet.
-      // Pages that must never refresh (terminal builds, error pages)
-      // carry RefreshSeconds = 0 and skip the timer entirely.
-      var seconds = {{.RefreshSeconds}};
-      if (seconds > 0) {
-        setInterval(function () {
-          if (document.visibilityState === "visible") {
-            location.reload();
-          }
-        }, seconds * 1000);
-      }
-    })();
-  </script>{{end}}
+  {{template "footer" .}}
 </body>
 </html>
+{{define "statusBadge"}}{{if eq . "queued"}}<span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>queued</span>{{else if eq . "running"}}<span class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>running</span>{{else}}{{buildBadge .}}{{end}}{{end}}

@@ -5,59 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{{.Title}}·Varve</title>
-  <!-- No-JavaScript fallback: without script support the page
-       re-fetches itself on the refresh cadence; the <noscript> wrapper
-       keeps JavaScript users (and axe) from seeing a timed refresh
-       (WCAG 2.2.1), and pages that must never refresh (terminal builds,
-       error pages) render nothing at all. -->
-  <noscript>{{if .PageActive}}<meta http-equiv="refresh" content="{{.RefreshSeconds}}">{{end}}</noscript>
   <style>{{.CSS}}</style>
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
   <a class="skip-link" href="#main">Skip to main content</a>
-  <header class="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3" aria-label="Main">
-      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false">
-          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-          <line x1="12" y1="22.08" x2="12" y2="12"></line>
-        </svg>
-        Varve
-      </a>
-      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}" {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}aria-current="page"{{end}}>Overview</a>
-      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
-      <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
-      <div class="ml-auto flex items-center gap-2">
-        {{if .LoggedIn}}
-        <span class="px-2 text-sm font-medium text-slate-600 dark:text-slate-300">{{.User}}</span>
-        <a class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" href="/admin/logout">Logout</a>
-        {{else}}
-        <a class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" href="/admin">Login</a>
-        {{end}}
-      </div>
-    </nav>
-  </header>
+  {{template "header" .}}
 
   <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
-    <div class="mb-6">
-      <nav class="mb-1 text-sm text-slate-600 dark:text-slate-400" aria-label="Breadcrumb">
-        {{if .Pkgbase}}
-        <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
-        <span aria-hidden="true"> / </span>
+    <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <nav class="mb-1 text-sm text-slate-600 dark:text-slate-300" aria-label="Breadcrumb">
+          <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/">Home</a>
+          <span aria-hidden="true"> / </span>
+          <span class="text-slate-700 dark:text-slate-200" aria-current="page">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
+        </nav>
+        <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Build <span class="font-mono" title="{{.Build.ID}}">{{.Build.ID}}</span></h1>
+      </div>
+      {{if .Admin}}
+      <div class="flex flex-wrap items-center gap-2">
+        {{if .CancelURL}}
+        <form method="post" action="{{.CancelURL}}">
+          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Cancel build</button>
+        </form>
         {{end}}
-        <span class="text-slate-700 dark:text-slate-300">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
-      </nav>
-      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></h1>
+        {{if .Pkgbase}}
+        <form method="post" action="/admin/packages/{{.Pkgbase}}/rebuild">
+          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Rebuild</button>
+        </form>
+        {{end}}
+      </div>
+      {{end}}
     </div>
 
-    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
       <h2 id="summary-heading" class="mb-3 text-xl font-semibold">Summary</h2>
       <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
         <dt class="font-medium text-slate-500 dark:text-slate-400">Status</dt>
         <dd>{{template "statusBadge" .Build.Status}}</dd>
         <dt class="font-medium text-slate-500 dark:text-slate-400">Package</dt>
-        <dd>{{if .Pkgbase}}<a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
+        <dd>{{if .Pkgbase}}<a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
         <dt class="font-medium text-slate-500 dark:text-slate-400">Machine</dt>
         <dd class="text-slate-900 dark:text-slate-100">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-slate-400">not assigned</span>{{end}}</dd>
         <dt class="font-medium text-slate-500 dark:text-slate-400">Branch</dt>
@@ -73,117 +59,82 @@
       </dl>
     </section>
 
-    <section aria-labelledby="log-heading" class="mb-8">
-      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="log-heading" class="text-xl font-semibold">Command log</h2>
-        <a class="text-sm font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.LogURL}}">Open live log</a>
-      </div>
-      <div id="log" data-lines="{{len .Lines}}" tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-100 dark:border-slate-800">
+    <section aria-labelledby="log" class="mb-8">
+      <h2 id="log" class="mb-3 scroll-mt-6 text-xl font-semibold">Command log</h2>
+      <div id="log-pane" role="log" aria-label="Build log" tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100">
 {{- if .HasLog}}<div id="log-lines">
 {{- if .Lines -}}
-{{- range $i, $l := .Lines}}<span class="mr-4 inline-block w-10 select-none text-right text-slate-400">{{add $i 1}}</span>{{$l}}
+{{- range .Lines}}{{.}}
 {{end -}}
 {{- else -}}
 {{- .Log -}}
 {{- end -}}
-</div>{{- else}}<p id="log-empty" class="text-slate-300 dark:text-slate-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
+</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-slate-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
 <div id="log-increments" aria-live="polite"></div>
       </div>
       {{if .Truncated}}
-      <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">{{.TruncatedNote}}</p>
+      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{.TruncatedNote}}</p>
       {{end}}
-      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-slate-400" role="status">{{if .Note}}{{else if .Wait}}Waiting for log output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
+      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-slate-300" role="status">{{if .Note}}{{else if .Wait}}Waiting for log output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
     </section>
 
     <section aria-labelledby="usage-heading">
       <h2 id="usage-heading" class="mb-3 text-xl font-semibold">Resource usage</h2>
       {{if .Samples}}
-      <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {{range .Samples}}
-        <li class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p class="text-xs text-slate-500 dark:text-slate-400">Sample at {{.At}}</p>
-          <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-            {{if .CPU}}CPU {{.CPU}}{{else}}CPU {{.CPUTotal}} total{{end}}
-          </p>
-          {{if .CPU}}
-          <progress class="mt-1 block h-2 w-full accent-blue-700 dark:accent-blue-400" max="100" value="{{.CPUBar}}" aria-hidden="true"></progress>
-          {{else}}
-          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">First sample, no rate yet. Cumulative time shown.</p>
-          {{end}}
-          <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-            Memory {{.Mem}}, peak {{.MemPeak}}
-          </p>
-          <progress class="mt-1 block h-2 w-full accent-blue-700 dark:accent-blue-400" max="100" value="{{.MemBar}}" aria-hidden="true"></progress>
-          {{if .HasDisk}}
-          <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">Disk (latest sample)</p>
-          <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-            {{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}})
-          </p>
-          <progress class="mt-1 block h-2 w-full accent-blue-700 dark:accent-blue-400" max="100" value="{{.DiskBar}}" aria-hidden="true"></progress>
-          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">available {{.DiskAvail}}</p>
-          {{end}}
-        </li>
-        {{end}}
-      </ul>
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900" tabindex="0" aria-label="Resource usage samples">
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">Resource samples with time, CPU utilization, memory and disk usage, newest first</caption>
+          <thead>
+            <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
+              <th scope="col" class="px-4 py-3 font-semibold">Time</th>
+              <th scope="col" class="px-4 py-3 font-semibold">CPU</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Memory</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Disk</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Samples}}
+            <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
+              <th scope="row" class="px-4 py-3 text-left font-normal tabular-nums text-slate-600 dark:text-slate-300">{{.At}}</th>
+              <td class="px-4 py-3 text-slate-900 dark:text-slate-100">{{if .CPU}}{{.CPU}}{{else}}{{.CPUTotal}} total{{end}}</td>
+              <td class="px-4 py-3 text-slate-900 dark:text-slate-100">{{.Mem}} / peak {{.MemPeak}}</td>
+              <td class="px-4 py-3 text-slate-900 dark:text-slate-100">{{if .HasDisk}}{{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}}){{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">No resource samples recorded.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-400">No resource samples recorded.</p>
       {{end}}
     </section>
   </main>
 
-  <footer class="border-t border-slate-200 py-6 dark:border-slate-800">
-    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 text-sm text-slate-600 dark:text-slate-400" aria-label="Footer">
-      <a class="underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-200" href="/COPYING.txt">License: AGPL-3.0-or-later</a>
-      <a class="underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-200" href="https://git.0x0f.dev/shkouyo/varve" target="_blank" rel="noopener noreferrer">Source code</a>
-    </nav>
-  </footer>
+  {{template "footer" .}}
+
   {{if .PageActive}}<script>
     (function () {
       "use strict";
-      // Auto-refresh for JavaScript users on the same cadence the
-      // <noscript> meta refresh gives no-JavaScript users; the reload is
-      // skipped while the tab is hidden, so background tabs stay quiet.
-      // Pages that must never refresh (terminal builds, error pages)
-      // carry RefreshSeconds = 0 and skip the timer entirely.
-      var seconds = {{.RefreshSeconds}};
-      if (seconds > 0) {
-        setInterval(function () {
-          if (document.visibilityState === "visible") {
-            location.reload();
-          }
-        }, seconds * 1000);
-      }
-
       // Resumable SSE log stream. The page renders the log tail
       // server-side and the stream resumes at its end (?after=), so the
-      // initial content is never re-sent or re-announced; new lines are
-      // numbered onward from the rendered count and appended to the
-      // aria-live region only (decision: increments announce, the
-      // initial log never does). The container follows the bottom while
-      // the reader stays pinned there; scrolling up pauses the follow.
-      var log = document.getElementById("log");
-      if (!log) {
+      // initial content is never re-sent; new lines are appended to the
+      // aria-live region only (decision: increments announce, the initial
+      // log never does). The container follows the bottom while the
+      // reader stays pinned there; scrolling up pauses the follow.
+      var pane = document.getElementById("log-pane");
+      if (!pane) {
         return;
       }
       var inc = document.getElementById("log-increments");
       var status = document.getElementById("log-status");
-      var lineNo = parseInt(log.getAttribute("data-lines") || "0", 10);
       var pinned = true;
-      log.addEventListener("scroll", function () {
-        pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+      pane.addEventListener("scroll", function () {
+        pinned = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 48;
       });
       function appendLine(text) {
-        lineNo += 1;
-        var num = document.createElement("span");
-        num.className = "mr-4 inline-block w-10 select-none text-right text-slate-400";
-        num.textContent = String(lineNo);
-        inc.appendChild(num);
         inc.appendChild(document.createTextNode(text + "\n"));
         if (pinned) {
-          log.scrollTop = log.scrollHeight;
+          pane.scrollTop = pane.scrollHeight;
         }
       }
       var es = new EventSource("{{.SSEURL}}");
@@ -215,3 +166,4 @@
   </script>{{end}}
 </body>
 </html>
+{{define "statusBadge"}}{{if eq . "queued"}}<span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>queued</span>{{else if eq . "running"}}<span class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>running</span>{{else}}{{buildBadge .}}{{end}}{{end}}

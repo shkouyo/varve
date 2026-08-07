@@ -150,25 +150,22 @@ func (s *Server) Handler() http.Handler {
 
 // base carries the fields every page template renders: the page title,
 // the inlined compiled stylesheet, an optional redirect-back flash
-// message (admin actions), the signed-in admin (empty when anonymous)
-// and the auto-refresh cadence. RefreshSeconds is 10 on every page
-// except pages that must never refresh (terminal builds, error pages),
-// where it is 0; PageActive marks a page that keeps auto-refreshing.
-// The template renders the meta refresh inside <noscript> (so axe and
-// JavaScript users never see a timed refresh, WCAG 2.2.1) and a tiny
-// inline timer reloads the page for JavaScript users; the build page
-// streams live log increments over SSE in addition.
+// message (admin actions) and the signed-in admin (empty when
+// anonymous). PageActive marks a page that keeps live content: on the
+// build page it gates the resumable SSE log client, and it is off on
+// terminal build pages and error pages, which render no script at all.
 type base struct {
 	Title string
 	CSS   template.CSS
 	Flash *flash
 	// Nav names the active section for the header navigation
 	// (aria-current), or "" when none applies.
-	Nav            string
-	User           string // authenticated admin username, "" when anonymous
-	LoggedIn       bool
-	PageActive     bool
-	RefreshSeconds int
+	Nav      string
+	User     string // authenticated admin username, "" when anonymous
+	LoggedIn bool
+	// PageActive marks a page whose log stream is still live; only the
+	// build page uses it, to gate its SSE client.
+	PageActive bool
 }
 
 // flash is a one-shot message carried through the redirect query string;
@@ -181,7 +178,7 @@ type flash struct {
 // page builds the base fields shared by every page, resolving the
 // signed-in admin for the header chrome (username plus logout link).
 func (s *Server) page(r *http.Request, title string, f *flash) base {
-	b := base{Title: title, CSS: template.CSS(s.css), Flash: f, RefreshSeconds: 10, PageActive: true}
+	b := base{Title: title, CSS: template.CSS(s.css), Flash: f, PageActive: true}
 	if user, _, ok := r.BasicAuth(); ok && s.authorized(r) {
 		b.User = user
 		b.LoggedIn = true
@@ -208,15 +205,12 @@ type errorData struct {
 }
 
 // renderError writes a full error page with the given status. The page
-// is frozen: it never auto-refreshes (a 404/401 that reloads itself
-// every few seconds is pointless and hostile), so PageActive is off and
-// RefreshSeconds is 0.
+// is frozen: PageActive is off (a 404/401 page carries no SSE client).
 func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	b := s.page(r, http.StatusText(status), nil)
 	b.PageActive = false
-	b.RefreshSeconds = 0
 	if err := s.tmpl.ExecuteTemplate(w, "error.html", errorData{
 		base:    b,
 		Status:  status,

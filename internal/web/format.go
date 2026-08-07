@@ -18,6 +18,7 @@
 package web
 
 import (
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -50,39 +51,25 @@ func shortID(s string) string {
 	return s[:8] + "…"
 }
 
-// shortBuildID renders a build id for display: the first 7 hex
-// characters (ids are 16 hex; shorter values pass through).
-func shortBuildID(id string) string {
-	if len(id) > 7 {
-		return id[:7]
-	}
-	return id
-}
-
-// humanSize renders a byte count in the decimal unit set with a
-// one-decimal mantissa ("512.0 B", "1.0 MB"), for artifact and disk
+// humanSize renders a byte count in the binary unit set with a
+// one-decimal mantissa ("512.0 B", "1.2 KiB"), for artifact and disk
 // sizes.
 func humanSize(n int64) string {
 	const (
-		kb = 1000
-		mb = 1000 * 1000
-		gb = 1000 * 1000 * 1000
+		kb = 1 << 10
+		mb = 1 << 20
+		gb = 1 << 30
 	)
 	switch {
 	case n >= gb:
-		return strconv.FormatFloat(float64(n)/gb, 'f', 1, 64) + " GB"
+		return strconv.FormatFloat(float64(n)/gb, 'f', 1, 64) + " GiB"
 	case n >= mb:
-		return strconv.FormatFloat(float64(n)/mb, 'f', 1, 64) + " MB"
+		return strconv.FormatFloat(float64(n)/mb, 'f', 1, 64) + " MiB"
 	case n >= kb:
-		return strconv.FormatFloat(float64(n)/kb, 'f', 1, 64) + " KB"
+		return strconv.FormatFloat(float64(n)/kb, 'f', 1, 64) + " KiB"
 	default:
 		return strconv.FormatFloat(float64(n), 'f', 1, 64) + " B"
 	}
-}
-
-// relTime renders an optional timestamp as a relative age ("3m ago").
-func relTime(t *time.Time) string {
-	return formatWhen(t, time.Now())
 }
 
 // absTime renders an optional timestamp as local wall-clock time.
@@ -91,4 +78,46 @@ func absTime(t *time.Time) string {
 		return "never"
 	}
 	return t.Local().Format("2006-01-02 15:04")
+}
+
+// pkgEpoch renders the package version with its epoch prefix
+// ("e:epoch:pkgver-rel") when the backend row carries an Epoch field,
+// else "". The field is landing in a parallel wave and may be a string
+// or an int (0 meaning none), so reflection keeps the template valid
+// whichever lands.
+func pkgEpoch(pkg any) string {
+	v := reflect.ValueOf(pkg)
+	for v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	f := v.FieldByName("Epoch")
+	if !f.IsValid() {
+		return ""
+	}
+	var epoch string
+	switch f.Kind() {
+	case reflect.String:
+		epoch = f.String()
+	case reflect.Int, reflect.Int32, reflect.Int64:
+		if n := f.Int(); n > 0 {
+			epoch = strconv.FormatInt(n, 10)
+		}
+	default:
+		return ""
+	}
+	if epoch == "" {
+		return ""
+	}
+	pkgver := v.FieldByName("Pkgver").String()
+	pkgrel := v.FieldByName("Pkgrel").String()
+	if pkgver == "" {
+		return ""
+	}
+	if pkgrel != "" {
+		return "e:" + epoch + ":" + pkgver + "-" + pkgrel
+	}
+	return "e:" + epoch + ":" + pkgver
 }
