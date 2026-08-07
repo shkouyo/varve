@@ -56,7 +56,11 @@ func TestHandlerRouteTable(t *testing.T) {
 		{"build missing", http.MethodGet, "/builds/ffffffffffffffff", http.StatusNotFound},
 		{"build invalid", http.MethodGet, "/builds/99999", http.StatusBadRequest},
 		{"build log", http.MethodGet, "/builds/" + itoa(build.ID) + "/log", http.StatusOK},
-		{"copying", http.MethodGet, "/copying.txt", http.StatusOK},
+		{"copying", http.MethodGet, "/copying.txt", http.StatusMovedPermanently},
+		{"copying canonical", http.MethodGet, "/COPYING.txt", http.StatusOK},
+		{"favicon svg", http.MethodGet, "/favicon.svg", http.StatusOK},
+		{"favicon ico", http.MethodGet, "/favicon.ico", http.StatusFound},
+		{"trailing slash", http.MethodGet, "/packages/", http.StatusMovedPermanently},
 		{"logout", http.MethodGet, "/admin/logout", http.StatusUnauthorized},
 		{"admin unauth", http.MethodGet, "/admin", http.StatusUnauthorized},
 		{"admin builds unauth", http.MethodGet, "/admin/builds?failed=1", http.StatusUnauthorized},
@@ -90,18 +94,99 @@ func TestHandlerRouteTable(t *testing.T) {
 	}
 }
 
-// TestCopyingServesLicense asserts /copying.txt returns the embedded
-// license text as plain text.
+// TestCopyingServesLicense asserts /COPYING.txt returns the verbatim
+// repository license text (no added comments) as plain text, and that
+// the legacy lowercase path redirects to it permanently.
 func TestCopyingServesLicense(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
-	rec := get(t, s, http.MethodGet, "/copying.txt", nil)
+	rec := get(t, s, http.MethodGet, "/COPYING.txt", nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /copying.txt = %d, want 200", rec.Code)
+		t.Fatalf("GET /COPYING.txt = %d, want 200", rec.Code)
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
 		t.Errorf("Content-Type = %q, want text/plain", ct)
 	}
-	mustContain(t, rec.Body.String(), "GNU AFFERO GENERAL PUBLIC LICENSE", "mirror of the repository COPYING")
+	body := rec.Body.String()
+	mustContain(t, body, "GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3, 19 November 2007")
+	// The asset must be the raw license text: no mirror note header, no
+	// trailing annotation.
+	if strings.Contains(body, "mirror") || strings.HasPrefix(body, "#") {
+		t.Error("COPYING.txt must be the verbatim repository license text")
+	}
+
+	rec = get(t, s, http.MethodGet, "/copying.txt", nil)
+	if rec.Code != http.StatusMovedPermanently {
+		t.Fatalf("GET /copying.txt = %d, want 301", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/COPYING.txt" {
+		t.Errorf("Location = %q, want /COPYING.txt", loc)
+	}
+}
+
+// TestFaviconRoutes asserts the SVG icon is served inline and the .ico
+// path redirects to it.
+func TestFaviconRoutes(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/favicon.svg", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /favicon.svg = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("Content-Type = %q, want image/svg+xml", ct)
+	}
+	mustContain(t, rec.Body.String(), "<svg", "</svg>")
+
+	rec = get(t, s, http.MethodGet, "/favicon.ico", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("GET /favicon.ico = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/favicon.svg" {
+		t.Errorf("Location = %q, want /favicon.svg", loc)
+	}
+}
+
+// TestTrailingSlashRedirect asserts non-root paths ending in "/" are
+// normalized 301 to the slashless form, the root path stays put, and the
+// query string survives.
+func TestTrailingSlashRedirect(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, newTestDB(t), newFakeLogReader(""))
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/packages/", "/packages"},
+		{"/builds/", "/builds"},
+		{"/packages/?q=foo&page=2", "/packages?q=foo&page=2"},
+	}
+	for _, tc := range cases {
+		rec := get(t, s, http.MethodGet, tc.path, nil)
+		if rec.Code != http.StatusMovedPermanently {
+			t.Errorf("GET %s = %d, want 301", tc.path, rec.Code)
+			continue
+		}
+		if loc := rec.Header().Get("Location"); loc != tc.want {
+			t.Errorf("GET %s: Location = %q, want %q", tc.path, loc, tc.want)
+		}
+	}
+	rec := get(t, s, http.MethodGet, "/", nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET / = %d, want 200 (root never redirects)", rec.Code)
+	}
+}
+
+// TestSecurityHeaders asserts every response carries the minimal security
+// header set: frame denial and content-type sniffing prevention.
+func TestSecurityHeaders(t *testing.T) {
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, newTestDB(t), newFakeLogReader(""))
+	for _, path := range []string{"/", "/packages", "/packages/nope", "/COPYING.txt", "/favicon.svg"} {
+		rec := get(t, s, http.MethodGet, path, nil)
+		if rec.Header().Get("X-Frame-Options") != "DENY" {
+			t.Errorf("%s: missing X-Frame-Options: DENY", path)
+		}
+		if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s: missing X-Content-Type-Options: nosniff", path)
+		}
+	}
 }
 
 // TestTemplateSetCompiles asserts that the full template set is

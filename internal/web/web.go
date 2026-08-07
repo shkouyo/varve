@@ -64,7 +64,7 @@ var templatesFS embed.FS
 //go:embed static/app.css
 var appCSS []byte
 
-//go:embed copying.txt
+//go:embed COPYING.txt
 var copyingText []byte
 
 // sanitizeCSS drops the tailwind version banner comment from the embedded
@@ -116,7 +116,9 @@ func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store *db.Sto
 // JavaScript. GET /admin redirects to the merged dashboard page (admin
 // content renders there for authenticated requests) and
 // GET /admin/logout forces a 401 so the browser drops its saved
-// credentials.
+// credentials. Two middlewares wrap the table: URL normalization (301
+// to the canonical slashless path) and the minimal security header set
+// on every response.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
@@ -125,7 +127,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /builds/{id}/log", s.handleLog)
 	mux.HandleFunc("GET /packages", s.handlePackages)
 	mux.HandleFunc("GET /packages/{pkgbase}", s.handlePackage)
-	mux.HandleFunc("GET /copying.txt", s.handleCopying)
+	mux.HandleFunc("GET /COPYING.txt", s.handleCopying)
+	mux.HandleFunc("GET /copying.txt", s.handleCopyingLegacy)
+	mux.HandleFunc("GET /favicon.svg", s.handleFavicon)
+	mux.HandleFunc("GET /favicon.ico", s.handleFaviconLegacy)
 
 	mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))
 	mux.HandleFunc("GET /admin/logout", s.handleLogout)
@@ -135,7 +140,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/workers/{name}/enable", s.requireAuth(s.requireSameOrigin(s.handleAdminEnable)))
 	mux.HandleFunc("POST /admin/workers/{name}/remove", s.requireAuth(s.requireSameOrigin(s.handleAdminRemove)))
 	mux.HandleFunc("GET /admin/builds", s.requireAuth(s.handleAdminBuilds))
-	return mux
+	return securityHeaders(stripTrailingSlash(mux))
 }
 
 // base carries the fields every page template renders: the page title,
@@ -198,12 +203,64 @@ func (s *Server) renderError(w http.ResponseWriter, status int, message string) 
 // characters), mirroring the store's id generator.
 const buildIDLen = 16
 
-// handleCopying serves the embedded license text. The asset is a mirror
-// of the repository-root COPYING file; keep both in sync when the license
-// text changes.
+// faviconSVG is the embedded site icon: three sediment strata on a slate
+// square, a nod to the varve naming (annual lake sediment layers).
+const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#334155"/><rect x="12" y="16" width="40" height="8" rx="2" fill="#64748b"/><rect x="12" y="28" width="40" height="8" rx="2" fill="#94a3b8"/><rect x="12" y="40" width="40" height="8" rx="2" fill="#cbd5e1"/></svg>`
+
+// handleCopying serves the embedded license text. The asset is a verbatim
+// mirror of the repository-root COPYING file; keep both in sync when the
+// license text changes.
 func (s *Server) handleCopying(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(copyingText)
+}
+
+// handleCopyingLegacy redirects the old lowercase license path to its
+// canonical spelling, permanently, so existing links keep working.
+func (s *Server) handleCopyingLegacy(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/COPYING.txt", http.StatusMovedPermanently)
+}
+
+// handleFavicon serves the embedded SVG icon.
+func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Write([]byte(faviconSVG))
+}
+
+// handleFaviconLegacy redirects the traditional .ico path to the SVG
+// icon so browsers that request it by convention land on the same asset.
+func (s *Server) handleFaviconLegacy(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/favicon.svg", http.StatusFound)
+}
+
+// securityHeaders hardens every response with the minimal header set:
+// frame embedding is denied outright and content-type sniffing is
+// disabled, so mixed content cannot be reinterpreted.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// stripTrailingSlash normalizes URLs: every non-root path ending in "/"
+// redirects 301 to the canonical slashless form, preserving the query
+// string. Only GET/HEAD requests redirect; a form POST to a trailing-
+// slash URL must keep its method instead of being silently converted to
+// GET by the client.
+func stripTrailingSlash(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; len(p) > 1 && p[len(p)-1] == '/' {
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+				u := *r.URL
+				u.Path = p[:len(p)-1]
+				http.Redirect(w, r, u.String(), http.StatusMovedPermanently)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // parseID validates a route path value as a build id: exactly 16
