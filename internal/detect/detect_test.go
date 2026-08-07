@@ -54,13 +54,13 @@ func TestMirrorDir(t *testing.T) {
 func TestNewDetectorErrors(t *testing.T) {
 	store, _ := openStore(t)
 	sink := &fakeSink{}
-	if _, err := NewDetector(nil, store, sink); err == nil {
+	if _, err := NewDetector(nil, store, sink, 0); err == nil {
 		t.Error("NewDetector(nil) succeeded, want error")
 	}
-	if _, err := NewDetector(&config.SourceConfig{}, store, sink); err == nil {
+	if _, err := NewDetector(&config.SourceConfig{}, store, sink, 0); err == nil {
 		t.Error("NewDetector(empty URL) succeeded, want error")
 	}
-	if _, err := NewDetector(&config.SourceConfig{URL: "git@host:"}, store, sink); err == nil {
+	if _, err := NewDetector(&config.SourceConfig{URL: "git@host:"}, store, sink, 0); err == nil {
 		t.Error("NewDetector(unusable URL) succeeded, want error")
 	}
 }
@@ -69,7 +69,7 @@ func TestNewDetectorErrors(t *testing.T) {
 // "/data/source/<name>.git".
 func TestNewDetectorMirrorDir(t *testing.T) {
 	store, _ := openStore(t)
-	d, err := NewDetector(&config.SourceConfig{URL: "git@git.example.org:pkgbuilds.git"}, store, &fakeSink{})
+	d, err := NewDetector(&config.SourceConfig{URL: "git@git.example.org:pkgbuilds.git"}, store, &fakeSink{}, 0)
 	if err != nil {
 		t.Fatalf("NewDetector: %v", err)
 	}

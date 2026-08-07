@@ -133,11 +133,13 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 }
 
 // UpdatePackageAfterBuild records the outcome of a successful build on the
-// package row. It is only valid inside WithTx. ErrNotFound when pkgbase is
-// unknown.
+// package row: the version/description/hash records advance and the
+// last_failed_at rebuild-cooldown marker is cleared (a success proves the
+// package builds again). It is only valid inside WithTx. ErrNotFound when
+// pkgbase is unknown.
 func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase, currentVersion, pkgdesc, srcinfoHash, upstreamRef string, buildID string) error {
 	res, err := t.tx.ExecContext(ctx, `UPDATE packages SET
-		current_version = ?, pkgdesc = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?
+		current_version = ?, pkgdesc = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?, last_failed_at = NULL
 		WHERE pkgbase = ?`,
 		currentVersion, pkgdesc, srcinfoHash, upstreamRef, buildID, pkgbase)
 	if err != nil {

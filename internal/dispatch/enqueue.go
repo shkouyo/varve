@@ -109,9 +109,7 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 			// "ingest" so the failure is visible and notified, and the queue
 			// keeps flowing.
 			log.Printf("dispatch: enqueue %s: archive failed: %v", t.ID, err)
-			_ = o.finalizeTask(ctx, t.ID, "failed", "ingest: "+err.Error(), nil, nil)
-			o.notifyFailure(ctx, t, b, "ingest", err.Error())
-			o.clearSigner(t.ID)
+			_ = o.finalizeFailure(ctx, t, "ingest", err.Error(), nil, nil)
 			return nil
 		}
 	}

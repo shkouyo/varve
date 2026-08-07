@@ -339,6 +339,27 @@ func (o *OrchestratorImpl) finalizeTask(ctx context.Context, taskID, state, errM
 	})
 }
 
+// finalizeFailure is the terminal branch of every failure: it writes the
+// failed state (stamping the package's last_failed_at rebuild-cooldown
+// marker), notifies the maintainers and clears the signer. ErrConflict and
+// ErrNotFound propagate so callers classify a lost race as today.
+func (o *OrchestratorImpl) finalizeFailure(ctx context.Context, task *db.Task, stage, summary string, artifacts []db.Artifact, samples []db.Sample) error {
+	err := o.store.WithTx(ctx, func(tx *db.Tx) error {
+		return tx.FinalizeFailed(ctx, task.ID, stage+": "+summary, o.now().UTC(), artifacts, samples)
+	})
+	if err != nil {
+		return err
+	}
+	build, berr := o.store.GetBuild(ctx, task.BuildID)
+	if berr == nil {
+		o.notifyFailure(ctx, task, build, stage, summary)
+	} else {
+		log.Printf("dispatch: read build %s for notification: %v", task.BuildID, berr)
+	}
+	o.clearSigner(task.ID)
+	return nil
+}
+
 // notifyFailure sends a failure notification to the package maintainers
 // snapshot (packages.maintainers, refreshed at enqueue). Send failures
 // are only logged: they never affect task state.

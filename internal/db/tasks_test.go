@@ -229,3 +229,97 @@ func TestGetTask(t *testing.T) {
 		t.Errorf("GetTask(ghost) = %v, want ErrNotFound", err)
 	}
 }
+
+// TestRequeueFailedTask covers the retry primitive: fail_count+1, the
+// worker and claim token are released, the build mirror returns to queued
+// with worker fields cleared; a task that is no longer active conflicts.
+func TestRequeueFailedTask(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "retry")
+	task, b := createTask(t, s, "retry-1", "queued", pkg, at(0))
+	w := registerWorker(t, s, "rw", 1)
+	if _, err := s.ClaimTask(testCtx, w.ID, 1, "tok"); err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if err := s.RequeueFailedTask(testCtx, task.ID); err != nil {
+		t.Fatalf("RequeueFailedTask: %v", err)
+	}
+	got, err := s.GetTask(testCtx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.State != "queued" || got.FailCount != 1 {
+		t.Errorf("task = %+v, want queued with fail_count 1", got)
+	}
+	if got.WorkerID != 0 || got.ClaimToken != "" {
+		t.Errorf("worker/claim not released: %+v", got)
+	}
+	build, err := s.GetBuild(testCtx, b.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if build.Status != "queued" || build.WorkerName != "" || build.StartedAt != nil {
+		t.Errorf("build mirror = %+v, want queued with worker fields cleared", build)
+	}
+	// The task is queued now: a second requeue conflicts.
+	if err := s.RequeueFailedTask(testCtx, task.ID); !errors.Is(err, ErrConflict) {
+		t.Errorf("second requeue = %v, want ErrConflict", err)
+	}
+	if err := s.RequeueFailedTask(testCtx, "ghost"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("requeue unknown = %v, want ErrNotFound", err)
+	}
+}
+
+// TestFinalizeFailedStampsCooldown covers Tx.FinalizeFailed: the task and
+// build reach the failed terminal state and the package's last_failed_at
+// rebuild-cooldown marker is written in the same transaction.
+func TestFinalizeFailedStampsCooldown(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "failpkg")
+	createTask(t, s, "fail-1", "assigned", pkg, at(0))
+	when := at(5 * time.Minute)
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		return tx.FinalizeFailed(testCtx, "fail-1", "makepkg: boom", when, nil, nil)
+	}); err != nil {
+		t.Fatalf("FinalizeFailed: %v", err)
+	}
+	got, err := s.GetTask(testCtx, "fail-1")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.State != "failed" {
+		t.Errorf("task state = %q, want failed", got.State)
+	}
+	p, err := s.GetPackageByBase(testCtx, "failpkg")
+	if err != nil {
+		t.Fatalf("GetPackageByBase: %v", err)
+	}
+	if p.LastFailedAt == nil || !p.LastFailedAt.Equal(when) {
+		t.Errorf("last_failed_at = %v, want %v (cooldown marker stamped)", p.LastFailedAt, when)
+	}
+}
+
+// TestLatestBuildForPackage covers the newest-build lookup used by the
+// rebuild cooldown comparison.
+func TestLatestBuildForPackage(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "lbp")
+	_, b1 := createTask(t, s, "lbp-1", "queued", pkg, at(0))
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		return tx.FinalizeTask(testCtx, "lbp-1", "succeeded", "", at(time.Minute), nil, nil)
+	}); err != nil {
+		t.Fatalf("FinalizeTask: %v", err)
+	}
+	_, b2 := createTask(t, s, "lbp-2", "queued", pkg, at(time.Minute))
+	latest, err := s.LatestBuildForPackage(testCtx, pkg.ID)
+	if err != nil {
+		t.Fatalf("LatestBuildForPackage: %v", err)
+	}
+	if latest.ID != b2.ID {
+		t.Errorf("latest = %s, want %s (newest by seq)", latest.ID, b2.ID)
+	}
+	_ = b1
+	if _, err := s.LatestBuildForPackage(testCtx, 99999); !errors.Is(err, ErrNotFound) {
+		t.Errorf("latest for unknown package = %v, want ErrNotFound", err)
+	}
+}

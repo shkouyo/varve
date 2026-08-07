@@ -247,7 +247,7 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 		rec.record("orch.New")
 		return fakeOrch
 	})
-	replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink) (detector, error) {
+	replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink, cooldown time.Duration) (detector, error) {
 		rec.record("detect.New")
 		return &fakeDetector{rec: rec}, nil
 	})
@@ -313,7 +313,7 @@ func TestRunServeSignerWiring(t *testing.T) {
 			got <- signer
 			return &fakeOrchestrator{rec: rec}
 		})
-		replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink) (detector, error) {
+		replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink, cooldown time.Duration) (detector, error) {
 			return &fakeDetector{rec: rec}, nil
 		})
 		replaceVar(t, &startServer, func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {

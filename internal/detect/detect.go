@@ -21,7 +21,7 @@
 // parsing and merging. The database is read-only here: the
 // packages.last_srcinfo_hash / last_upstream_ref records are only updated
 // after a successful build, which is what makes failed builds naturally
-// re-queue on the next round.
+// re-queue on the next round (throttled by the failed-rebuild cooldown).
 package detect
 
 import (
@@ -102,6 +102,11 @@ type Detector struct {
 	execCommand func(ctx context.Context, name string, arg ...string) *exec.Cmd
 	now         func() time.Time
 	logger      *slog.Logger
+
+	// failedRebuildCooldown is the minimum wait before a package whose
+	// last build failed is re-submitted without a source change (the
+	// rebuild cooldown gate). Zero disables the gate.
+	failedRebuildCooldown time.Duration
 }
 
 // execCommand is the command constructor used for every external git call;
@@ -110,13 +115,14 @@ var execCommand = exec.CommandContext
 
 // NewDetector builds a Detector for cfg and derives its mirror directory
 // from the source URL. It performs no network operation.
-func NewDetector(cfg *config.SourceConfig, store *db.Store, sink Sink) (*Detector, error) {
-	return newDetector(cfg, store, sink, sourceRoot)
+// failedRebuildCooldown comes from the controller's worker settings.
+func NewDetector(cfg *config.SourceConfig, store *db.Store, sink Sink, failedRebuildCooldown time.Duration) (*Detector, error) {
+	return newDetector(cfg, store, sink, sourceRoot, failedRebuildCooldown)
 }
 
 // newDetector is NewDetector with an injectable mirror root (tests use a
 // temp directory instead of /data/source).
-func newDetector(cfg *config.SourceConfig, store *db.Store, sink Sink, root string) (*Detector, error) {
+func newDetector(cfg *config.SourceConfig, store *db.Store, sink Sink, root string, failedRebuildCooldown time.Duration) (*Detector, error) {
 	if cfg == nil {
 		return nil, errors.New("detect: nil SourceConfig")
 	}
@@ -128,13 +134,14 @@ func newDetector(cfg *config.SourceConfig, store *db.Store, sink Sink, root stri
 		return nil, errors.New("detect: cannot derive mirror directory name from source URL")
 	}
 	return &Detector{
-		cfg:         cfg,
-		store:       store,
-		sink:        sink,
-		mirrorDir:   filepath.Join(root, name+".git"),
-		execCommand: execCommand,
-		now:         time.Now,
-		logger:      slog.Default(),
+		cfg:                   cfg,
+		store:                 store,
+		sink:                  sink,
+		mirrorDir:             filepath.Join(root, name+".git"),
+		execCommand:           execCommand,
+		now:                   time.Now,
+		logger:                slog.Default(),
+		failedRebuildCooldown: failedRebuildCooldown,
 	}, nil
 }
 
@@ -279,7 +286,8 @@ func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 
 // submitChange runs steps 5-6 of the pipeline: compare the current hash
 // and the upstream ref against the last successful-build records and
-// submit a Change when either differs.
+// submit a Change when either differs. A package whose last build failed
+// is additionally gated by the rebuild cooldown (see withinCooldown).
 func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 	if p.upstreamErr != nil {
 		d.logger.Warn("detect: upstream query failed, skipping", "branch", p.branch,
@@ -315,6 +323,11 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 	if reason == "" {
 		return
 	}
+	if d.withinCooldown(ctx, prev, p) {
+		d.logger.Info("detect: failed package inside rebuild cooldown, holding", "branch", p.branch,
+			"pkgbase", p.info.Pkgbase)
+		return
+	}
 
 	c := Change{
 		Package: Package{
@@ -333,6 +346,35 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 		d.logger.Warn("detect: sink rejected change, skipping", "branch", p.branch,
 			"pkgbase", p.info.Pkgbase, "error", err)
 	}
+}
+
+// withinCooldown reports whether the change is the residue of a failed
+// build still inside the rebuild cooldown: the package's last build
+// failed (last_failed_at set) and the current snapshot still matches that
+// failed build's records. A source change since the failure — a srcinfo
+// hash or upstream ref differing from the failed build's snapshot —
+// bypasses the gate and is submitted immediately.
+//
+// A failed build never advances the package's last_srcinfo_hash /
+// last_upstream_ref records (they only move on success), so the plain
+// comparison above stays "changed" on every round; comparing against the
+// failed build row itself separates that stale difference from a fresh
+// source change. The latest build row is the failed one whenever
+// last_failed_at is set: any success clears the marker.
+func (d *Detector) withinCooldown(ctx context.Context, prev *db.Package, p *branchPlan) bool {
+	if d.failedRebuildCooldown <= 0 || prev.LastFailedAt == nil {
+		return false
+	}
+	if !d.now().Before(prev.LastFailedAt.Add(d.failedRebuildCooldown)) {
+		return false // cooldown elapsed: submit again
+	}
+	latest, err := d.store.LatestBuildForPackage(ctx, prev.ID)
+	if err != nil {
+		d.logger.Warn("detect: cannot read latest build for cooldown check, holding", "branch", p.branch,
+			"pkgbase", prev.Pkgbase, "error", err)
+		return true // be conservative: hold until the cooldown ends
+	}
+	return p.hash == latest.SrcinfoHash && p.upstreamRef == latest.UpstreamRef
 }
 
 // showFile reads one file from the branch tree via "git show".

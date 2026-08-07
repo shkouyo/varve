@@ -40,6 +40,23 @@ func (s *Store) GetBuild(ctx context.Context, id string) (*Build, error) {
 	return b, nil
 }
 
+// LatestBuildForPackage returns the newest build row of a package (by
+// seq, the insertion order), regardless of status. ErrNotFound when the
+// package has no build yet. detect uses it for the rebuild cooldown: a
+// package whose last build failed is compared against the failed build's
+// snapshot to tell a stale difference from a fresh source change.
+func (s *Store) LatestBuildForPackage(ctx context.Context, packageID int64) (*Build, error) {
+	b, err := scanBuild(s.read.QueryRowContext(ctx,
+		`SELECT `+buildColumns+` FROM builds WHERE package_id = ? ORDER BY seq DESC LIMIT 1`, packageID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("db: latest build for package %d: %w", packageID, err)
+	}
+	return b, nil
+}
+
 // ListBuilds returns the requested page of builds, newest first, with the
 // total count. failedOnly restricts the result to failed builds.
 func (s *Store) ListBuilds(ctx context.Context, page, perPage int, failedOnly bool) ([]Build, int, error) {

@@ -137,31 +137,29 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	return nil
 }
 
-// failTask finalizes a task as failed, notifies its maintainers and clears
-// the token and key material. A race with another finalizer (agent report,
-// cancel, scheduler scan) is tolerated: the already-terminal state wins and
-// only the notification is skipped.
+// failTask finalizes a task as failed through the terminal path (verify
+// and ingest failures), notifies its maintainers and clears the token and
+// key material. These stages are not retried: a bad checksum or a failed
+// ingest has its own recovery (staging preserved for ingest; the next
+// detection round re-enqueues the change). A race with another finalizer
+// is tolerated: the already-terminal state wins and only the notification
+// is skipped.
 func (o *OrchestratorImpl) failTask(ctx context.Context, task *db.Task, stage, summary string) {
-	err := o.finalizeTask(ctx, task.ID, "failed", stage+": "+summary, nil, nil)
-	if err != nil {
+	if err := o.finalizeFailure(ctx, task, stage, summary, nil, nil); err != nil {
 		if errors.Is(err, ErrConflict) {
 			log.Printf("dispatch: task %s already terminal during %s failure handling", task.ID, stage)
 			return
 		}
 		log.Printf("dispatch: finalize %s failed: %v", task.ID, err)
-		return
 	}
-	build, berr := o.store.GetBuild(ctx, task.BuildID)
-	if berr != nil {
-		log.Printf("dispatch: read build %s for notification: %v", task.BuildID, berr)
-		return
-	}
-	o.notifyFailure(ctx, task, build, stage, summary)
-	o.clearSigner(task.ID)
 }
 
-// handleFailed finalizes the task as failed with the agent's stage and
-// summary, notifies the maintainers and cleans the staging area.
+// handleFailed applies the retry policy to an agent-reported build
+// failure: while the task's fail counter is below the configured retry
+// budget it is atomically re-queued for another attempt (same package
+// version and source, fresh claim token); at the budget it is finalized
+// failed with the package cooldown marker, a maintainer notification and
+// staging cleanup.
 func (o *OrchestratorImpl) handleFailed(ctx context.Context, task *db.Task, res ResultReq) error {
 	stage, summary := "report", "build failed"
 	if res.Error != nil {
@@ -170,19 +168,32 @@ func (o *OrchestratorImpl) handleFailed(ctx context.Context, task *db.Task, res 
 			stage = "report"
 		}
 	}
-	err := o.finalizeTask(ctx, task.ID, "failed", stage+": "+summary, toDBArtifacts(res.Artifacts), res.ResourceUsage)
-	if err != nil {
+	if err := o.failOrRetry(ctx, task, stage, summary, res); err != nil {
 		return err
 	}
-	build, berr := o.store.GetBuild(ctx, task.BuildID)
-	if berr == nil {
-		o.notifyFailure(ctx, task, build, stage, summary)
-	} else {
-		log.Printf("dispatch: read build %s for notification: %v", task.BuildID, berr)
-	}
+	// Staging is cleaned on both branches: a retried attempt re-uploads
+	// every file, and the old token/key material dies so the new attempt
+	// exports fresh key material.
 	o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
 	o.clearSigner(task.ID)
 	return nil
+}
+
+// failOrRetry picks the retry or the terminal branch for one
+// agent-reported failure. The retry branch re-queues the task (the stale
+// claim token dies with the requeue, so the re-claimed task can only be
+// driven by the new token); the terminal branch finalizes with the
+// cooldown marker and notification.
+func (o *OrchestratorImpl) failOrRetry(ctx context.Context, task *db.Task, stage, summary string, res ResultReq) error {
+	if task.FailCount < o.cfg.Worker.RetryMax {
+		if err := o.store.RequeueFailedTask(ctx, task.ID); err != nil {
+			return err
+		}
+		o.clearToken(task.ID)
+		log.Printf("dispatch: task %s failed (%s), retry %d/%d", task.ID, stage, task.FailCount+1, o.cfg.Worker.RetryMax)
+		return nil
+	}
+	return o.finalizeFailure(ctx, task, stage, summary, toDBArtifacts(res.Artifacts), res.ResourceUsage)
 }
 
 // handleCancelled finalizes the task as cancelled (agent confirmed the

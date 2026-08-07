@@ -20,6 +20,7 @@ package db
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 // TestGetPackageByBase covers hit, miss and decoded maintainers.
@@ -235,6 +236,32 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 	})
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdatePackageAfterBuild(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestUpdatePackageAfterBuildClearsCooldown asserts the success side of
+// the rebuild cooldown: a successful build clears the package's
+// last_failed_at marker.
+func TestUpdatePackageAfterBuildClearsCooldown(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "rec")
+	createTask(t, s, "rec-1", "assigned", pkg, at(0))
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		return tx.FinalizeFailed(testCtx, "rec-1", "boom", at(time.Minute), nil, nil)
+	}); err != nil {
+		t.Fatalf("FinalizeFailed: %v", err)
+	}
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		return tx.UpdatePackageAfterBuild(testCtx, "rec", "1.0-1", "d", "hash", "ref", "000000000000002a")
+	}); err != nil {
+		t.Fatalf("UpdatePackageAfterBuild: %v", err)
+	}
+	got, err := s.GetPackageByBase(testCtx, "rec")
+	if err != nil {
+		t.Fatalf("GetPackageByBase: %v", err)
+	}
+	if got.LastFailedAt != nil {
+		t.Errorf("last_failed_at = %v, want nil after a successful build", got.LastFailedAt)
 	}
 }
 

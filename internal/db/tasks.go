@@ -146,6 +146,52 @@ func (s *Store) RequeueTask(ctx context.Context, id string) error {
 	return nil
 }
 
+// RequeueFailedTask returns a failed task to the queue for another
+// attempt: state=queued, fail_count+1, the worker and claim token are
+// released and attempts is incremented; the mirrored build row returns to
+// queued with worker fields and started_at cleared. The state guard makes
+// the retry decision atomic — only one caller wins when several finalize
+// paths race. ErrConflict when the task is not in assigned/running
+// (already terminal or re-queued), ErrNotFound when it does not exist.
+// The retry policy uses this primitive while a task's fail counter stays
+// below the configured budget.
+func (s *Store) RequeueFailedTask(ctx context.Context, id string) error {
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE tasks SET
+			state = 'queued', fail_count = fail_count + 1, worker_id = NULL, assigned_at = NULL, claim_token = '', attempts = attempts + 1
+			WHERE id = ? AND state IN ('assigned', 'running')`, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			var state string
+			if err := tx.QueryRowContext(ctx,
+				`SELECT state FROM tasks WHERE id = ?`, id).Scan(&state); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrNotFound
+				}
+				return err
+			}
+			return ErrConflict
+		}
+		_, err = tx.ExecContext(ctx,
+			`UPDATE builds SET status = 'queued', started_at = NULL, worker_id = NULL, worker_name = '' WHERE id = (SELECT build_id FROM tasks WHERE id = ?)`,
+			id)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
+			return err
+		}
+		return fmt.Errorf("db: requeue failed task %s: %w", id, err)
+	}
+	return nil
+}
+
 // RequestTaskCancel persists the durable cancellation flag: the signal
 // survives a controller restart. It is a no-op when the task already
 // reached a terminal state. ErrNotFound when the task does not exist. It

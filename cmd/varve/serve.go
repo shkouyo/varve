@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"git.0x0f.dev/varve/internal/api"
 	"git.0x0f.dev/varve/internal/config"
@@ -95,8 +96,8 @@ var (
 
 	// newDetector builds the source poller (step 8). Tests substitute a
 	// recorder so no git mirror is touched.
-	newDetector = func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink) (detector, error) {
-		return detect.NewDetector(cfg, store, sink)
+	newDetector = func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink, cooldown time.Duration) (detector, error) {
+		return detect.NewDetector(cfg, store, sink, cooldown)
 	}
 
 	// startServer binds addr, serves h and reports fatal serve errors on
@@ -185,7 +186,7 @@ func runServe(args []string) error {
 	}
 
 	// 8. Detection poller (step 8).
-	det, err := newDetector(&cfg.Source, store, orch)
+	det, err := newDetector(&cfg.Source, store, orch, cfg.Worker.FailedRebuildCooldown)
 	if err != nil {
 		orch.Stop()
 		return err

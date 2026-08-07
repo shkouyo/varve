@@ -139,22 +139,17 @@ func (o *OrchestratorImpl) finalizeCancelled(ctx context.Context, t *db.Task) {
 	o.clearSigner(t.ID)
 }
 
-// finalizeFailed finalizes a failed task, notifies the maintainers and
-// cleans the staging area.
+// finalizeFailed finalizes a control-plane failure (stall, timeout):
+// terminal state with the package cooldown marker, maintainer
+// notification and signer cleanup. Control-plane failures are not retried
+// — the retry budget is reserved for agent-reported build failures, whose
+// first stall already re-queues once (attempts < 1).
 func (o *OrchestratorImpl) finalizeFailed(ctx context.Context, t *db.Task, stage, summary string) {
-	if err := o.finalizeTask(ctx, t.ID, "failed", stage+": "+summary, nil, nil); err != nil {
+	if err := o.finalizeFailure(ctx, t, stage, summary, nil, nil); err != nil {
 		if !errors.Is(err, ErrConflict) {
 			log.Printf("dispatch: finalize failed %s: %v", t.ID, err)
 		}
-		return
 	}
-	build, err := o.store.GetBuild(ctx, t.BuildID)
-	if err != nil {
-		log.Printf("dispatch: read build %s for notification: %v", t.BuildID, err)
-		return
-	}
-	o.notifyFailure(ctx, t, build, stage, summary)
-	o.clearSigner(t.ID)
 }
 
 // hourlyMaintenance runs the hourly pass: successful logs are rolled by

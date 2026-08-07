@@ -123,7 +123,7 @@ func seedPackageRow(t *testing.T, dbPath, pkgbase, srcinfoHash, upstreamRef stri
 func newTestDetector(t *testing.T, url string, store *db.Store, sink Sink) *Detector {
 	t.Helper()
 	cfg := &config.SourceConfig{URL: url, PollInterval: time.Hour}
-	d, err := newDetector(cfg, store, sink, t.TempDir())
+	d, err := newDetector(cfg, store, sink, t.TempDir(), 0)
 	if err != nil {
 		t.Fatalf("newDetector: %v", err)
 	}

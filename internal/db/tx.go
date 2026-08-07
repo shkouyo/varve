@@ -86,3 +86,20 @@ func (t *Tx) FinalizeTask(ctx context.Context, id, state, errMsg string, at time
 	}
 	return nil
 }
+
+// FinalizeFailed writes the failed terminal state (via FinalizeTask) and
+// stamps the package's last_failed_at rebuild-cooldown marker in the same
+// transaction. It is the terminal branch of every failure path; the
+// marker is what makes detect hold the package's next re-enqueue.
+func (t *Tx) FinalizeFailed(ctx context.Context, id, errMsg string, at time.Time, artifacts []Artifact, samples []Sample) error {
+	if err := t.FinalizeTask(ctx, id, "failed", errMsg, at, artifacts, samples); err != nil {
+		return err
+	}
+	_, err := t.tx.ExecContext(ctx,
+		`UPDATE packages SET last_failed_at = ? WHERE id = (SELECT package_id FROM tasks WHERE id = ?)`,
+		formatTime(at), id)
+	if err != nil {
+		return fmt.Errorf("db: stamp last_failed_at for task %s: %w", id, err)
+	}
+	return nil
+}
