@@ -35,7 +35,7 @@ import (
 // Updater orchestrates the ingest of validated build artifacts into the
 // pacman repository: moving artifacts from staging into the flat repository
 // root, pruning old versions, writing the authoritative side file and
-// running repo-add / repo-remove.
+// running repo-add / repo-remove. Remove undoes a package.
 //
 // All methods are caller-serialized: the caller (dispatch) holds the ingest
 // mutex, so no internal locking is performed.
@@ -55,6 +55,13 @@ type Updater interface {
 	// Ingest is idempotent and safe to retry as a whole: every step is
 	// re-runnable, and staging is only ever consumed, never created.
 	Ingest(ctx context.Context, task *db.Task, build *db.Build, workerName string, manifest []Artifact) error
+
+	// Remove removes a package from the repository: every artifact listed
+	// in its side file (with detached signatures), the side file itself
+	// and the pacman database entries. Idempotent: a missing side file,
+	// missing artifacts and entries already absent from the database are
+	// tolerated, so retries after partial failures converge.
+	Remove(ctx context.Context, pkgbase string) error
 }
 
 // updater implements Updater. The signer dependency is narrowed to the

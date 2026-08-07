@@ -128,6 +128,58 @@ func TestFinalizeTaskConflict(t *testing.T) {
 	}
 }
 
+// TestDeletePackageRows covers the cascade primitive: tasks, builds and
+// the package row are removed in child-first order and the removed build
+// ids are returned for log cleanup. A missing package deletes nothing and
+// returns no ids.
+func TestDeletePackageRows(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "gone")
+	task, b := createTask(t, s, "gone-1", "queued", pkg, at(0))
+	_ = task
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		return tx.FinalizeTask(testCtx, "gone-1", "succeeded", "", at(time.Minute), nil, nil)
+	}); err != nil {
+		t.Fatalf("FinalizeTask: %v", err)
+	}
+	createTask(t, s, "gone-2", "queued", pkg, at(time.Minute))
+
+	var ids []string
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		var err error
+		ids, err = tx.DeletePackageRows(testCtx, pkg.ID)
+		return err
+	}); err != nil {
+		t.Fatalf("DeletePackageRows: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Errorf("removed build ids = %v, want the two build ids", ids)
+	}
+	if _, err := s.GetPackageByBase(testCtx, "gone"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("package still present: %v", err)
+	}
+	if _, err := s.GetBuild(testCtx, b.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("build still present: %v", err)
+	}
+	if _, err := s.GetTask(testCtx, "gone-2"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("task still present: %v", err)
+	}
+
+	// Idempotent: deleting a package that is already gone is a no-op.
+	if err := s.WithTx(testCtx, func(tx *Tx) error {
+		ids, err := tx.DeletePackageRows(testCtx, pkg.ID)
+		if err != nil {
+			return err
+		}
+		if len(ids) != 0 {
+			t.Errorf("second delete returned build ids %v, want none", ids)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("DeletePackageRows again: %v", err)
+	}
+}
+
 // TestFinalizeTaskMirror asserts tasks and builds stay in sync for every
 // terminal state.
 func TestFinalizeTaskMirror(t *testing.T) {

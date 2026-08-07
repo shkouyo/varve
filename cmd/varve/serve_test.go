@@ -436,6 +436,7 @@ type fakeOrchestrator struct {
 var _ orchestrator = (*fakeOrchestrator)(nil)
 
 func (f *fakeOrchestrator) Submit(ctx context.Context, c detect.Change) error { return nil }
+func (f *fakeOrchestrator) Remove(ctx context.Context, pkgbase string) error  { return nil }
 func (f *fakeOrchestrator) Enqueue(ctx context.Context, c detect.Change, force bool) error {
 	return nil
 }

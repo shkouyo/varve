@@ -19,6 +19,7 @@ package detect
 
 import (
 	"context"
+	"database/sql"
 	"reflect"
 	"testing"
 )
@@ -91,5 +92,60 @@ func TestBranchSnapshot(t *testing.T) {
 
 	if _, err := d.BranchSnapshot(context.Background(), "nope"); err == nil {
 		t.Error("BranchSnapshot(nope) succeeded, want error")
+	}
+}
+
+// seedBranchPackage inserts a packages row with the given branch name and
+// last successful srcinfo hash (detect never writes the database itself).
+func seedBranchPackage(t *testing.T, dbPath, pkgbase, branch, srcinfoHash string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`INSERT INTO packages
+		(pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc,
+		 last_srcinfo_hash, last_upstream_ref, maintainers)
+		VALUES (?, ?, '', 'x86_64', 1, '', '', ?, '', '[]')`,
+		pkgbase, branch, srcinfoHash); err != nil {
+		t.Fatalf("seed package %s: %v", pkgbase, err)
+	}
+}
+
+// TestPollOnceCascadesVanishedBranch covers the cascade trigger: a branch
+// deleted upstream disappears after the pruned fetch and the sink is
+// asked to remove its package, while surviving branches with no change
+// submit nothing.
+func TestPollOnceCascadesVanishedBranch(t *testing.T) {
+	src := newMultiBranchRepo(t, []branchSpec{
+		{name: "keep", files: map[string]string{".SRCINFO": srcinfoBody("keep", "1.0", "1")}},
+		{name: "drop", files: map[string]string{".SRCINFO": srcinfoBody("drop", "1.0", "1")}},
+	})
+	store, dbPath := openStore(t)
+	seedBranchPackage(t, dbPath, "keep", "keep", hashOf(srcinfoBody("keep", "1.0", "1")))
+	seedBranchPackage(t, dbPath, "drop", "drop", hashOf(srcinfoBody("drop", "1.0", "1")))
+
+	// Delete the drop branch upstream; the next pruned fetch drops it.
+	runGit(t, src, "checkout", "keep")
+	runGit(t, src, "branch", "-D", "drop")
+
+	sink := &fakeSink{}
+	d := newTestDetector(t, "file://"+src, store, sink)
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	// The vanished branch's package is cascaded; the surviving branch
+	// submitted nothing (its record matches the current source).
+	sink.mu.Lock()
+	removed := append([]string(nil), sink.removed...)
+	changes := append([]Change(nil), sink.changes...)
+	sink.mu.Unlock()
+	if len(removed) != 1 || removed[0] != "drop" {
+		t.Errorf("removed = %v, want [drop]", removed)
+	}
+	if len(changes) != 0 {
+		t.Errorf("changes = %+v, want none (keep is unchanged)", changes)
 	}
 }

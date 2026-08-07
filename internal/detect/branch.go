@@ -30,8 +30,8 @@ var defaultExcludeBranches = []string{"main"}
 
 // listBranches enumerates the mirror's heads and drops the excluded ones
 // (path.Match glob per pattern). Branches deleted upstream disappear after
-// a pruned fetch and are simply not enumerated any more; their packages
-// rows are left untouched for manual inspection.
+// a pruned fetch and are not enumerated any more; PollOnce cascades the
+// removal of their packages (rows, repository files and database entries).
 func (d *Detector) listBranches(ctx context.Context) ([]string, error) {
 	cmd := d.execCommand(ctx, "git", "-C", d.mirrorDir,
 		"for-each-ref", "refs/heads", "--format=%(refname:short)")

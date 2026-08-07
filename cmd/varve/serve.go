@@ -43,11 +43,13 @@ import (
 
 // orchestrator is the orchestration surface the serve path needs: the full
 // Orchestrator contract consumed by the API server, the web server and the
-// log reader, plus Submit (detect.Sink) and the concrete Stop used for
-// graceful shutdown. dispatch.OrchestratorImpl satisfies it.
+// log reader, plus the detect.Sink methods (Submit, Remove) and the
+// concrete Stop used for graceful shutdown. dispatch.OrchestratorImpl
+// satisfies it.
 type orchestrator interface {
 	dispatch.Orchestrator
 	Submit(ctx context.Context, c detect.Change) error
+	Remove(ctx context.Context, pkgbase string) error
 	Stop()
 }
 

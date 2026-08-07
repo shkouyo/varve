@@ -201,9 +201,11 @@ func (f *fakeStorage) GetBytes(ctx context.Context, name string) ([]byte, error)
 type fakeUpdater struct {
 	log       *opLog
 	ingestErr error
+	removeErr error
 	worker    string
 	lastBuild *db.Build
 	lastTask  *db.Task
+	removed   []string
 	entered   chan struct{} // closed on the first Ingest entry (test sync)
 	block     chan struct{} // when non-nil, Ingest blocks until closed
 	enterOnce sync.Once
@@ -226,6 +228,13 @@ func (f *fakeUpdater) Ingest(ctx context.Context, task *db.Task, build *db.Build
 		return f.ingestErr
 	}
 	return nil
+}
+
+// Remove implements repo.Updater for the cascade path.
+func (f *fakeUpdater) Remove(ctx context.Context, pkgbase string) error {
+	f.log.add("remove " + pkgbase)
+	f.removed = append(f.removed, pkgbase)
+	return f.removeErr
 }
 
 type fakeSigner struct {

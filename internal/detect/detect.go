@@ -88,7 +88,12 @@ type Change struct {
 // Sink consumes detected changes; the dispatch module implements it.
 // Implementations must be safe for concurrent Submit calls.
 type Sink interface {
+	// Submit enqueues one detected change for building.
 	Submit(ctx context.Context, c Change) error
+	// Remove cascades the removal of a package whose source branch
+	// vanished from the mirror (rows, repository files and database
+	// entries). A missing package is a no-op.
+	Remove(ctx context.Context, pkgbase string) error
 }
 
 // Detector polls the source mirror and submits changes. Public methods
@@ -169,9 +174,10 @@ func MirrorDir(url string) string {
 }
 
 // PollOnce runs one full detection round: mirror maintenance, branch
-// enumeration and the per-branch pipeline. A mirror fetch failure aborts
-// the round and is reported; per-branch problems only produce warnings so
-// one bad branch never blocks the others.
+// enumeration, vanished-branch cascade removal and the per-branch
+// pipeline. A mirror fetch failure aborts the round and is reported;
+// per-branch problems only produce warnings so one bad branch never
+// blocks the others.
 func (d *Detector) PollOnce(ctx context.Context) error {
 	if err := d.ensureMirror(ctx); err != nil {
 		return err
@@ -180,6 +186,7 @@ func (d *Detector) PollOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	d.removeVanishedBranches(ctx, branches)
 
 	plans := make([]*branchPlan, 0, len(branches))
 	for _, branch := range branches {
@@ -192,6 +199,40 @@ func (d *Detector) PollOnce(ctx context.Context) error {
 		d.submitChange(ctx, p)
 	}
 	return nil
+}
+
+// removeVanishedBranches cascades the removal of every tracked package
+// whose branch is no longer enumerated by the mirror (a branch deleted
+// upstream disappears after the pruned fetch). Excluded branches are not
+// enumerated either, so a package that moved into an exclude pattern is
+// removed too — exclusion means "stop serving this branch". Removal
+// failures are warnings: the package row stays and the next round retries
+// the idempotent cascade.
+func (d *Detector) removeVanishedBranches(ctx context.Context, branches []string) {
+	known := make(map[string]bool, len(branches))
+	for _, b := range branches {
+		known[b] = true
+	}
+	const pageSize = 1000
+	for page := 1; ; page++ {
+		pkgs, total, err := d.store.ListPackages(ctx, "", page, pageSize)
+		if err != nil {
+			d.logger.Warn("detect: cannot list packages for branch cleanup", "error", err)
+			return
+		}
+		for _, p := range pkgs {
+			if known[p.Branch] {
+				continue
+			}
+			d.logger.Warn("detect: branch vanished, cascading removal", "branch", p.Branch, "pkgbase", p.Pkgbase)
+			if err := d.sink.Remove(ctx, p.Pkgbase); err != nil {
+				d.logger.Warn("detect: cascade removal failed", "branch", p.Branch, "pkgbase", p.Pkgbase, "error", err)
+			}
+		}
+		if len(pkgs) == 0 || page*pageSize >= total {
+			return
+		}
+	}
 }
 
 // branchPlan carries everything the pipeline learned about one branch so

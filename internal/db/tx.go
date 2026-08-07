@@ -103,3 +103,38 @@ func (t *Tx) FinalizeFailed(ctx context.Context, id, errMsg string, at time.Time
 	}
 	return nil
 }
+
+// DeletePackageRows removes every row of a package in child-first order
+// (tasks, then builds, then the package row) and returns the removed
+// build ids so the caller can clean their on-disk logs. Missing rows are
+// tolerated, which keeps the cascade idempotent across partial failures.
+func (t *Tx) DeletePackageRows(ctx context.Context, packageID int64) ([]string, error) {
+	rows, err := t.tx.QueryContext(ctx,
+		`SELECT id FROM builds WHERE package_id = ?`, packageID)
+	if err != nil {
+		return nil, fmt.Errorf("db: list builds of package %d: %w", packageID, err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("db: scan build id of package %d: %w", packageID, err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("db: list builds of package %d: %w", packageID, err)
+	}
+	for _, stmt := range []string{
+		`DELETE FROM tasks WHERE package_id = ?`,
+		`DELETE FROM builds WHERE package_id = ?`,
+		`DELETE FROM packages WHERE id = ?`,
+	} {
+		if _, err := t.tx.ExecContext(ctx, stmt, packageID); err != nil {
+			return nil, fmt.Errorf("db: delete package %d rows: %w", packageID, err)
+		}
+	}
+	return ids, nil
+}

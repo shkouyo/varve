@@ -35,11 +35,12 @@ import (
 	"git.0x0f.dev/varve/internal/detect/srcinfo"
 )
 
-// fakeSink records submitted changes and can be told to fail the first
-// Submit (conflict simulation).
+// fakeSink records submitted changes and cascade removals, and can be
+// told to fail the first Submit (conflict simulation).
 type fakeSink struct {
 	mu      sync.Mutex
 	changes []Change
+	removed []string
 	err     error // returned by every Submit when non-nil
 	errOnce bool  // fail exactly the next Submit
 }
@@ -58,6 +59,18 @@ func (f *fakeSink) Submit(_ context.Context, c Change) error {
 		return f.err
 	}
 	f.changes = append(f.changes, c)
+	return nil
+}
+
+// Remove implements Sink: it records the removal and reports the shared
+// error when set.
+func (f *fakeSink) Remove(_ context.Context, pkgbase string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.removed = append(f.removed, pkgbase)
 	return nil
 }
 
