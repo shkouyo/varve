@@ -101,7 +101,9 @@ jobs:
           # are snap transition stubs on Ubuntu 24.04 and cannot run inside
           # the job container, so Chrome is installed separately as Chrome
           # for Testing (see the Install Chrome for Testing step below).
-          npm install -g html-validate @axe-core/cli
+          # html-validate is pinned: the templates are linted against a
+          # fixed checker version, and unpinned "latest" installs drift.
+          npm install -g html-validate@11.6.2 @axe-core/cli
           pip3 install --break-system-packages html5validator
 
       - name: html-validate
@@ -167,8 +169,9 @@ jobs:
           [web]
           download_enabled = true
           download_base_uri = "https://repo.example.invalid/varve"
-          admin_user = "admin"
-          admin_password = "sim-admin-pass"
+          [[web.admins]]
+          user = "admin"
+          password = "sim-admin-pass"
 
           [logs]
           dir = "$WORK/logs"
@@ -240,13 +243,50 @@ jobs:
           worker = "builder-1"
           EOF
 
-          # Build logs: builds 1 and 2 have logs; gcc (build 3) has none,
-          # so the missing-log error page is covered too.
-          printf '==> hello: checking build env\n==> make -j8\n==> packaging\n' > "$WORK/logs/1.log"
-          printf '==> zlib: ./configure --prefix=/usr\n==> make -j8\n==> packaging\n' > "$WORK/logs/2.log"
-
-          # Rebuild the SQLite index from the side files.
+          # Rebuild the SQLite index from the side files. Build ids are
+          # generated 16-hex strings, so read the real ids back from the
+          # database (hello, zlib, gcc in seq order) instead of assuming
+          # numeric ids.
           "$PWD/varve" rebuild-index --config "$CONF"
+
+          mapfile -t IDS < <(python3 - "$WORK/varve.db" <<'PYEOF'
+          import sqlite3, sys
+          con = sqlite3.connect(sys.argv[1])
+          try:
+              rows = con.execute("SELECT id FROM builds ORDER BY seq").fetchall()
+          finally:
+              con.close()
+          print("\n".join(r[0] for r in rows))
+          PYEOF
+          )
+          ID1=${IDS[0]}
+          ID2=${IDS[1]}
+          ID3=${IDS[2]}
+          echo "build ids: hello=$ID1 zlib=$ID2 gcc=$ID3"
+
+          # Build logs: hello and zlib have logs; gcc (build 3) has none,
+          # so the no-log branch of the build page is covered too.
+          printf '==> hello: checking build env\n==> make -j8\n==> packaging\n' > "$WORK/logs/$ID1.log"
+          printf '==> zlib: ./configure --prefix=/usr\n==> make -j8\n==> packaging\n' > "$WORK/logs/$ID2.log"
+
+          # Give the hello build two resource samples so the progress-bar
+          # markup (CPU/memory/disk) renders and gets checked.
+          python3 - "$WORK/varve.db" "$ID1" <<'PYEOF'
+          import json, sqlite3, sys
+          con = sqlite3.connect(sys.argv[1])
+          samples = [
+              {"at": "2026-01-15T10:00:00.000000000Z", "cpu_time_ns": 0, "memory_bytes": 52428800,
+               "disk_total_bytes": 107374182400, "disk_available_bytes": 75161927680, "disk_used_bytes": 32212254720},
+              {"at": "2026-01-15T10:00:05.000000000Z", "cpu_time_ns": 2500000000, "memory_bytes": 56623104,
+               "disk_total_bytes": 107374182400, "disk_available_bytes": 74000000000, "disk_used_bytes": 33374182400},
+          ]
+          try:
+              con.execute("UPDATE builds SET resource_usage = ? WHERE id = ?",
+                          (json.dumps(samples), sys.argv[2]))
+              con.commit()
+          finally:
+              con.close()
+          PYEOF
 
           # Start the controller (default serve subcommand) and wait for
           # the web port; the trap stops it on failure as well.
@@ -262,21 +302,21 @@ jobs:
           [ "$ready" = 1 ] || { cat "$ROOT/serve.log"; exit 1; }
 
           # Save every rendered page; admin routes need Basic Auth (-u is
-          # ignored on public routes). The 404 pages are saved too: they
-          # are valid error-template renders.
+          # ignored on public routes). The authenticated dashboard carries
+          # the admin content, and the 404 page is saved too: it is a
+          # valid error-template render.
           fetch() { # <url> <file> [expected status]
             code=$(curl -s -u "$AUTH" -o "$PAGES/$2" -w '%{http_code}' "$1")
-            [ "$code" = "${3:-200}" ] || { echo "unexpected status $code for $1" >&2; return 1; }
+            [ "$code" = "${3:-200}" ] || { echo "unexpected status $code for $1 (want ${3:-200})" >&2; return 1; }
           }
           fetch "$WEB/"                          index.html
           fetch "$WEB/packages"                  packages.html
           fetch "$WEB/packages/hello"            package-hello.html
-          fetch "$WEB/builds/1"                  build-1.html
-          fetch "$WEB/builds/1/log"              build-1-log.html
-          fetch "$WEB/builds/3"                  build-3.html
-          fetch "$WEB/builds/3/log"              build-3-log.html 404
-          fetch "$WEB/admin"                     admin.html
-          fetch "$WEB/admin/builds?failed=1"     admin-builds.html
+          fetch "$WEB/builds"                    builds.html
+          fetch "$WEB/builds/$ID1"               build-hello.html
+          fetch "$WEB/builds/$ID2"               build-zlib.html
+          fetch "$WEB/builds/$ID3"               build-gcc.html
+          fetch "$WEB/admin/builds"              admin-builds.html
           fetch "$WEB/packages/__nope__"         404.html 404
 
           # Graceful shutdown (SIGTERM); the trap above is the backstop.
