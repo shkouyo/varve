@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -48,6 +49,10 @@ type fakeClient struct {
 	cancelAfter int // remaining append calls before a Cancelled ack
 	logOffset   int64
 	segments    []api.LogSegment
+	// logMaxSegment mirrors the controller's per-segment cap (0 = no
+	// cap); logAppendDelay simulates a real append round trip.
+	logMaxSegment  int
+	logAppendDelay time.Duration
 
 	results     []api.ResultReq
 	reportErr   error
@@ -150,6 +155,13 @@ func (f *fakeClient) AppendLog(ctx context.Context, id, token string, seg api.Lo
 	f.calls = append(f.calls, "AppendLog")
 	if f.logAckErr != nil {
 		return nil, f.logAckErr
+	}
+	if f.logMaxSegment > 0 && len(seg.Data) > f.logMaxSegment {
+		return nil, &api.APIError{Status: http.StatusBadRequest, Code: "invalid_request",
+			Message: "log segment must not exceed " + strconv.Itoa(f.logMaxSegment) + " bytes"}
+	}
+	if f.logAppendDelay > 0 {
+		time.Sleep(f.logAppendDelay)
 	}
 	f.segments = append(f.segments, seg)
 	ack := f.logAck

@@ -124,7 +124,11 @@ func (b *LogBuffer) loop(interval time.Duration) {
 	for {
 		select {
 		case <-b.done:
-			b.flush()
+			// Final drain: flush the remainder in bounded segments.
+			// The loop stops when the buffer is empty or an append
+			// fails, so Close cannot hang on a dead controller.
+			for b.flush() {
+			}
 			return
 		case <-b.flushCh:
 			b.flush()
@@ -134,17 +138,26 @@ func (b *LogBuffer) loop(interval time.Duration) {
 	}
 }
 
-// flush sends the buffered data as one segment, or keeps it for a later
+// flush sends one bounded log segment, or keeps the data for a later
 // retry when the append fails (resyncing the offset from a 409 conflict so
-// a gap can never wedge the stream).
-func (b *LogBuffer) flush() {
+// a gap can never wedge the stream). At most threshold bytes are sent per
+// segment: the producer drains the whole pipe into the buffer while the
+// flush loop is busy with an in-flight append, and a single oversized
+// segment would exceed the controller's segment cap, stalling the stream
+// forever. The remainder stays buffered for the next flush; Close drains
+// it. flush reports whether a segment was sent (a successful append); the
+// done-path drain stops when the buffer is empty or an append fails.
+func (b *LogBuffer) flush() bool {
 	b.mu.Lock()
 	if b.buf.Len() == 0 {
 		b.mu.Unlock()
-		return
+		return false
 	}
-	data := b.buf.String()
-	b.buf.Reset()
+	n := b.threshold
+	if b.buf.Len() < n {
+		n = b.buf.Len()
+	}
+	data := string(b.buf.Next(n))
 	offset := b.offset
 	var progress *api.TaskProgress
 	if b.progress != nil {
@@ -173,6 +186,7 @@ func (b *LogBuffer) flush() {
 		b.signal()
 	}
 	b.mu.Unlock()
+	return err == nil
 }
 
 // tailBuffer keeps the last max bytes written; it feeds failure summaries

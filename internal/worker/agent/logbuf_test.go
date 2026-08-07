@@ -185,6 +185,37 @@ func TestLogBufferConflictResyncsOffset(t *testing.T) {
 	}
 }
 
+// TestLogBufferBurstSplitsSegments reproduces the oversize-batch stall:
+// the producer drains the whole pipe into the buffer while the flush loop
+// is busy with an in-flight append, so one flush can find far more than
+// threshold bytes buffered. The segment must be split into bounded
+// batches — a single oversized segment would exceed the controller's
+// segment cap, get rejected, and stall the log stream forever (the build
+// succeeds but the log is truncated).
+func TestLogBufferBurstSplitsSegments(t *testing.T) {
+	rec := &logRecorder{}
+	b := NewLogBuffer(rec.append, 64, time.Hour, nil) // interval never fires
+	defer b.Close()
+
+	burst := strings.Repeat("x", 64*64) // one burst of 64 thresholds
+	if _, err := b.Write([]byte(burst)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if !waitFor(t, 2*time.Second, func() bool { return rec.count() == 64 }) {
+		t.Fatalf("burst was not fully split: segments=%d, want 64", rec.count())
+	}
+	var joined []byte
+	for i, seg := range rec.segments {
+		if len(seg.Data) > 64 {
+			t.Errorf("segment %d length = %d, exceeds the threshold 64", i, len(seg.Data))
+		}
+		joined = append(joined, seg.Data...)
+	}
+	if len(joined) != len(burst) || string(joined) != burst {
+		t.Errorf("delivered %d bytes, want the full %d-byte burst (no loss, no duplication)", len(joined), len(burst))
+	}
+}
+
 func TestLogBufferProgressAttached(t *testing.T) {
 	rec := &logRecorder{}
 	prog := &api.TaskProgress{TaskID: "t-1", Stage: "makepkg", CPUTimeNS: 42, MemoryBytes: 7}

@@ -256,6 +256,52 @@ func TestTaskCollectEmptyFails(t *testing.T) {
 	}
 }
 
+// TestTaskLargeOutputDelivered drives a full task whose makepkg emits over
+// 2 MiB of stdout against a client that mirrors the production controller:
+// a 1 MiB per-segment cap and a real append round-trip latency. The whole
+// output must arrive in bounded segments and reassemble losslessly — an
+// unbounded single batch (the buffer can grow far past the threshold while
+// the flush loop is busy) would be rejected by the cap and stall the log
+// stream mid-build.
+func TestTaskLargeOutputDelivered(t *testing.T) {
+	f := &fakeClient{taskDetail: taskFor("t-1")}
+	f.logMaxSegment = 1 << 20 // mirrors api.maxLogSegmentLen
+	f.logAppendDelay = 2 * time.Millisecond
+	r := runOneShotRunner(t, f)
+	taskDir := r.workDir + "/t-1"
+
+	exec := newFakeExec()
+	exec.scripts["git clone --depth 1 --branch main https://example.invalid/repo.git "+taskDir] =
+		writeScript(t, "cat > .SRCINFO <<'EOF'\n"+testSrcinfo+"EOF")
+	const noise = 2 << 20 // 2 MiB of build output
+	exec.scripts["makepkg -s --noconfirm"] = writeScript(t,
+		"head -c 2097152 /dev/zero | tr '\\0' x\ntouch foo-1.0-1-x86_64.pkg.tar.zst")
+	r.execCommand = exec.command
+	r.logThreshold = 64 * 1024
+
+	r.executeTask(context.Background(), taskFor("t-1"), "tok")
+
+	res := f.lastResult()
+	if res == nil || res.Status != statusSucceeded {
+		if res.Error != nil {
+			t.Logf("ERROR: %+v", *res.Error)
+		}
+		t.Fatalf("result = %+v, want succeeded", res)
+	}
+
+	var joined []byte
+	for i, seg := range f.segments {
+		if len(seg.Data) > r.logThreshold {
+			t.Errorf("segment %d length = %d, exceeds the log threshold %d", i, len(seg.Data), r.logThreshold)
+		}
+		joined = append(joined, seg.Data...)
+	}
+	if got := strings.Count(string(joined), "x"); got != noise {
+		t.Errorf("delivered %d noise bytes, want the full %d-byte output (log %d bytes total)",
+			got, noise, len(joined))
+	}
+}
+
 // TestTaskPrepareGeneratesSrcinfo covers the build-time .SRCINFO
 // generation: a checkout without .SRCINFO (the file is a generated
 // artifact) has it rendered via "makepkg --printsrcinfo" in the checkout,
