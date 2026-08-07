@@ -23,16 +23,19 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"git.0x0f.dev/varve/internal/api"
 )
 
-// metricsReader samples host metrics from /proc (Linux). The proc
-// directory is injectable so tests can use a fake tree; missing files
+// metricsReader samples host metrics from /proc (Linux) plus the disk
+// usage of the filesystem holding diskPath. The proc directory and the
+// disk path are injectable so tests can use a fake tree; missing files
 // degrade to zero values instead of failing the heartbeat.
 type metricsReader struct {
-	procDir string
-	prevCPU *cpuSample
+	procDir  string
+	diskPath string
+	prevCPU  *cpuSample
 }
 
 // cpuSample is one /proc/stat aggregate snapshot.
@@ -41,9 +44,10 @@ type cpuSample struct {
 	idle  uint64 // idle+iowait jiffies
 }
 
-// newMetricsReader builds a reader over procDir ("/proc" in production).
-func newMetricsReader(procDir string) *metricsReader {
-	return &metricsReader{procDir: procDir}
+// newMetricsReader builds a reader over procDir ("/proc" in production)
+// and diskPath (the node's working directory in production).
+func newMetricsReader(procDir, diskPath string) *metricsReader {
+	return &metricsReader{procDir: procDir, diskPath: diskPath}
 }
 
 // sample returns the current host metrics: /proc/stat CPU percentage,
@@ -71,6 +75,17 @@ func (m *metricsReader) sample() api.Metrics {
 		out.UptimeSecs = secs
 	}
 	return out
+}
+
+// diskSample returns the total/available/used bytes of the filesystem
+// holding the sampled path (statfs); a statfs failure degrades to zeros.
+func (m *metricsReader) diskSample() (total, available, used int64) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(m.diskPath, &st); err != nil {
+		return 0, 0, 0
+	}
+	bsize := int64(st.Bsize)
+	return bsize * int64(st.Blocks), bsize * int64(st.Bavail), bsize * int64(st.Blocks-st.Bfree)
 }
 
 // readCPUStat parses the aggregate "cpu " line of /proc/stat: jiffies

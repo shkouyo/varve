@@ -37,7 +37,7 @@ func TestHeartbeatPayload(t *testing.T) {
 
 	c := newFakeClient()
 	r := testRunner(t, nil, c, newFakeRuntime())
-	r.metrics = newMetricsReader(dir)
+	r.metrics = newMetricsReader(dir, t.TempDir())
 	r.track("t1", "c1")
 
 	r.heartbeat(context.Background())

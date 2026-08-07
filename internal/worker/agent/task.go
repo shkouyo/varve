@@ -18,6 +18,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -211,10 +212,12 @@ func taskContext(parent context.Context, task *api.TaskDetail) (context.Context,
 
 // prepare checks out the task source: single-branch shallow clone for
 // mode=clone, download+extract of the controller-staged tar.zst snapshot
-// for mode=archive. It requires a .SRCINFO in the checkout (bottom-line
-// guard) and records the actually checked-out commit; an unknown commit
-// (archive snapshots carry no git metadata) stays empty and the controller
-// falls back to the dispatched source commit.
+// for mode=archive. A checkout without .SRCINFO has it rendered from the
+// PKGBUILD via "makepkg --printsrcinfo" (the file is a generated
+// artifact); a generation failure fails the step. It records the actually
+// checked-out commit; an unknown commit (archive snapshots carry no git
+// metadata) stays empty and the controller falls back to the dispatched
+// source commit.
 func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskDir string, w io.Writer) (string, error) {
 	switch task.Source.Mode {
 	case "archive":
@@ -260,7 +263,12 @@ func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskD
 	}
 
 	if _, err := os.Stat(filepath.Join(taskDir, ".SRCINFO")); err != nil {
-		return "", errors.New("checkout has no .SRCINFO")
+		// The source snapshot may legitimately carry no .SRCINFO: render
+		// it from the PKGBUILD so the build metadata and the uploaded
+		// snapshot stay available.
+		if err := r.generateSrcinfo(ctx, taskDir); err != nil {
+			return "", err
+		}
 	}
 
 	out, err := captureCmd(ctx, r.command, taskDir, "git", "rev-parse", "HEAD")
@@ -270,6 +278,25 @@ func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskD
 		return "", nil
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// generateSrcinfo renders the checkout's .SRCINFO from its PKGBUILD via
+// "makepkg --printsrcinfo" and writes it into the checkout. Only stdout
+// feeds the file (makepkg diagnostics go to stderr) so the artifact stays
+// parseable; a failed or empty invocation fails the step.
+func (r *Runner) generateSrcinfo(ctx context.Context, taskDir string) error {
+	cmd := r.command(ctx, "makepkg", "--printsrcinfo")
+	cmd.Dir = taskDir
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("makepkg --printsrcinfo: %w: %s", err, strings.TrimSpace(errb.String()))
+	}
+	if strings.TrimSpace(out.String()) == "" {
+		return errors.New("makepkg --printsrcinfo produced no output")
+	}
+	return os.WriteFile(filepath.Join(taskDir, ".SRCINFO"), out.Bytes(), 0o644)
 }
 
 // runHooks executes shell hooks with cwd = the checkout dir. Any hook

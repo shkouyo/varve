@@ -155,7 +155,7 @@ func newRunner(cfg *config.WorkerConfig, client client, rt runtime, name, dataDi
 		name:               name,
 		dataDir:            dataDir,
 		slots:              make(chan struct{}, cap),
-		metrics:            newMetricsReader("/proc"),
+		metrics:            newMetricsReader("/proc", dataDir),
 		now:                time.Now,
 		containers:         make(map[string]*containerRun),
 		pollInterval:       5 * time.Second,

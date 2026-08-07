@@ -103,12 +103,43 @@ func TestCgroupSamplerMissingFilesTolerated(t *testing.T) {
 		cpuStatPath:       filepath.Join(t.TempDir(), "nope"),
 		memoryCurrentPath: filepath.Join(t.TempDir(), "nope"),
 		memoryMaxPath:     filepath.Join(t.TempDir(), "nope"),
+		diskPath:          filepath.Join(t.TempDir(), "nope"),
 		interval:          time.Second,
 		now:               clock.now,
 	}
 	sm := s.Sample()
 	if sm.CPUTimeNS != 0 || sm.MemoryBytes != 0 {
 		t.Errorf("missing cgroup files should degrade to zero, got %+v", sm)
+	}
+	if sm.DiskTotalBytes != 0 || sm.DiskAvailableBytes != 0 || sm.DiskUsedBytes != 0 {
+		t.Errorf("missing disk path should degrade to zero, got %+v", sm)
+	}
+}
+
+// TestCgroupSamplerDisk asserts the disk fields carry the statfs totals of
+// the filesystem holding the sampled path.
+func TestCgroupSamplerDisk(t *testing.T) {
+	dir := t.TempDir()
+	cpu := filepath.Join(dir, "cpu.stat")
+	writeFile(t, cpu, "usage_usec 1\n")
+
+	s := &CgroupSampler{
+		cpuStatPath:       cpu,
+		memoryCurrentPath: filepath.Join(dir, "nope"),
+		memoryMaxPath:     filepath.Join(dir, "nope"),
+		diskPath:          dir,
+		interval:          time.Second,
+		now:               newFakeClock(time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)).now,
+	}
+	sm := s.Sample()
+	if sm.DiskTotalBytes <= 0 {
+		t.Errorf("disk total = %d, want > 0", sm.DiskTotalBytes)
+	}
+	if sm.DiskAvailableBytes < 0 || sm.DiskAvailableBytes > sm.DiskTotalBytes {
+		t.Errorf("disk available = %d, want within [0, total=%d]", sm.DiskAvailableBytes, sm.DiskTotalBytes)
+	}
+	if sm.DiskUsedBytes < 0 || sm.DiskUsedBytes > sm.DiskTotalBytes {
+		t.Errorf("disk used = %d, want within [0, total=%d]", sm.DiskUsedBytes, sm.DiskTotalBytes)
 	}
 }
 

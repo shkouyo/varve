@@ -17,7 +17,10 @@
 
 package host
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 // TestSampleMetrics verifies /proc parsing against a fake tree: memory
 // (kB→bytes), uptime and the CPU percent delta between two stat samples.
@@ -29,7 +32,7 @@ func TestSampleMetrics(t *testing.T) {
 		"MemTotal:       16384000 kB\nMemAvailable:    8388608 kB\nSwapTotal:       0 kB\n")
 	writeFile(t, dir, "uptime", "12345.67 98765.43\n")
 
-	m := newMetricsReader(dir)
+	m := newMetricsReader(dir, t.TempDir())
 	first := m.sample()
 	if first.CPUPercent != 0 {
 		t.Errorf("first sample CPUPercent = %v, want 0 (no delta yet)", first.CPUPercent)
@@ -55,7 +58,7 @@ func TestSampleMetrics(t *testing.T) {
 // TestSampleMissingFiles verifies the missing-file tolerance: an empty
 // fake /proc yields a zero metrics struct without error.
 func TestSampleMissingFiles(t *testing.T) {
-	m := newMetricsReader(t.TempDir())
+	m := newMetricsReader(t.TempDir(), t.TempDir())
 	out := m.sample()
 	if out.CPUPercent != 0 || out.MemTotalBytes != 0 || out.MemUsedBytes != 0 || out.UptimeSecs != 0 {
 		t.Errorf("missing files must degrade to zeros, got %+v", out)
@@ -67,7 +70,7 @@ func TestSampleMissingFiles(t *testing.T) {
 func TestMeminfoWithoutAvailable(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "meminfo", "MemTotal: 1000 kB\n")
-	m := newMetricsReader(dir)
+	m := newMetricsReader(dir, t.TempDir())
 	out := m.sample()
 	if out.MemTotalBytes != 1000*1024 {
 		t.Errorf("MemTotalBytes = %d, want %d", out.MemTotalBytes, 1000*1024)
@@ -82,8 +85,31 @@ func TestMeminfoWithoutAvailable(t *testing.T) {
 func TestUptimeTruncation(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "uptime", "59.99 30.00\n")
-	m := newMetricsReader(dir)
+	m := newMetricsReader(dir, t.TempDir())
 	if got := m.sample().UptimeSecs; got != 59 {
 		t.Errorf("UptimeSecs = %d, want 59", got)
+	}
+}
+
+// TestDiskSample asserts the statfs totals of the filesystem holding the
+// sampled path: a real path yields a positive total with available/used
+// inside its bounds, a missing path degrades to zeros.
+func TestDiskSample(t *testing.T) {
+	m := newMetricsReader(t.TempDir(), t.TempDir())
+	total, available, used := m.diskSample()
+	if total <= 0 {
+		t.Errorf("disk total = %d, want > 0", total)
+	}
+	if available < 0 || available > total {
+		t.Errorf("disk available = %d, want within [0, total=%d]", available, total)
+	}
+	if used < 0 || used > total {
+		t.Errorf("disk used = %d, want within [0, total=%d]", used, total)
+	}
+
+	missing := newMetricsReader(t.TempDir(), filepath.Join(t.TempDir(), "nope"))
+	tt, aa, uu := missing.diskSample()
+	if tt != 0 || aa != 0 || uu != 0 {
+		t.Errorf("missing disk path = (%d, %d, %d), want zeros", tt, aa, uu)
 	}
 }

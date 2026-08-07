@@ -155,14 +155,15 @@ type Runner struct {
 // follows cfg.OneShot: one-shot agents claim their single task directly
 // without registering a node; pool agents register as a capacity-1 node.
 func NewRunner(cfg *config.WorkerConfig, client client) *Runner {
+	workDir := cfg.DataDir + "/work"
 	r := &Runner{
 		cfg:               cfg,
 		client:            client,
 		taskID:            cfg.TaskID,
 		taskToken:         cfg.TaskToken,
 		execCommand:       exec.CommandContext,
-		workDir:           cfg.DataDir + "/work",
-		sampler:           NewCgroupSampler(),
+		workDir:           workDir,
+		sampler:           NewCgroupSampler(workDir),
 		now:               time.Now,
 		state:             &taskState{},
 		logThreshold:      64 * 1024,

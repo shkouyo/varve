@@ -256,15 +256,53 @@ func TestTaskCollectEmptyFails(t *testing.T) {
 	}
 }
 
-// TestTaskPrepareNoSrcinfoFails asserts the bottom-line .SRCINFO guard.
-func TestTaskPrepareNoSrcinfoFails(t *testing.T) {
+// TestTaskPrepareGeneratesSrcinfo covers the build-time .SRCINFO
+// generation: a checkout without .SRCINFO (the file is a generated
+// artifact) has it rendered via "makepkg --printsrcinfo" in the checkout,
+// uploaded as the srcinfo artifact and parsed for the manifest.
+func TestTaskPrepareGeneratesSrcinfo(t *testing.T) {
+	f := &fakeClient{taskDetail: taskFor("t-1")}
+	r := runOneShotRunner(t, f)
+	taskDir := r.workDir + "/t-1"
+	exec := newFakeExec()
+	exec.scripts["git clone --depth 1 --branch main https://example.invalid/repo.git "+taskDir] =
+		writeScript(t, "touch PKGBUILD") // clone produces no .SRCINFO
+	exec.scripts["makepkg --printsrcinfo"] = writeScript(t, "cat <<'EOF'\n"+testSrcinfo+"EOF")
+	exec.scripts["makepkg -s --noconfirm"] = writeScript(t, "touch foo-1.0-1-x86_64.pkg.tar.zst")
+	r.execCommand = exec.command
+
+	r.executeTask(context.Background(), taskFor("t-1"), "tok")
+
+	res := f.lastResult()
+	if res == nil || res.Status != statusSucceeded {
+		if res.Error != nil {
+			t.Logf("ERROR: %+v", *res.Error)
+		}
+		t.Fatalf("result = %+v, want succeeded", res)
+	}
+	if len(f.uploads) != 2 || f.uploads[1].name != ".SRCINFO" {
+		t.Fatalf("uploads = %+v, want package + .SRCINFO", f.uploads)
+	}
+	got, err := os.ReadFile(filepath.Join(taskDir, ".SRCINFO"))
+	if err != nil {
+		t.Fatalf("read generated .SRCINFO: %v", err)
+	}
+	if string(got) != testSrcinfo {
+		t.Errorf("generated .SRCINFO = %q, want the printsrcinfo output", got)
+	}
+}
+
+// TestTaskPrepareGenerateSrcinfoFails asserts a failed "makepkg
+// --printsrcinfo" fails the task at the prepare stage (the missing-file
+// case is no longer a direct failure, but a generation failure is).
+func TestTaskPrepareGenerateSrcinfoFails(t *testing.T) {
 	f := &fakeClient{taskDetail: taskFor("t-1")}
 	r := runOneShotRunner(t, f)
 	taskDir := r.workDir + "/t-1"
 	exec := newFakeExec()
 	exec.scripts["git clone --depth 1 --branch main https://example.invalid/repo.git "+taskDir] =
 		writeScript(t, "true") // clone produces no checkout
-	exec.scripts["makepkg -s --noconfirm"] = writeScript(t, "true")
+	exec.scripts["makepkg --printsrcinfo"] = writeScript(t, "echo 'PKGBUILD broken' >&2\nexit 1")
 	r.execCommand = exec.command
 
 	r.executeTask(context.Background(), taskFor("t-1"), "tok")
@@ -273,8 +311,8 @@ func TestTaskPrepareNoSrcinfoFails(t *testing.T) {
 	if res == nil || res.Status != statusFailed {
 		t.Fatalf("result = %+v, want failed", res)
 	}
-	if res.Error == nil || res.Error.Stage != "prepare" || !strings.Contains(res.Error.Summary, ".SRCINFO") {
-		t.Errorf("error = %+v, want prepare/.SRCINFO", res.Error)
+	if res.Error == nil || res.Error.Stage != "prepare" || !strings.Contains(res.Error.Summary, "printsrcinfo") {
+		t.Errorf("error = %+v, want prepare/printsrcinfo", res.Error)
 	}
 }
 
