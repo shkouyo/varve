@@ -17,20 +17,20 @@
     <form method="get" action="/packages" class="mb-6 flex max-w-2xl flex-wrap items-center gap-2" role="search">
       <label for="q" class="sr-only">Search packages</label>
       <input id="q" name="q" type="search" value="{{.Query}}" placeholder="Search by name or description"
-             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-purple-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-400 sm:flex-1">
+             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-blue-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-400 sm:flex-1">
       <label for="scope" class="sr-only">Search in</label>
-      <select id="scope" name="scope" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100">
+      <select id="scope" name="scope" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100">
         <option value="both" {{if eq .Scope "both"}}selected{{end}}>Name and description</option>
         <option value="name" {{if eq .Scope "name"}}selected{{end}}>Name</option>
         <option value="desc" {{if eq .Scope "desc"}}selected{{end}}>Description</option>
       </select>
       <label for="arch" class="sr-only">Architecture</label>
-      <select id="arch" name="arch" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100">
+      <select id="arch" name="arch" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100">
         <option value="all" {{if eq .Arch "all"}}selected{{end}}>All</option>
         <option value="x86_64" {{if eq .Arch "x86_64"}}selected{{end}}>x86_64</option>
         <option value="any" {{if eq .Arch "any"}}selected{{end}}>any</option>
       </select>
-      <button type="submit" aria-label="Search" class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800 dark:bg-purple-600 dark:hover:bg-purple-500">
+      <button type="submit" aria-label="Search" class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <span class="hidden sm:inline">Search</span>
       </button>
@@ -38,7 +38,7 @@
 
     {{if .Query}}
     <p class="mb-4 text-sm text-slate-600 dark:text-neutral-300">Showing matches for “{{.Query}}”
-      <a class="font-medium text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages">clear search</a>
+      <a class="font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages">clear search</a>
     </p>
     {{end}}
 
@@ -61,7 +61,7 @@
           {{range .Packages}}
           <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
             <th scope="row" class="px-4 py-3 text-left font-normal">
-              <a class="font-medium text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+              <a class="font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
             </th>
             <td class="px-4 py-3 text-slate-700 dark:text-neutral-300">{{.CurrentVersion}}</td>
             <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.Pkgdesc}}</td>

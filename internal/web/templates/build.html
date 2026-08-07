@@ -15,7 +15,7 @@
     <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
         <nav class="mb-1 text-sm text-slate-600 dark:text-neutral-300" aria-label="Breadcrumb">
-          <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/">Home</a>
+          <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/">Home</a>
           <span aria-hidden="true"> / </span>
           <span class="text-slate-700 dark:text-neutral-200" aria-current="page">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
         </nav>
@@ -43,7 +43,7 @@
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Status</dt>
         <dd>{{template "statusBadge" .Build.Status}}</dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Package</dt>
-        <dd>{{if .Pkgbase}}<a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+        <dd>{{if .Pkgbase}}<a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Machine</dt>
         <dd class="text-slate-900 dark:text-neutral-100">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}</dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Branch</dt>

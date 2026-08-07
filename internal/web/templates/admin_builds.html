@@ -13,7 +13,7 @@
 
   <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
     <nav class="mb-1 text-sm text-slate-600 dark:text-neutral-300" aria-label="Breadcrumb">
-      <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="/">Home</a>
+      <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/">Home</a>
       <span aria-hidden="true"> / </span>
       <span class="text-slate-700 dark:text-neutral-200" aria-current="page">Failed builds</span>
     </nav>
@@ -44,7 +44,7 @@
           {{range .Builds}}
           <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
             <th scope="row" class="px-4 py-3 text-left font-normal">
-              <a class="font-mono font-medium text-purple-800 underline underline-offset-2 dark:text-purple-300" href="{{.BuildURL}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
+              <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.BuildURL}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
             </th>
             <td class="px-4 py-3">
               {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-neutral-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
@@ -52,7 +52,7 @@
             <td class="px-4 py-3 text-slate-700 dark:text-neutral-300">{{.Error}}</td>
             <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.StartedAt}}</td>
             <td class="px-4 py-3">
-              <a class="text-purple-800 underline underline-offset-2 dark:text-purple-300" href="{{.LogURL}}">Log</a>
+              <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.LogURL}}">Log</a>
             </td>
           </tr>
           {{end}}

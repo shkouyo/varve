@@ -50,7 +50,7 @@ func buildBadge(status string) template.HTML {
 	case "assigned":
 		cls, icon = "bg-indigo-100 text-indigo-900", "M12 6v6l4 2"
 	case "running":
-		cls, icon = "bg-blue-100 text-blue-900", "M12 6v6l4 2"
+		cls, icon = "bg-teal-100 text-teal-900", "M12 6v6l4 2"
 	}
 	return template.HTML(`<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ` +
 		cls + `"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><path d="` +

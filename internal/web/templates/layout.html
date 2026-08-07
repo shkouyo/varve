@@ -2,16 +2,16 @@
 <header class="border-b border-slate-200 bg-white dark:border-white/10 dark:bg-neutral-900">
   <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3" aria-label="Main">
     <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-slate-900 dark:text-neutral-100">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-purple-700 dark:text-purple-400" aria-hidden="true" focusable="false">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false">
         <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
         <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
         <line x1="12" y1="22.08" x2="12" y2="12"></line>
       </svg>
       Varve
     </a>
-    <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}bg-purple-50 text-purple-800 dark:bg-purple-950 dark:text-purple-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100{{end}}" {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}aria-current="page"{{end}}>Overview</a>
-    <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-purple-50 text-purple-800 dark:bg-purple-950 dark:text-purple-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
-    <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-purple-50 text-purple-800 dark:bg-purple-950 dark:text-purple-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
+    <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100{{end}}" {{if or (eq .Nav "dashboard") (eq .Nav "overview")}}aria-current="page"{{end}}>Overview</a>
+    <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
+    <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
     <div class="ml-auto flex items-center gap-2">
       {{if .LoggedIn}}
       <span class="px-2 text-sm font-medium text-slate-600 dark:text-neutral-300">{{.User}}</span>
