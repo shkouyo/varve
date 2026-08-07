@@ -31,6 +31,7 @@ var funcs = template.FuncMap{
 	"shortBuildID": shortBuildID,
 	"relTime":      relTime,
 	"absTime":      absTime,
+	"humanSize":    humanSize,
 }
 
 // buildBadge renders the status pill for a build/task status. Color is

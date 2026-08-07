@@ -33,8 +33,14 @@ import (
 func TestBuildDetailRenders(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	now := time.Now().UTC()
 	samples := []db.Sample{
-		{At: time.Now().UTC(), CPUTimeNS: 12345678900, MemoryBytes: 536870912}, // 12.3s, 512 MiB
+		// First sample: no predecessor, so the CPU card degrades to the
+		// cumulative seconds.
+		{At: now.Add(-10 * time.Second), CPUTimeNS: 0, MemoryBytes: 268435456}, // 256 MiB
+		// Second sample: 3.7s cpu over 10s wall = 37%; disk is node-wide.
+		{At: now, CPUTimeNS: 3700000000, MemoryBytes: 536870912, // 512 MiB
+			DiskTotalBytes: 53687091200, DiskAvailableBytes: 26843545600, DiskUsedBytes: 26843545600},
 	}
 	build := seedBuild(t, store, pkg, "failed", nil, samples)
 
@@ -50,8 +56,10 @@ func TestBuildDetailRenders(t *testing.T) {
 		"demo-pkg",                       // package context
 		"not assigned",                   // machine fallback (no worker)
 		"making package: demo-pkg",       // log history
-		"CPU 12.3s",                      // resource usage text
-		"Memory 512 MiB",                 // resource usage text
+		"CPU 37%",                        // utilization from adjacent samples
+		"Memory 512 MiB / peak 512 MiB",  // current vs run peak
+		"26.8 GB used of 53.7 GB (50%)",  // humanized disk used/total
+		"available 26.8 GB",              // humanized disk free
 		"/builds/"+itoa(build.ID)+"/log", // live log link
 	)
 }
@@ -232,7 +240,8 @@ func TestBuildLogMissing(t *testing.T) {
 	}
 }
 
-// TestFormatBytesAndCPU covers the text metric formatting.
+// TestFormatBytesAndCPU covers the text metric formatting and the
+// degraded single-sample CPU display.
 func TestFormatBytesAndCPU(t *testing.T) {
 	cases := []struct {
 		in   int64
@@ -250,5 +259,64 @@ func TestFormatBytesAndCPU(t *testing.T) {
 	}
 	if got := formatCPU(12345678900); got != "12.3s" {
 		t.Errorf("formatCPU = %q, want 12.3s", got)
+	}
+}
+
+// TestHumanSize covers the decimal-unit size rendering with a fixed
+// one-decimal mantissa, used for artifact and disk sizes.
+func TestHumanSize(t *testing.T) {
+	cases := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0.0 B"},
+		{512, "512.0 B"},
+		{2048, "2.0 KB"},
+		{1234, "1.2 KB"},
+		{1048576, "1.0 MB"},
+		{1610612736, "1.6 GB"},
+	}
+	for _, tc := range cases {
+		if got := humanSize(tc.in); got != tc.want {
+			t.Errorf("humanSize(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestResourceViews covers the sample-to-card derivation: CPU
+// utilization from adjacent samples, the degraded first sample, the
+// memory peak and the disk figures on the last card only.
+func TestResourceViews(t *testing.T) {
+	now := time.Now().UTC()
+	samples := []db.Sample{
+		{At: now.Add(-10 * time.Second), CPUTimeNS: 0, MemoryBytes: 268435456},
+		{At: now, CPUTimeNS: 3700000000, MemoryBytes: 536870912, DiskTotalBytes: 100, DiskAvailableBytes: 40, DiskUsedBytes: 55},
+	}
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, samples)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	data, err := s.buildData(newRequest(t, http.MethodGet, "/"), itoa(build.ID))
+	if err != nil {
+		t.Fatalf("buildData: %v", err)
+	}
+	if len(data.Samples) != 2 {
+		t.Fatalf("got %d views, want 2", len(data.Samples))
+	}
+	first, second := data.Samples[0], data.Samples[1]
+	if first.CPU != "" || first.CPUTotal != "0s" {
+		t.Errorf("first sample CPU = %q/%q, want degraded cumulative", first.CPU, first.CPUTotal)
+	}
+	if second.CPU != "37%" {
+		t.Errorf("second sample CPU = %q, want 37%%", second.CPU)
+	}
+	if second.Mem != "512 MiB" || second.MemPeak != "512 MiB" {
+		t.Errorf("second sample memory = %q/%q, want 512 MiB peak 512 MiB", second.Mem, second.MemPeak)
+	}
+	if !second.HasDisk || second.DiskPct != "55%" || second.DiskUsed != "55.0 B" {
+		t.Errorf("second sample disk = %+v, want used 55.0 B at 55%%", second)
+	}
+	if first.HasDisk {
+		t.Error("first sample must not carry the disk card")
 	}
 }

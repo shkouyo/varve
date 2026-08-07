@@ -95,6 +95,8 @@ func TestPackageDetailRenders(t *testing.T) {
 		"demo-pkg",
 		"1.2.3-1",                             // version
 		"demo-pkg-1.2.3-1-x86_64.pkg.tar.zst", // artifact file
+		"1.2 KB",                              // humanized artifact size (1234 bytes)
+		"package",                             // artifact type label
 		"https://dl.example.org/pool/demo-pkg-1.2.3-1-x86_64.pkg.tar.zst", // download link
 		"Build history",
 	)

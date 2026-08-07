@@ -55,12 +55,32 @@ func TestDashboardRender(t *testing.T) {
 	mustContain(t, body,
 		"succeeded", "1", // status counts
 		"running", "2", // status counts
+		"queued", "assigned", "failed", "cancelled", // zero counts stay visible
+		">0<",                     // the empty statuses render a literal 0
 		"3",                       // queue length
 		"demo-pkg",                // recent build package name
 		"node-1",                  // worker overview name
 		"online",                  // worker status
 		"/builds/"+itoa(build.ID), // recent build link
 	)
+}
+
+// TestStatusCountsZeroFill asserts every known status card renders,
+// zero counts included, with unknown statuses appended after the six.
+func TestStatusCountsZeroFill(t *testing.T) {
+	got := statusCounts(map[string]int{"running": 2, "odd": 1})
+	want := []string{"queued", "assigned", "running", "succeeded", "failed", "cancelled", "odd"}
+	if len(got) != len(want) {
+		t.Fatalf("statusCounts = %d entries, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Status != w {
+			t.Errorf("entry %d status = %q, want %q", i, got[i].Status, w)
+		}
+	}
+	if got[0].Count != 0 || got[2].Count != 2 || got[6].Count != 1 {
+		t.Errorf("counts = %+v, want queued 0, running 2, odd 1", got)
+	}
 }
 
 // TestDashboardStatsError maps an orchestrator failure to a 500 page.

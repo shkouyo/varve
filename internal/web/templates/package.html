@@ -129,7 +129,7 @@
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{.Kind}}</td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Version}}{{.Version}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Arch}}{{.Arch}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</td>
-                <td class="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-400">{{.Size}} bytes</td>
+                <td class="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-400">{{humanSize .Size}}</td>
                 <td class="px-4 py-3">
                   {{if and $.Download (eq .File $.Download.File)}}
                   <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{$.Download.URL}}">Download</a>

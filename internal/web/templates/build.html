@@ -86,7 +86,7 @@
 {{- else -}}
 {{- .Log -}}
 {{- end -}}
-</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-slate-400">No log content yet. Follow the live log for streaming output.</p>{{- end}}
+</div>{{- else}}<p id="log-empty" class="text-slate-300 dark:text-slate-300">No log content yet. Follow the live log for streaming output.</p>{{- end}}
 <div id="log-increments" aria-live="polite"></div>
       </div>
       {{if .Truncated}}
@@ -104,25 +104,28 @@
           <p class="text-xs text-slate-500 dark:text-slate-400">Sample at {{.At}}</p>
           <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-            CPU {{.CPU}}
+            {{if .CPU}}CPU {{.CPU}}{{else}}CPU {{.CPUTotal}} total{{end}}
           </p>
+          {{if .CPU}}
+          <progress class="mt-1 block h-2 w-full accent-blue-700 dark:accent-blue-400" max="100" value="{{.CPUBar}}" aria-hidden="true"></progress>
+          {{else}}
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">First sample, no rate yet — cumulative time shown.</p>
+          {{end}}
           <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-            Memory {{.Mem}}
+            Memory {{.Mem}} / peak {{.MemPeak}}
           </p>
-        </li>
-        {{end}}
-        {{with index .Build.ResourceUsage (sub (len .Build.ResourceUsage) 1)}}
-        {{if .DiskTotalBytes}}
-        <li class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p class="text-xs text-slate-500 dark:text-slate-400">Disk (latest sample)</p>
+          <progress class="mt-1 block h-2 w-full accent-blue-700 dark:accent-blue-400" max="100" value="{{.MemBar}}" aria-hidden="true"></progress>
+          {{if .HasDisk}}
+          <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">Disk (latest sample)</p>
           <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-            total {{.DiskTotalBytes}} bytes
+            {{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}})
           </p>
-          <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">used {{.DiskUsedBytes}} bytes · available {{.DiskAvailableBytes}} bytes</p>
+          <progress class="mt-1 block h-2 w-full accent-blue-700 dark:accent-blue-400" max="100" value="{{.DiskBar}}" aria-hidden="true"></progress>
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">available {{.DiskAvail}}</p>
+          {{end}}
         </li>
-        {{end}}
         {{end}}
       </ul>
       {{else}}

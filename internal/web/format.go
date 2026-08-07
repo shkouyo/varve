@@ -18,6 +18,7 @@
 package web
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,6 +57,27 @@ func shortBuildID(id string) string {
 		return id[:7]
 	}
 	return id
+}
+
+// humanSize renders a byte count in the decimal unit set with a
+// one-decimal mantissa ("512.0 B", "1.0 MB"), for artifact and disk
+// sizes.
+func humanSize(n int64) string {
+	const (
+		kb = 1000
+		mb = 1000 * 1000
+		gb = 1000 * 1000 * 1000
+	)
+	switch {
+	case n >= gb:
+		return strconv.FormatFloat(float64(n)/gb, 'f', 1, 64) + " GB"
+	case n >= mb:
+		return strconv.FormatFloat(float64(n)/mb, 'f', 1, 64) + " MB"
+	case n >= kb:
+		return strconv.FormatFloat(float64(n)/kb, 'f', 1, 64) + " KB"
+	default:
+		return strconv.FormatFloat(float64(n), 'f', 1, 64) + " B"
+	}
 }
 
 // relTime renders an optional timestamp as a relative age ("3m ago").

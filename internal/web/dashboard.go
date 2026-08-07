@@ -47,17 +47,17 @@ type statusCount struct {
 	Count  int
 }
 
-// statusCounts orders the by-status map for display, leading with the
-// active states.
+// statusCounts orders the by-status map for display, always rendering
+// the six known build statuses — zero counts included, so every card
+// stays visible ("0" is shown, never omitted) — followed by any
+// unknown statuses the map carries.
 func statusCounts(by map[string]int) []statusCount {
 	order := []string{"queued", "assigned", "running", "succeeded", "failed", "cancelled"}
-	seen := make(map[string]bool)
-	out := make([]statusCount, 0, len(by))
+	seen := make(map[string]bool, len(by))
+	out := make([]statusCount, 0, len(by)+len(order))
 	for _, s := range order {
-		if n, ok := by[s]; ok {
-			out = append(out, statusCount{Status: s, Count: n})
-			seen[s] = true
-		}
+		out = append(out, statusCount{Status: s, Count: by[s]})
+		seen[s] = true
 	}
 	for s, n := range by {
 		if !seen[s] {

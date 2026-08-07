@@ -58,11 +58,28 @@ type buildData struct {
 	SSEURL        string
 }
 
-// resourceView is one cgroup sample rendered as text.
+// resourceView is one cgroup sample rendered as a card. CPU holds the
+// utilization since the previous sample (cpu_time_ns delta over wall
+// time), CPUBar its clamped 0-100 bar width and CPUTotal the cumulative
+// CPU seconds, used as the degraded display when no rate is derivable
+// (the first sample, or a single-sample run). Mem is the current usage
+// and MemPeak the highest across the run. The disk figures are
+// node-wide and identical across samples, so they ride on the last
+// sample's card only.
 type resourceView struct {
-	At  string
-	CPU string
-	Mem string
+	At        string
+	CPU       string
+	CPUBar    int
+	CPUTotal  string
+	Mem       string
+	MemPeak   string
+	MemBar    int
+	HasDisk   bool
+	DiskUsed  string
+	DiskAvail string
+	DiskTotal string
+	DiskPct   string
+	DiskBar   int
 }
 
 // handleBuild renders GET /builds/{id}. A malformed build id is a 400;
@@ -131,13 +148,44 @@ func (s *Server) buildData(r *http.Request, id string) (buildData, error) {
 		return buildData{}, err
 	}
 
-	// Cgroup resource samples rendered as text.
-	for _, smp := range b.ResourceUsage {
-		data.Samples = append(data.Samples, resourceView{
-			At:  smp.At.Format("15:04:05"),
-			CPU: formatCPU(smp.CPUTimeNS),
-			Mem: formatBytes(smp.MemoryBytes),
-		})
+	// Cgroup resource samples rendered as cards: CPU utilization is the
+	// cpu_time_ns delta between adjacent samples over the wall time
+	// between them (the first sample has no predecessor and degrades to
+	// the cumulative seconds), memory shows current vs run peak, and the
+	// node-wide disk figures come from the last sample only.
+	samples := b.ResourceUsage
+	var peak int64
+	for _, smp := range samples {
+		if smp.MemoryBytes > peak {
+			peak = smp.MemoryBytes
+		}
+	}
+	for i, smp := range samples {
+		v := resourceView{
+			At:       smp.At.Format("15:04:05"),
+			CPUTotal: formatCPU(smp.CPUTimeNS),
+			Mem:      formatBytes(smp.MemoryBytes),
+			MemPeak:  formatBytes(peak),
+			MemBar:   barPct(smp.MemoryBytes, peak),
+		}
+		if i > 0 {
+			if dCPU := smp.CPUTimeNS - samples[i-1].CPUTimeNS; dCPU >= 0 {
+				if dWall := smp.At.Sub(samples[i-1].At); dWall > 0 {
+					pct := float64(dCPU) / float64(dWall) * 100
+					v.CPU = fmtFloat(pct) + "%"
+					v.CPUBar = barPctF(pct)
+				}
+			}
+		}
+		if i == len(samples)-1 && smp.DiskTotalBytes > 0 {
+			v.HasDisk = true
+			v.DiskUsed = humanSize(smp.DiskUsedBytes)
+			v.DiskAvail = humanSize(smp.DiskAvailableBytes)
+			v.DiskTotal = humanSize(smp.DiskTotalBytes)
+			v.DiskPct = fmtFloat(float64(smp.DiskUsedBytes)*100/float64(smp.DiskTotalBytes)) + "%"
+			v.DiskBar = barPct(smp.DiskUsedBytes, smp.DiskTotalBytes)
+		}
+		data.Samples = append(data.Samples, v)
 	}
 	return data, nil
 }
@@ -174,6 +222,26 @@ func (s *Server) loadBuildLog(ctx context.Context, b *db.Build, data *buildData)
 		return fmt.Errorf("web: read build log: %w", err)
 	}
 	return nil
+}
+
+// barPct clamps a part/whole percentage to the 0-100 bar range.
+func barPct(part, whole int64) int {
+	if whole <= 0 {
+		return 0
+	}
+	return barPctF(float64(part) * 100 / float64(whole))
+}
+
+// barPctF clamps a raw percentage to the 0-100 bar range; the rendered
+// text may exceed 100 on multi-core hosts, the bar width cannot.
+func barPctF(pct float64) int {
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return int(pct)
 }
 
 // formatCPU renders a cumulative CPU time in nanoseconds as seconds with
