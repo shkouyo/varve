@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, last_commit, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
+const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch, last_commit, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
 
 // GetPackageByBase returns one package by its pkgbase with maintainers
 // decoded. ErrNotFound when the package does not exist.
@@ -139,8 +139,8 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 	var id int64
 	err = s.write.QueryRowContext(ctx, `INSERT INTO packages
 		(pkgbase, branch, vcs_kind, arch, maintainers, url, licenses, conflicts, provides,
-		 pkgname, source, pkgver, pkgrel)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 pkgname, source, pkgver, pkgrel, epoch)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(pkgbase) DO UPDATE SET
 			branch = excluded.branch,
 			vcs_kind = excluded.vcs_kind,
@@ -153,10 +153,11 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 			pkgname = excluded.pkgname,
 			source = excluded.source,
 			pkgver = excluded.pkgver,
-			pkgrel = excluded.pkgrel
+			pkgrel = excluded.pkgrel,
+			epoch = excluded.epoch
 		RETURNING id`,
 		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers, p.URL, licenses, conflicts, provides,
-		pkgname, source, p.Pkgver, p.Pkgrel).Scan(&id)
+		pkgname, source, p.Pkgver, p.Pkgrel, p.Epoch).Scan(&id)
 	if err != nil {
 		return fmt.Errorf("db: upsert package %q: %w", p.Pkgbase, err)
 	}
@@ -192,11 +193,11 @@ func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase string, u Pack
 	}
 	res, err := t.tx.ExecContext(ctx, `UPDATE packages SET
 		current_version = ?, pkgdesc = ?, url = ?, licenses = ?, conflicts = ?, provides = ?,
-		pkgname = ?, source = ?, pkgver = ?, pkgrel = ?,
+		pkgname = ?, source = ?, pkgver = ?, pkgrel = ?, epoch = ?,
 		last_commit = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?, last_failed_at = NULL
 		WHERE pkgbase = ?`,
 		u.CurrentVersion, u.Pkgdesc, u.URL, licenses, conflicts, provides,
-		pkgname, source, u.Pkgver, u.Pkgrel,
+		pkgname, source, u.Pkgver, u.Pkgrel, u.Epoch,
 		u.Commit, u.SrcinfoHash, u.UpstreamRef, u.BuildID, pkgbase)
 	if err != nil {
 		return fmt.Errorf("db: update package %q after build: %w", pkgbase, err)
@@ -211,7 +212,7 @@ func scanPackage(rs rowScanner) (*Package, error) {
 	var lastFailedAt sql.NullString
 	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch,
 		&p.CurrentVersion, &p.Pkgdesc, &p.URL, &licenses, &conflicts, &provides,
-		&pkgname, &source, &p.Pkgver, &p.Pkgrel,
+		&pkgname, &source, &p.Pkgver, &p.Pkgrel, &p.Epoch,
 		&p.LastCommit, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID, &maintainers); err != nil {
 		return nil, err
 	}

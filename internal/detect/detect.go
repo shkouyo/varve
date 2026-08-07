@@ -79,8 +79,8 @@ type Package struct {
 // Change is one detected package update handed to the Sink. UpstreamRef
 // carries the upstream reference queried at detection time for VCS
 // packages and is empty for plain packages; URL/Licenses/Conflicts/
-// Provides/Pkgname/Source/Pkgver/Pkgrel carry the .SRCINFO metadata
-// recorded on the package row.
+// Provides/Pkgname/Source/Pkgver/Epoch/Pkgrel carry the .SRCINFO
+// metadata recorded on the package row.
 type Change struct {
 	Package     Package
 	Maintainers []string
@@ -92,6 +92,7 @@ type Change struct {
 	Source      []string
 	Pkgver      string
 	Pkgrel      string
+	Epoch       int
 	Hooks       Hooks
 	Collect     Collect
 	UpstreamRef string
@@ -406,6 +407,7 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 		Source:      p.info.Source,
 		Pkgver:      p.info.Pkgver,
 		Pkgrel:      p.info.Pkgrel,
+		Epoch:       p.info.Epoch,
 		Hooks:       p.dotfile.Hooks,
 		Collect:     p.dotfile.Collect,
 		UpstreamRef: p.upstreamRef,

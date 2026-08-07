@@ -82,8 +82,8 @@ func TestMigrateFresh(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 6 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 {
-		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 6]", versions)
+	if len(versions) != 7 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 || versions[6] != 7 {
+		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 6 7]", versions)
 	}
 
 	// WAL journal mode.
@@ -125,8 +125,8 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := s2.read.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if n != 6 {
-		t.Errorf("schema_migrations count = %d after reopen, want 6", n)
+	if n != 7 {
+		t.Errorf("schema_migrations count = %d after reopen, want 7", n)
 	}
 }
 
@@ -171,8 +171,8 @@ func TestMigrateFromFixture(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 7 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 || versions[6] != 999 {
-		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 6 999]", versions)
+	if len(versions) != 8 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 || versions[6] != 7 || versions[7] != 999 {
+		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 6 7 999]", versions)
 	}
 }
 

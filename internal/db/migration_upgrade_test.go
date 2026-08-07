@@ -85,8 +85,8 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 		versions = append(versions, v)
 	}
 	rows.Close()
-	if len(versions) != 6 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 {
-		t.Fatalf("schema_migrations = %v, want [1 2 3 4 5 6]", versions)
+	if len(versions) != 7 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 || versions[6] != 7 {
+		t.Fatalf("schema_migrations = %v, want [1 2 3 4 5 6 7]", versions)
 	}
 
 	// Build 1: deterministic hash id, rewritten log path, no worker name.
@@ -135,6 +135,9 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 	if len(pkg.Pkgname) != 0 || len(pkg.Source) != 0 || pkg.Pkgver != "" || pkg.Pkgrel != "" {
 		t.Errorf("migrated metadata = pkgname %v source %v pkgver %q pkgrel %q, want empty defaults",
 			pkg.Pkgname, pkg.Source, pkg.Pkgver, pkg.Pkgrel)
+	}
+	if pkg.Epoch != 0 {
+		t.Errorf("epoch = %d, want 0 default", pkg.Epoch)
 	}
 
 	// Task row: build_id converted, fail_count default zero.

@@ -26,6 +26,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -33,11 +34,14 @@ import (
 //
 // Pkgname, Arch and Source are multi-valued; URL is the single upstream
 // url entry and Licenses/Conflicts/Provides collect the same-named keys
-// (all multi-valued) for the package page metadata.
+// (all multi-valued) for the package page metadata. Epoch is the
+// leading "N:" version prefix (0 when pkgver has none); Pkgver never
+// carries the epoch prefix.
 type Info struct {
 	Pkgbase   string
 	Pkgver    string
 	Pkgrel    string
+	Epoch     int
 	Pkgdesc   string
 	URL       string
 	Pkgname   []string
@@ -77,7 +81,7 @@ func Parse(data []byte) (*Info, error) {
 		case "pkgbase":
 			info.Pkgbase = value
 		case "pkgver":
-			info.Pkgver = value
+			info.Epoch, info.Pkgver = splitEpoch(value)
 		case "pkgrel":
 			info.Pkgrel = value
 		case "pkgdesc":
@@ -115,6 +119,22 @@ func Parse(data []byte) (*Info, error) {
 func Hash(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// splitEpoch separates the leading "N:" epoch prefix of a pkgver (the
+// pacman version form [epoch:]pkgver-pkgrel) from the version proper.
+// A pkgver without the prefix yields epoch 0 and the value unchanged.
+func splitEpoch(pkgver string) (int, string) {
+	i := 0
+	for i < len(pkgver) && pkgver[i] >= '0' && pkgver[i] <= '9' {
+		i++
+	}
+	if i > 0 && i < len(pkgver) && pkgver[i] == ':' {
+		if epoch, err := strconv.Atoi(pkgver[:i]); err == nil {
+			return epoch, pkgver[i+1:]
+		}
+	}
+	return 0, pkgver
 }
 
 // validKey reports whether key is a well-formed .SRCINFO key. Keys are

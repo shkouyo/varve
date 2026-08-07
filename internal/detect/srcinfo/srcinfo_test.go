@@ -66,6 +66,38 @@ pkgname = foo-docs
 	}
 }
 
+// TestParseEpoch covers the leading "N:" epoch prefix of pkgver: it is
+// split off into Epoch and stripped from Pkgver, and a pkgver without a
+// prefix keeps Epoch 0.
+func TestParseEpoch(t *testing.T) {
+	tests := []struct {
+		name      string
+		pkgver    string
+		wantEpoch int
+		wantVer   string
+	}{
+		{"no epoch", "5.13", 0, "5.13"},
+		{"epoch one", "1:5.13", 1, "5.13"},
+		{"multi digit epoch", "42:0.9", 42, "0.9"},
+		{"leading zeros", "007:1.0", 7, "1.0"},
+		{"colon not after digits", "5:13", 5, "13"},
+		{"letter before colon", "rc1:2.0", 0, "rc1:2.0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := []byte("pkgbase = foo\npkgver = " + tt.pkgver + "\npkgrel = 2\npkgname = foo\n")
+			info, err := Parse(data)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if info.Epoch != tt.wantEpoch || info.Pkgver != tt.wantVer {
+				t.Errorf("Parse(%q) = epoch %d pkgver %q, want epoch %d pkgver %q",
+					tt.pkgver, info.Epoch, info.Pkgver, tt.wantEpoch, tt.wantVer)
+			}
+		})
+	}
+}
+
 // TestParseErrors covers the strict error cases: empty input, missing
 // pkgbase and malformed lines without an '=' separator.
 func TestParseErrors(t *testing.T) {

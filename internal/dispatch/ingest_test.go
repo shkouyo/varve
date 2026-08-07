@@ -96,9 +96,9 @@ func TestReportSucceeded(t *testing.T) {
 	// pkgname/source/pkgver/pkgrel used to be dropped.
 	if !reflect.DeepEqual(pkg.Pkgname, []string{"testpkg"}) ||
 		!reflect.DeepEqual(pkg.Source, []string{"https://example.org/foo.tar.gz"}) ||
-		pkg.Pkgver != "1.2.3" || pkg.Pkgrel != "1" {
-		t.Errorf("pkgname/source/pkgver/pkgrel = %v/%v/%q/%q, want testpkg/url/1.2.3/1",
-			pkg.Pkgname, pkg.Source, pkg.Pkgver, pkg.Pkgrel)
+		pkg.Pkgver != "1.2.3" || pkg.Pkgrel != "1" || pkg.Epoch != 1 {
+		t.Errorf("pkgname/source/pkgver/pkgrel/epoch = %v/%v/%q/%q/%d, want testpkg/url/1.2.3/1/1",
+			pkg.Pkgname, pkg.Source, pkg.Pkgver, pkg.Pkgrel, pkg.Epoch)
 	}
 	if pkg.URL != "https://example.org/foo" ||
 		!reflect.DeepEqual(pkg.Licenses, []string{"MIT"}) ||

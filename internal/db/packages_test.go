@@ -213,11 +213,11 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 	mustSeedPackage(t, s, "upd")
 
 	upd := PackageUpdate{
-		CurrentVersion: "2.0.0-1", Pkgdesc: "new desc", SrcinfoHash: "hash2", UpstreamRef: "ref2",
+		CurrentVersion: "2:2.0.0-1", Pkgdesc: "new desc", SrcinfoHash: "hash2", UpstreamRef: "ref2",
 		BuildID: "000000000000002a", URL: "https://example.org/upd",
 		Licenses: []string{"GPL", "MIT"}, Conflicts: []string{"oldpkg"}, Provides: []string{"upd-lib"},
 		Pkgname: []string{"upd", "upd-lib"}, Source: []string{"https://example.org/upd.tar.gz"},
-		Pkgver: "2.0.0", Pkgrel: "1", Commit: "deadbeef",
+		Pkgver: "2.0.0", Pkgrel: "1", Epoch: 2, Commit: "deadbeef",
 	}
 	err := s.WithTx(testCtx, func(tx *Tx) error {
 		return tx.UpdatePackageAfterBuild(testCtx, "upd", upd)
@@ -229,7 +229,7 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPackageByBase: %v", err)
 	}
-	if got.CurrentVersion != "2.0.0-1" || got.Pkgdesc != "new desc" ||
+	if got.CurrentVersion != "2:2.0.0-1" || got.Pkgdesc != "new desc" ||
 		got.LastSrcinfoHash != "hash2" || got.LastUpstreamRef != "ref2" || got.LastBuildID != "000000000000002a" {
 		t.Errorf("updated fields mismatch: %+v", got)
 	}
@@ -248,6 +248,12 @@ func TestUpdatePackageAfterBuild(t *testing.T) {
 	}
 	if got.Pkgver != "2.0.0" || got.Pkgrel != "1" {
 		t.Errorf("pkgver/pkgrel = %q/%q, want 2.0.0/1", got.Pkgver, got.Pkgrel)
+	}
+	if got.Epoch != 2 {
+		t.Errorf("epoch = %d, want 2", got.Epoch)
+	}
+	if got.CurrentVersion != "2:2.0.0-1" {
+		t.Errorf("current_version = %q, want the epoch-prefixed 2:2.0.0-1", got.CurrentVersion)
 	}
 	if got.LastCommit != "deadbeef" {
 		t.Errorf("last_commit = %q, want deadbeef", got.LastCommit)
@@ -323,7 +329,7 @@ func TestUpsertPackageMetadata(t *testing.T) {
 	p := &Package{
 		Pkgbase: "meta", Branch: "main", Arch: "x86_64",
 		URL: "https://example.org/meta", Licenses: []string{"MIT"}, Provides: []string{"meta-lib"},
-		Pkgname: []string{"meta"}, Source: []string{"https://example.org/meta.tar.gz"}, Pkgver: "1.0", Pkgrel: "1",
+		Pkgname: []string{"meta"}, Source: []string{"https://example.org/meta.tar.gz"}, Pkgver: "1.0", Pkgrel: "1", Epoch: 3,
 	}
 	if err := s.UpsertPackage(testCtx, p); err != nil {
 		t.Fatalf("UpsertPackage: %v", err)
@@ -338,8 +344,8 @@ func TestUpsertPackageMetadata(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Pkgname, []string{"meta"}) ||
 		!reflect.DeepEqual(got.Source, []string{"https://example.org/meta.tar.gz"}) ||
-		got.Pkgver != "1.0" || got.Pkgrel != "1" {
-		t.Errorf("pkgname/source/pkgver/pkgrel round trip = %v/%v/%q/%q", got.Pkgname, got.Source, got.Pkgver, got.Pkgrel)
+		got.Pkgver != "1.0" || got.Pkgrel != "1" || got.Epoch != 3 {
+		t.Errorf("pkgname/source/pkgver/pkgrel/epoch round trip = %v/%v/%q/%q/%d", got.Pkgname, got.Source, got.Pkgver, got.Pkgrel, got.Epoch)
 	}
 
 	// An upsert on the same pkgbase refreshes the metadata.

@@ -56,8 +56,9 @@ type Package struct {
 	Provides        []string // .SRCINFO provides entries
 	Pkgname         []string // .SRCINFO package names
 	Source          []string // .SRCINFO source entries
-	Pkgver          string   // .SRCINFO pkgver, split from current_version
+	Pkgver          string   // .SRCINFO pkgver, split from current_version, epoch stripped
 	Pkgrel          string   // .SRCINFO pkgrel, split from current_version
+	Epoch           int      // .SRCINFO epoch prefix (0 when pkgver has none)
 	LastCommit      string   // branch tip commit of the last successful build
 	LastSrcinfoHash string
 	LastUpstreamRef string
@@ -69,7 +70,8 @@ type Package struct {
 // PackageUpdate carries the outcome of a successful build onto the
 // package row: the version/description/hash records plus the verified
 // .SRCINFO metadata (url, licenses, conflicts, provides, pkgname,
-// source, pkgver, pkgrel) and the commit that was actually built.
+// source, pkgver, epoch, pkgrel) and the commit that was actually
+// built.
 type PackageUpdate struct {
 	CurrentVersion string
 	Pkgdesc        string
@@ -84,6 +86,7 @@ type PackageUpdate struct {
 	Source         []string
 	Pkgver         string
 	Pkgrel         string
+	Epoch          int
 	Commit         string
 }
 
