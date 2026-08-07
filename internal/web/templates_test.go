@@ -62,6 +62,19 @@ func TestErrorPages(t *testing.T) {
 	if strings.Contains(body, "<script") {
 		t.Error("401 error page must not contain scripts")
 	}
+
+	// Logout answers 401 (dropping the saved credentials) and the error
+	// page carries a link back to the start page, so it is never a dead
+	// end.
+	rec = get(t, s, http.MethodGet, "/admin/logout", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /admin/logout = %d, want 401", rec.Code)
+	}
+	if got := rec.Header().Get("WWW-Authenticate"); got == "" {
+		t.Error("logout must keep the WWW-Authenticate challenge")
+	}
+	body = rec.Body.String()
+	mustContain(t, body, "Logged out", "Unauthorized", `href="/"`)
 }
 
 // TestSemanticMarkup asserts the shared page chrome on every rendered

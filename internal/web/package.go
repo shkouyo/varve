@@ -18,7 +18,6 @@
 package web
 
 import (
-	"context"
 	"errors"
 	"net/http"
 
@@ -50,24 +49,19 @@ type downloadLink struct {
 
 // handlePackage renders GET /packages/{pkgbase}.
 func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	pkgbase := r.PathValue("pkgbase")
 	if !validPkgbase(pkgbase) {
-		s.renderError(w, http.StatusBadRequest, "Invalid package name.")
+		s.renderError(w, r, http.StatusBadRequest, "Invalid package name.")
 		return
 	}
-	page, ok := parsePage(r.URL.Query().Get("page"))
-	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid page number.")
-		return
-	}
-	data, err := s.packageData(ctx, pkgbase, page)
+	page := parsePage(r.URL.Query().Get("page"))
+	data, err := s.packageData(r, pkgbase, page)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			s.renderError(w, http.StatusNotFound, "Package not found: "+pkgbase)
+			s.renderError(w, r, http.StatusNotFound, "Package not found: "+pkgbase)
 			return
 		}
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the package.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the package.")
 		return
 	}
 	data.Nav = "packages"
@@ -77,25 +71,28 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 // packageData assembles the package page data: the package row (with its
 // .SRCINFO metadata), the newest build history for the package (paged, so
 // long histories are not truncated), the download link of the latest
-// build and its artifact list. The requested page is clamped to the last
-// one when it exceeds the range.
-func (s *Server) packageData(ctx context.Context, pkgbase string, page int) (packageData, error) {
+// build and its artifact list. The requested page clamps to the valid
+// range: malformed values become page 1, oversized values the last page.
+func (s *Server) packageData(r *http.Request, pkgbase string, page int) (packageData, error) {
+	ctx := r.Context()
 	pkg, err := s.store.GetPackageByBase(ctx, pkgbase)
 	if err != nil {
 		return packageData{}, err
 	}
 
-	// Build history, newest first, restricted to this package.
-	builds, total, err := s.store.ListBuildsByPackage(ctx, pkg.ID, page, perPage)
+	// Build history, newest first, restricted to this package. Count
+	// first so an oversized page clamps before the row query runs.
+	_, total, err := s.store.ListBuildsByPackage(ctx, pkg.ID, 1, perPage)
 	if err != nil {
 		return packageData{}, err
 	}
 	p := pages(total, perPage)
 	if page > p {
 		page = p
-		if builds, _, err = s.store.ListBuildsByPackage(ctx, pkg.ID, page, perPage); err != nil {
-			return packageData{}, err
-		}
+	}
+	builds, _, err := s.store.ListBuildsByPackage(ctx, pkg.ID, page, perPage)
+	if err != nil {
+		return packageData{}, err
 	}
 
 	// Latest build: prefer the recorded last_build_id, fall back to the
@@ -111,7 +108,7 @@ func (s *Server) packageData(ctx context.Context, pkgbase string, page int) (pac
 	}
 
 	return packageData{
-		base:      s.page(pkg.Pkgbase, nil),
+		base:      s.page(r, pkg.Pkgbase, nil),
 		Pkg:       *pkg,
 		Builds:    builds,
 		Page:      page,

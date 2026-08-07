@@ -54,15 +54,15 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, ok := parseID(r.PathValue("id"))
 	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid build id.")
+		s.renderError(w, r, http.StatusBadRequest, "Invalid build id.")
 		return
 	}
 	if _, err := s.store.GetBuild(ctx, id); err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			s.renderError(w, http.StatusNotFound, "Build not found: "+id)
+			s.renderError(w, r, http.StatusNotFound, "Build not found: "+id)
 			return
 		}
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the build.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build.")
 		return
 	}
 	http.Redirect(w, r, "/builds/"+id+"#log", http.StatusFound)
@@ -75,16 +75,16 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, ok := parseID(r.PathValue("id"))
 	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid build id.")
+		s.renderError(w, r, http.StatusBadRequest, "Invalid build id.")
 		return
 	}
 	build, err := s.store.GetBuild(ctx, id)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			s.renderError(w, http.StatusNotFound, "Build not found: "+id)
+			s.renderError(w, r, http.StatusNotFound, "Build not found: "+id)
 			return
 		}
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the build.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build.")
 		return
 	}
 	s.serveSSE(w, r, build.ID)
@@ -101,12 +101,12 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		s.renderError(w, http.StatusInternalServerError, "Streaming is not supported.")
+		s.renderError(w, r, http.StatusInternalServerError, "Streaming is not supported.")
 		return
 	}
 	offset, ok := sseResume(r)
 	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid log offset.")
+		s.renderError(w, r, http.StatusBadRequest, "Invalid log offset.")
 		return
 	}
 

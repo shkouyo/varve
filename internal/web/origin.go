@@ -34,7 +34,7 @@ import (
 func (s *Server) requireSameOrigin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !sameOrigin(r) {
-			s.renderError(w, http.StatusForbidden, "Cross-site requests are rejected.")
+			s.renderError(w, r, http.StatusForbidden, "Cross-site requests are rejected.")
 			return
 		}
 		next(w, r)

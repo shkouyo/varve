@@ -89,13 +89,18 @@ func TestBuildsListPagination(t *testing.T) {
 	mustContain(t, rec.Body.String(), "Page 2 of 2")
 }
 
-// TestBuildsListValidation asserts invalid page numbers are a 400.
-func TestBuildsListValidation(t *testing.T) {
-	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
-	for _, p := range []string{"0", "abc"} {
+// TestBuildsListPageClamp asserts page numbers never 400: malformed and
+// negative values clamp to page 1 and oversized values to the last
+// page.
+func TestBuildsListPageClamp(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	for _, p := range []string{"0", "-1", "abc"} {
 		rec := get(t, s, http.MethodGet, "/builds?page="+p, nil)
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("page=%q = %d, want 400", p, rec.Code)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "demo-pkg") {
+			t.Errorf("page=%q = %d, want 200 with the build list rendered", p, rec.Code)
 		}
 	}
 }

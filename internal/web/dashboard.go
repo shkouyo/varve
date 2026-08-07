@@ -109,7 +109,7 @@ type workerView struct {
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	data, err := s.dashboardData(r)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load dashboard statistics.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load overview statistics.")
 		return
 	}
 	data.Nav = "dashboard"
@@ -137,7 +137,7 @@ func (s *Server) dashboardData(r *http.Request) (dashboardData, error) {
 		recent = recent[:n]
 	}
 	data := dashboardData{
-		base:     s.page("Dashboard", nil),
+		base:     s.page(r, "Overview", nil),
 		Counts:   statusCounts(stats.ByStatus),
 		QueueLen: stats.QueueLen,
 		Recent:   s.recentBuildViews(ctx, recent, workers),
@@ -207,10 +207,14 @@ func workerViews(workers []db.Worker, now time.Time) []workerView {
 }
 
 // formatWhen renders an optional timestamp as a relative age ("2m ago")
-// or "never".
+// or "never". A timestamp in the future (clock skew, scheduled values)
+// renders as absolute wall-clock time instead of a nonsense age.
 func formatWhen(t *time.Time, now time.Time) string {
 	if t == nil {
 		return "never"
+	}
+	if t.After(now) {
+		return absTime(t)
 	}
 	d := now.Sub(*t)
 	switch {

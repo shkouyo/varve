@@ -21,6 +21,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -66,6 +67,9 @@ func TestDashboardAdminData(t *testing.T) {
 	if data.Admin {
 		t.Error("anonymous dashboard must not be marked admin")
 	}
+	if data.LoggedIn || data.User != "" {
+		t.Error("anonymous dashboard must not carry a signed-in user")
+	}
 	if len(data.Tasks) != 0 {
 		t.Errorf("anonymous dashboard Tasks = %v, want none", data.Tasks)
 	}
@@ -79,6 +83,9 @@ func TestDashboardAdminData(t *testing.T) {
 	}
 	if !data.Admin {
 		t.Error("authed dashboard must be marked admin")
+	}
+	if !data.LoggedIn || data.User != "admin" {
+		t.Errorf("authed dashboard: LoggedIn %v User %q, want true/admin", data.LoggedIn, data.User)
 	}
 	if len(data.Tasks) != 1 || data.Tasks[0].ID != "t-abc" ||
 		data.Tasks[0].Pkgbase != "demo-pkg" || data.Tasks[0].CancelURL != "/admin/tasks/t-abc/cancel" {
@@ -122,7 +129,7 @@ func TestAdminActions(t *testing.T) {
 				t.Fatalf("enables = %v, want [node-1]", orch.enables)
 			}
 		}},
-		{"remove", http.MethodPost, "/admin/workers/node-1/remove", map[string]string{"confirm": "1"}, func(t *testing.T) {
+		{"remove", http.MethodPost, "/admin/workers/node-1/remove", nil, func(t *testing.T) {
 			if len(orch.removes) != 1 || orch.removes[0] != "node-1" {
 				t.Fatalf("removes = %v, want [node-1]", orch.removes)
 			}
@@ -147,23 +154,45 @@ func TestAdminActions(t *testing.T) {
 	}
 }
 
-// TestAdminRemoveRequiresConfirmation asserts the removal form must carry
-// the confirm checkbox; a missing confirmation redirects with an error
-// and never reaches the orchestrator.
-func TestAdminRemoveRequiresConfirmation(t *testing.T) {
+// TestAdminRemoveWithoutConfirmation asserts the removal form needs no
+// confirmation checkbox: the action removes the worker immediately.
+func TestAdminRemoveWithoutConfirmation(t *testing.T) {
 	orch := &fakeOrchestrator{stats: &dispatch.Stats{}}
 	s := newTestServer(t, testConfig(), orch, newTestDB(t), newFakeLogReader(""))
 
-	rec := postForm(t, s, "/admin/workers/node-1/remove", "admin", "s3cret", nil)
+	rec := getAuth(t, s, http.MethodPost, "/admin/workers/node-1/remove", "admin", "s3cret")
 	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("POST remove without confirm = %d, want 303", rec.Code)
+		t.Fatalf("POST remove = %d, want 303", rec.Code)
 	}
+	if len(orch.removes) != 1 || orch.removes[0] != "node-1" {
+		t.Errorf("removes = %v, want [node-1]", orch.removes)
+	}
+}
+
+// TestAdminFlashSanitizesPaths asserts internal absolute paths in error
+// flashes are scrubbed to a placeholder, both in the redirect and when
+// a hand-crafted flash URL is read back.
+func TestAdminFlashSanitizesPaths(t *testing.T) {
+	store := newTestDB(t)
+	seedPackage(t, store, "demo-pkg", "A demo package")
+	orch := &fakeOrchestrator{stats: &dispatch.Stats{}, rebuildErr: errors.New("open /data/varve/logs/xyz.log: no such file")}
+	s := newTestServer(t, testConfig(), orch, store, newFakeLogReader(""))
+
+	rec := getAuth(t, s, http.MethodPost, "/admin/packages/demo-pkg/rebuild", "admin", "s3cret")
 	loc := rec.Header().Get("Location")
-	if !strings.HasPrefix(loc, "/admin?error=") || !strings.Contains(loc, "confirmation") {
-		t.Errorf("Location = %q, want /admin?error=...confirmation...", loc)
+	msg, err := url.QueryUnescape(strings.TrimPrefix(loc, "/admin?error="))
+	if err != nil || strings.Contains(msg, "/data/varve") || !strings.Contains(msg, "/…") {
+		t.Errorf("redirect flash = %q, want the path scrubbed to a placeholder", loc)
 	}
-	if len(orch.removes) != 0 {
-		t.Errorf("removes = %v, want none without confirmation", orch.removes)
+
+	req := newRequest(t, http.MethodGet, "/?error=stat+/data/varve/db.sqlite:+failed")
+	req.SetBasicAuth("admin", "s3cret")
+	data, err := s.dashboardData(req)
+	if err != nil {
+		t.Fatalf("dashboardData: %v", err)
+	}
+	if data.Flash == nil || strings.Contains(data.Flash.Message, "/data/varve") || !strings.Contains(data.Flash.Message, "/…") {
+		t.Errorf("Flash = %+v, want the path scrubbed", data.Flash)
 	}
 }
 

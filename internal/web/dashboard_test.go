@@ -105,6 +105,9 @@ func TestFormatWhen(t *testing.T) {
 		{ptrTime(now.Add(-5 * time.Minute)), "5m ago"},
 		{ptrTime(now.Add(-3 * time.Hour)), "3h ago"},
 		{ptrTime(now.Add(-72 * time.Hour)), "3d ago"},
+		// A future timestamp renders as absolute wall-clock time instead
+		// of a nonsense relative age.
+		{ptrTime(now.Add(2 * time.Hour)), now.Add(2 * time.Hour).Local().Format("2006-01-02 15:04")},
 	}
 	for _, tc := range cases {
 		if got := formatWhen(tc.t, now); got != tc.want {

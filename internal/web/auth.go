@@ -30,7 +30,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.authorized(r) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="varve admin", charset="UTF-8"`)
-			s.renderError(w, http.StatusUnauthorized,
+			s.renderError(w, r, http.StatusUnauthorized,
 				"Authentication required. /admin is protected by Basic Auth.")
 			return
 		}

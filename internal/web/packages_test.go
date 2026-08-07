@@ -185,6 +185,10 @@ func TestPackageDetailMetadata(t *testing.T) {
 			Licenses:  []string{"GPL", "MIT"},
 			Conflicts: []string{"old-demo"},
 			Provides:  []string{"demo-lib"},
+			Pkgname:   []string{"demo-pkg"},
+			Source:    []string{"https://example.org/demo-pkg.tar.gz"},
+			Pkgver:    "1.2.3",
+			Pkgrel:    "1",
 		})
 	})
 	if err != nil {
@@ -192,7 +196,7 @@ func TestPackageDetailMetadata(t *testing.T) {
 	}
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
 
-	data, err := s.packageData(testCtx, "demo-pkg", 1)
+	data, err := s.packageData(newRequest(t, http.MethodGet, "/packages/demo-pkg"), "demo-pkg", 1)
 	if err != nil {
 		t.Fatalf("packageData: %v", err)
 	}
@@ -208,6 +212,15 @@ func TestPackageDetailMetadata(t *testing.T) {
 	if len(data.Pkg.Provides) != 1 || data.Pkg.Provides[0] != "demo-lib" {
 		t.Errorf("Pkg.Provides = %v, want [demo-lib]", data.Pkg.Provides)
 	}
+	if len(data.Pkg.Pkgname) != 1 || data.Pkg.Pkgname[0] != "demo-pkg" {
+		t.Errorf("Pkg.Pkgname = %v, want [demo-pkg]", data.Pkg.Pkgname)
+	}
+	if len(data.Pkg.Source) != 1 || data.Pkg.Source[0] != "https://example.org/demo-pkg.tar.gz" {
+		t.Errorf("Pkg.Source = %v, want the source list", data.Pkg.Source)
+	}
+	if data.Pkg.Pkgver != "1.2.3" || data.Pkg.Pkgrel != "1" {
+		t.Errorf("Pkg.Pkgver/Pkgrel = %q/%q, want 1.2.3/1", data.Pkg.Pkgver, data.Pkg.Pkgrel)
+	}
 }
 
 // TestPackageHistoryPagination asserts the build history paginates per
@@ -221,21 +234,21 @@ func TestPackageHistoryPagination(t *testing.T) {
 	}
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
 
-	page1, err := s.packageData(testCtx, "demo-pkg", 1)
+	page1, err := s.packageData(newRequest(t, http.MethodGet, "/packages/demo-pkg"), "demo-pkg", 1)
 	if err != nil {
 		t.Fatalf("packageData page 1: %v", err)
 	}
 	if page1.Total != 25 || page1.Pages != 2 || len(page1.Builds) != 20 {
 		t.Errorf("page 1 = total %d pages %d builds %d, want 25/2/20", page1.Total, page1.Pages, len(page1.Builds))
 	}
-	page2, err := s.packageData(testCtx, "demo-pkg", 2)
+	page2, err := s.packageData(newRequest(t, http.MethodGet, "/packages/demo-pkg"), "demo-pkg", 2)
 	if err != nil {
 		t.Fatalf("packageData page 2: %v", err)
 	}
 	if len(page2.Builds) != 5 {
 		t.Errorf("page 2 builds = %d, want 5", len(page2.Builds))
 	}
-	clamped, err := s.packageData(testCtx, "demo-pkg", 99)
+	clamped, err := s.packageData(newRequest(t, http.MethodGet, "/packages/demo-pkg"), "demo-pkg", 99)
 	if err != nil {
 		t.Fatalf("packageData out-of-range page: %v", err)
 	}
@@ -244,8 +257,87 @@ func TestPackageHistoryPagination(t *testing.T) {
 	}
 }
 
-// TestPackagesValidation asserts malformed input is rejected with a 400:
-// over-long search terms and invalid page numbers.
+// TestPackagesScopeArchFilter drives the ?scope= and ?arch= matrix:
+// scope narrows the match to the package name or description, arch to
+// the architecture set, and both combine; invalid values are a 400.
+func TestPackagesScopeArchFilter(t *testing.T) {
+	store := newTestDB(t)
+	upsert := func(pkgbase, desc, arch string) {
+		p := db.Package{
+			Pkgbase:     pkgbase,
+			Branch:      "main",
+			VCSKind:     "git",
+			Arch:        arch,
+			Pkgdesc:     desc,
+			Maintainers: []string{"alice@example.com"},
+		}
+		if err := store.UpsertPackage(testCtx, &p); err != nil {
+			t.Fatalf("upsert package %q: %v", pkgbase, err)
+		}
+	}
+	upsert("alpha-tools", "first set of tools", "x86_64")
+	upsert("beta-libs", "second set of libraries", "any")
+	upsert("gamma-utils", "gamma utilities", "x86_64|any")
+
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+
+	// Package descriptions are build-derived: populate them through the
+	// post-build update path like a real build would.
+	for _, p := range []struct {
+		pkgbase, desc, arch string
+	}{
+		{"alpha-tools", "first set of tools", "x86_64"},
+		{"beta-libs", "second set of libraries", "any"},
+		{"gamma-utils", "gamma utilities", "x86_64|any"},
+	} {
+		err := store.WithTx(testCtx, func(tx *db.Tx) error {
+			return tx.UpdatePackageAfterBuild(testCtx, p.pkgbase, db.PackageUpdate{
+				CurrentVersion: "1.0-1", Pkgdesc: p.desc, SrcinfoHash: "srcinfo-hash",
+			})
+		})
+		if err != nil {
+			t.Fatalf("update package %q: %v", p.pkgbase, err)
+		}
+	}
+
+	cases := []struct {
+		name string
+		q    string
+		want string
+		nope string
+	}{
+		{"name scope", "?q=tools&scope=name", "alpha-tools", "beta-libs"},
+		{"desc scope", "?q=tools&scope=desc", "alpha-tools", "beta-libs"},
+		{"name only excludes desc", "?q=utilities&scope=name", "", "gamma-utils"},
+		{"desc only finds desc", "?q=utilities&scope=desc", "gamma-utils", "alpha-tools"},
+		{"both scopes", "?q=tools", "alpha-tools", "beta-libs"},
+		{"case insensitive", "?q=Tools&scope=name", "alpha-tools", "beta-libs"},
+		{"arch x86_64", "?arch=x86_64", "alpha-tools", "beta-libs"},
+		{"arch any", "?arch=any", "beta-libs", "alpha-tools"},
+		{"mixed set matches both arches", "?q=gamma&arch=x86_64", "gamma-utils", "beta-libs"},
+		{"combined filter excludes", "?q=tools&arch=any", "", "alpha-tools"},
+		{"combined filter keeps", "?q=lib&arch=any", "beta-libs", "alpha-tools"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := get(t, s, http.MethodGet, "/packages"+tc.q, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("GET /packages%s = %d, want 200", tc.q, rec.Code)
+			}
+			body := rec.Body.String()
+			if tc.want != "" {
+				mustContain(t, body, tc.want)
+			}
+			if tc.nope != "" && strings.Contains(body, tc.nope) {
+				t.Errorf("%s: result must not contain %q", tc.q, tc.nope)
+			}
+		})
+	}
+}
+
+// TestPackagesValidation asserts malformed input handling: over-long
+// search terms and invalid filter values are a 400, while page numbers
+// clamp to page 1 instead of failing.
 func TestPackagesValidation(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
 	long := strings.Repeat("a", 201)
@@ -253,10 +345,17 @@ func TestPackagesValidation(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("long q = %d, want 400", rec.Code)
 	}
+	for _, q := range []string{"scope=bogus", "arch=bogus", "scope=name&arch=weird"} {
+		rec = get(t, s, http.MethodGet, "/packages?"+q, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("?%s = %d, want 400", q, rec.Code)
+		}
+	}
+	// Page numbers never 400: malformed and negative values clamp to 1.
 	for _, p := range []string{"0", "-1", "abc"} {
 		rec = get(t, s, http.MethodGet, "/packages?page="+p, nil)
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("page=%q = %d, want 400", p, rec.Code)
+		if rec.Code != http.StatusOK {
+			t.Errorf("page=%q = %d, want 200 (clamped)", p, rec.Code)
 		}
 	}
 }

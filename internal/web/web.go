@@ -147,12 +147,13 @@ func (s *Server) Handler() http.Handler {
 
 // base carries the fields every page template renders: the page title,
 // the inlined compiled stylesheet, an optional redirect-back flash
-// message (admin actions) and the auto-refresh cadence. RefreshSeconds
-// is 10 on every page except the merged log section of a terminal
-// build, which must not refresh anymore; PageActive marks a build page
-// whose build is still in progress. The template renders the meta
-// refresh inside <noscript> so JavaScript users are never reloaded (the
-// build page streams live log increments over SSE instead).
+// message (admin actions), the signed-in admin (empty when anonymous)
+// and the auto-refresh cadence. RefreshSeconds is 10 on every page
+// except the merged log section of a terminal build, which must not
+// refresh anymore; PageActive marks a build page whose build is still
+// in progress. The template renders the meta refresh inside <noscript>
+// so JavaScript users are never reloaded (the build page streams live
+// log increments over SSE instead).
 type base struct {
 	Title string
 	CSS   template.CSS
@@ -160,6 +161,8 @@ type base struct {
 	// Nav names the active section for the header navigation
 	// (aria-current), or "" when none applies.
 	Nav            string
+	User           string // authenticated admin username, "" when anonymous
+	LoggedIn       bool
 	PageActive     bool
 	RefreshSeconds int
 }
@@ -171,9 +174,15 @@ type flash struct {
 	Message string
 }
 
-// page builds the base fields shared by every page.
-func (s *Server) page(title string, f *flash) base {
-	return base{Title: title, CSS: template.CSS(s.css), Flash: f, RefreshSeconds: 10}
+// page builds the base fields shared by every page, resolving the
+// signed-in admin for the header chrome (username plus logout link).
+func (s *Server) page(r *http.Request, title string, f *flash) base {
+	b := base{Title: title, CSS: template.CSS(s.css), Flash: f, RefreshSeconds: 10}
+	if user, _, ok := r.BasicAuth(); ok && s.authorized(r) {
+		b.User = user
+		b.LoggedIn = true
+	}
+	return b
 }
 
 // render executes a named template with the page data. The stylesheet is
@@ -196,11 +205,11 @@ type errorData struct {
 
 // renderError writes a full error page with the given status. The
 // template itself depends on no JavaScript.
-func (s *Server) renderError(w http.ResponseWriter, status int, message string) {
+func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, "error.html", errorData{
-		base:    s.page(http.StatusText(status), nil),
+		base:    s.page(r, http.StatusText(status), nil),
 		Status:  status,
 		Message: message,
 	}); err != nil {
@@ -287,18 +296,18 @@ func parseID(raw string) (string, bool) {
 	return raw, true
 }
 
-// parsePage parses a ?page= query value. An absent value yields page 1;
-// a present value must be a positive integer (ok=false otherwise, mapped
-// to a 400 by the callers).
-func parsePage(raw string) (int, bool) {
+// parsePage parses a ?page= value, clamping malformed and negative
+// values to page 1 (invalid input never 400s; oversized values clamp to
+// the last page once the total is known).
+func parsePage(raw string) int {
 	if raw == "" {
-		return 1, true
+		return 1
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 1 {
-		return 0, false
+		return 1
 	}
-	return n, true
+	return n
 }
 
 // maxQueryLen caps the length of user-supplied search terms and package

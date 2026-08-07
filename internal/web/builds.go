@@ -33,35 +33,34 @@ type buildsData struct {
 	Empty  bool
 }
 
-// handleBuilds renders GET /builds with ?page= pagination. The requested
-// page is clamped to the last one when it exceeds the range.
+// handleBuilds renders GET /builds with ?page= pagination. Page numbers
+// clamp to the valid range: malformed values become page 1, oversized
+// values the last page.
 func (s *Server) handleBuilds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	page, ok := parsePage(r.URL.Query().Get("page"))
-	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid page number.")
-		return
-	}
-	builds, total, err := s.store.ListBuilds(ctx, page, perPage, false)
+	page := parsePage(r.URL.Query().Get("page"))
+	// Count first so an oversized page clamps before the row query runs.
+	_, total, err := s.store.ListBuilds(ctx, 1, perPage, false)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the build list.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build list.")
 		return
 	}
 	workers, err := s.store.ListWorkers(ctx)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the worker list.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the worker list.")
 		return
 	}
 	p := pages(total, perPage)
 	if page > p {
 		page = p
-		if builds, _, err = s.store.ListBuilds(ctx, page, perPage, false); err != nil {
-			s.renderError(w, http.StatusInternalServerError, "Failed to load the build list.")
-			return
-		}
+	}
+	builds, _, err := s.store.ListBuilds(ctx, page, perPage, false)
+	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build list.")
+		return
 	}
 	data := buildsData{
-		base:   s.page("Builds", nil),
+		base:   s.page(r, "Builds", nil),
 		Page:   page,
 		Pages:  p,
 		Total:  total,

@@ -21,6 +21,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 
 	"git.0x0f.dev/varve/internal/db"
@@ -70,12 +71,11 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout ends a stateless Basic Auth session the only way one can:
 // by answering 401 with a challenge so the browser drops its saved
-// credentials. The plain-text body tells the user what to do next.
+// credentials. The error page carries a link back to the start page, so
+// logout is never a dead end.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("WWW-Authenticate", `Basic realm="varve admin", charset="UTF-8"`)
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte("Logged out. Clear the credentials saved by your browser, then reload.\n"))
+	s.renderError(w, r, http.StatusUnauthorized, "Logged out.")
 }
 
 // taskViews resolves task rows into the template view (package name and
@@ -148,19 +148,11 @@ func (s *Server) handleAdminEnable(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, "/admin", "ok", "Worker "+name+" enabled")
 }
 
-// handleAdminRemove removes a worker record. The no-JavaScript form must
-// carry a confirm checkbox (value "1"); without it the removal is
-// cancelled so a stray click cannot delete a node.
+// handleAdminRemove removes a worker record immediately; pressing the
+// remove action is the explicit intent, so no confirmation round-trip is
+// required.
 func (s *Server) handleAdminRemove(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if err := r.ParseForm(); err != nil {
-		s.redirectFlash(w, r, "/admin", "error", "Remove failed: invalid form.")
-		return
-	}
-	if r.Form.Get("confirm") != "1" {
-		s.redirectFlash(w, r, "/admin", "error", "Remove cancelled: confirmation required.")
-		return
-	}
 	if err := s.orch.RemoveWorker(r.Context(), name); err != nil {
 		s.redirectFlash(w, r, "/admin", "error", "Remove failed: "+err.Error())
 		return
@@ -170,39 +162,37 @@ func (s *Server) handleAdminRemove(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminBuilds renders GET /admin/builds?failed=1, the long-term
 // failed build retention list. The failed filter must be "1" when
-// present; the page number is validated and clamped to the last page.
+// present; page numbers clamp to the valid range.
 func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if f := r.URL.Query().Get("failed"); f != "" && f != "1" {
-		s.renderError(w, http.StatusBadRequest, "Invalid failed filter.")
+		s.renderError(w, r, http.StatusBadRequest, "Invalid failed filter.")
 		return
 	}
-	page, ok := parsePage(r.URL.Query().Get("page"))
-	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid page number.")
-		return
-	}
-	builds, total, err := s.store.ListBuilds(ctx, page, perPage, true)
+	page := parsePage(r.URL.Query().Get("page"))
+	// Count first so an oversized page clamps before the row query runs.
+	_, total, err := s.store.ListBuilds(ctx, 1, perPage, true)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the failed build list.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the failed build list.")
 		return
 	}
 	workers, err := s.store.ListWorkers(ctx)
 	if err != nil {
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the worker list.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the worker list.")
 		return
 	}
 	p := pages(total, perPage)
 	if page > p {
 		page = p
-		if builds, _, err = s.store.ListBuilds(ctx, page, perPage, true); err != nil {
-			s.renderError(w, http.StatusInternalServerError, "Failed to load the failed build list.")
-			return
-		}
+	}
+	builds, _, err := s.store.ListBuilds(ctx, page, perPage, true)
+	if err != nil {
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the failed build list.")
+		return
 	}
 
 	data := adminBuildsData{
-		base:  s.page("Failed builds", flashFromQuery(r)),
+		base:  s.page(r, "Failed builds", flashFromQuery(r)),
 		Page:  page,
 		Pages: p,
 		Total: total,
@@ -233,21 +223,34 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "admin_builds.html", data)
 }
 
+// pathToken matches an absolute POSIX path: a run of slash-separated
+// segments preceded by a boundary (start or whitespace), so URLs in
+// error text are left alone.
+var pathToken = regexp.MustCompile(`(^|\s)(/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)+)`)
+
+// sanitizeFlash scrubs absolute file paths out of a flash message so
+// internal disk layout never leaks into the UI; each path collapses to
+// a placeholder.
+func sanitizeFlash(msg string) string {
+	return pathToken.ReplaceAllString(msg, "${1}/…")
+}
+
 // redirectFlash redirects back to the admin area with a flash message
 // carried in the query string (no cookies).
 func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, target, kind, msg string) {
 	q := url.Values{}
-	q.Set(kind, msg)
+	q.Set(kind, sanitizeFlash(msg))
 	http.Redirect(w, r, target+"?"+q.Encode(), http.StatusSeeOther)
 }
 
-// flashFromQuery turns ?error= / ?ok= into a flash message.
+// flashFromQuery turns ?error= / ?ok= into a flash message, scrubbing
+// internal paths even from hand-crafted URLs.
 func flashFromQuery(r *http.Request) *flash {
 	if m := r.URL.Query().Get("error"); m != "" {
-		return &flash{Kind: "error", Message: m}
+		return &flash{Kind: "error", Message: sanitizeFlash(m)}
 	}
 	if m := r.URL.Query().Get("ok"); m != "" {
-		return &flash{Kind: "ok", Message: m}
+		return &flash{Kind: "ok", Message: sanitizeFlash(m)}
 	}
 	return nil
 }

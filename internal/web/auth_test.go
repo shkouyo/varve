@@ -84,9 +84,9 @@ func TestUnauthorizedRendersErrorPage(t *testing.T) {
 }
 
 // TestLogoutChallenges asserts GET /admin/logout answers 401 with the
-// Basic challenge and a plain-text hint for both anonymous and
-// authenticated requests (the endpoint must always force the browser to
-// drop its saved credentials).
+// Basic challenge and the error page carrying a way back home, for both
+// anonymous and authenticated requests (the endpoint must always force
+// the browser to drop its saved credentials).
 func TestLogoutChallenges(t *testing.T) {
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}},
 		newTestDB(t), newFakeLogReader(""))
@@ -99,9 +99,9 @@ func TestLogoutChallenges(t *testing.T) {
 		if got := rec.Header().Get("WWW-Authenticate"); !strings.HasPrefix(got, "Basic") {
 			t.Errorf("WWW-Authenticate = %q, want a Basic challenge", got)
 		}
-		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
-			t.Errorf("Content-Type = %q, want text/plain", ct)
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+			t.Errorf("Content-Type = %q, want the HTML error page", ct)
 		}
-		mustContain(t, rec.Body.String(), "Clear the credentials saved")
+		mustContain(t, rec.Body.String(), "Logged out", `href="/"`)
 	}
 }

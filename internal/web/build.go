@@ -72,15 +72,15 @@ type resourceView struct {
 func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r.PathValue("id"))
 	if !ok {
-		s.renderError(w, http.StatusBadRequest, "Invalid build id.")
+		s.renderError(w, r, http.StatusBadRequest, "Invalid build id.")
 		return
 	}
 	data, err := s.buildData(r, id)
 	switch {
 	case errors.Is(err, db.ErrNotFound):
-		s.renderError(w, http.StatusNotFound, "Build not found: "+id)
+		s.renderError(w, r, http.StatusNotFound, "Build not found: "+id)
 	case err != nil:
-		s.renderError(w, http.StatusInternalServerError, "Failed to load the build.")
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build.")
 	default:
 		s.render(w, "build.html", data)
 	}
@@ -96,7 +96,7 @@ func (s *Server) buildData(r *http.Request, id string) (buildData, error) {
 	}
 
 	data := buildData{
-		base:        s.page("Build "+shortBuildID(id), nil),
+		base:        s.page(r, "Build "+shortBuildID(id), nil),
 		Build:       *b,
 		BuildID:     id,
 		LogURL:      "/builds/" + id + "/log",
