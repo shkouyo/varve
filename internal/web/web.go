@@ -17,11 +17,13 @@
 
 // Package web serves the varve web UI: server-side rendered templates
 // over html/template, a build-time Tailwind stylesheet embedded into the
-// binary, a Basic Auth protected /admin area (no cookies, naturally
-// CSRF-free), and an SSE log stream on GET /builds/{id}/log with a
-// no-JavaScript meta-refresh fallback. The UI is fully usable without
-// JavaScript: every admin action is a plain form POST and every page
-// renders semantic, keyboard navigable markup (WCAG 2.2 AA).
+// binary, a Basic Auth protected /admin area (no cookies), an
+// Origin/Referer same-origin gate on every admin POST (CSRF defense for
+// the auto-attached Basic credentials), and an SSE log stream on
+// GET /builds/{id}/log with a no-JavaScript meta-refresh fallback. The
+// UI is fully usable without JavaScript: every admin action is a plain
+// form POST and every page renders semantic, keyboard navigable markup
+// (WCAG 2.2 AA).
 package web
 
 import (
@@ -109,9 +111,10 @@ func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store *db.Sto
 }
 
 // Handler returns the full web route table. The /admin subtree is gated
-// by Basic Auth; every admin action is a plain form POST so the UI works
-// without JavaScript. GET /admin redirects to the merged dashboard page
-// (admin content renders there for authenticated requests) and
+// by Basic Auth and every admin POST additionally by the same-origin
+// check; every admin action is a plain form POST so the UI works without
+// JavaScript. GET /admin redirects to the merged dashboard page (admin
+// content renders there for authenticated requests) and
 // GET /admin/logout forces a 401 so the browser drops its saved
 // credentials.
 func (s *Server) Handler() http.Handler {
@@ -126,11 +129,11 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))
 	mux.HandleFunc("GET /admin/logout", s.handleLogout)
-	mux.HandleFunc("POST /admin/packages/{pkgbase}/rebuild", s.requireAuth(s.handleAdminRebuild))
-	mux.HandleFunc("POST /admin/tasks/{id}/cancel", s.requireAuth(s.handleAdminCancel))
-	mux.HandleFunc("POST /admin/workers/{name}/disable", s.requireAuth(s.handleAdminDisable))
-	mux.HandleFunc("POST /admin/workers/{name}/enable", s.requireAuth(s.handleAdminEnable))
-	mux.HandleFunc("POST /admin/workers/{name}/remove", s.requireAuth(s.handleAdminRemove))
+	mux.HandleFunc("POST /admin/packages/{pkgbase}/rebuild", s.requireAuth(s.requireSameOrigin(s.handleAdminRebuild)))
+	mux.HandleFunc("POST /admin/tasks/{id}/cancel", s.requireAuth(s.requireSameOrigin(s.handleAdminCancel)))
+	mux.HandleFunc("POST /admin/workers/{name}/disable", s.requireAuth(s.requireSameOrigin(s.handleAdminDisable)))
+	mux.HandleFunc("POST /admin/workers/{name}/enable", s.requireAuth(s.requireSameOrigin(s.handleAdminEnable)))
+	mux.HandleFunc("POST /admin/workers/{name}/remove", s.requireAuth(s.requireSameOrigin(s.handleAdminRemove)))
 	mux.HandleFunc("GET /admin/builds", s.requireAuth(s.handleAdminBuilds))
 	return mux
 }

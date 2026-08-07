@@ -361,18 +361,21 @@ func serve(t *testing.T, s *Server, req *http.Request) *httptest.ResponseRecorde
 	return rec
 }
 
-// getAuth issues an authenticated request (Basic Auth header).
+// getAuth issues an authenticated request (Basic Auth header). The
+// Origin header matches the default httptest host, as browsers send on
+// same-site requests; the admin POST handlers require it.
 func getAuth(t *testing.T, s *Server, method, path, user, pass string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
 	req.SetBasicAuth(user, pass)
+	req.Header.Set("Origin", "http://example.com")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
 }
 
 // postForm issues an authenticated url-encoded form POST (no-JavaScript
-// admin actions).
+// admin actions) with a same-site Origin header.
 func postForm(t *testing.T, s *Server, path, user, pass string, values map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{}
@@ -382,6 +385,7 @@ func postForm(t *testing.T, s *Server, path, user, pass string, values map[strin
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(user, pass)
+	req.Header.Set("Origin", "http://example.com")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
