@@ -172,7 +172,7 @@ func TestAdminIdempotency(t *testing.T) {
 
 	// cancel twice on a queued task: the first finalizes it, the second
 	// sees a terminal task and is a no-op.
-	taskID := env.enqueue(t, "c2", "c2")
+	taskID := env.enqueue(t, "task-two", "task-two")
 	for i := 0; i < 2; i++ {
 		if err := env.o.CancelTask(ctx(), taskID); err != nil {
 			t.Fatalf("CancelTask pass %d: %v", i, err)
@@ -187,7 +187,7 @@ func TestAdminIdempotency(t *testing.T) {
 	}
 
 	// cancel twice on a running task: the flag is set twice, harmlessly.
-	taskID2 := env.enqueue(t, "c3", "c3")
+	taskID2 := env.enqueue(t, "task-three", "task-three")
 	env.registerWorker(t, "w2", "host", "host", 1)
 	env.claim(t, "w2")
 	for i := 0; i < 2; i++ {
