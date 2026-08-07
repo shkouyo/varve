@@ -131,6 +131,9 @@ func (f *fakeOrchestrator) ReadLog(ctx context.Context, buildID string) ([]byte,
 func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
 	return offset, nil
 }
+func (f *fakeOrchestrator) Size(ctx context.Context, buildID string) (int64, error) {
+	return 0, nil
+}
 
 // fakeLogReader implements LogReader over an in-memory log with
 // scripted errors.
@@ -154,6 +157,16 @@ func (f *fakeLogReader) ReadLog(ctx context.Context, buildID string) ([]byte, er
 		return nil, f.readErr
 	}
 	return append([]byte(nil), f.content...), nil
+}
+
+// Size returns the current byte length of the fake log (0 when missing).
+func (f *fakeLogReader) Size(ctx context.Context, buildID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.readErr != nil {
+		return 0, f.readErr
+	}
+	return int64(len(f.content)), nil
 }
 
 // TailLog streams content[offset:] once; subsequent calls yield nothing.

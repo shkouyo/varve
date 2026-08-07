@@ -317,6 +317,11 @@ func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset i
 	return 0, nil
 }
 
+// Size implements Orchestrator.
+func (f *fakeOrchestrator) Size(ctx context.Context, buildID string) (int64, error) {
+	return 0, nil
+}
+
 // chunkRecorder wraps a reader and tracks the largest single read
 // returned plus the total bytes read (the memory-cap proxy).
 type chunkRecorder struct {

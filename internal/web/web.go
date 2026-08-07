@@ -51,6 +51,9 @@ type LogReader interface {
 	// TailLog streams the log bytes from offset onwards into w and
 	// returns the new offset. ErrNotFound when the log does not exist.
 	TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error)
+	// Size returns the current byte length of a build log (0 when the
+	// log does not exist).
+	Size(ctx context.Context, buildID string) (int64, error)
 }
 
 // The stylesheet is compiled from static/input.css at generate time

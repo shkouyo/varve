@@ -112,11 +112,11 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 
 	// Clamp the resume point to the truncation cap: a client asking for
 	// history older than the most recent maxInlineLog bytes is moved to
-	// the truncation point. The full read is the price of the coarse
-	// LogReader interface; the cap keeps the served history bounded.
-	if data, err := s.logs.ReadLog(r.Context(), buildID); err == nil {
-		if size := len(data); size > maxInlineLog {
-			if capStart := int64(size - maxInlineLog); offset < capStart {
+	// the truncation point. Only the byte size is consulted, so the
+	// clamp costs one stat instead of a full log read.
+	if size, err := s.logs.Size(r.Context(), buildID); err == nil {
+		if size > maxInlineLog {
+			if capStart := size - maxInlineLog; offset < capStart {
 				offset = capStart
 			}
 		}

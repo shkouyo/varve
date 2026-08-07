@@ -212,3 +212,10 @@ func (o *OrchestratorImpl) ReadLog(ctx context.Context, buildID string) ([]byte,
 func (o *OrchestratorImpl) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
 	return o.logs.TailFrom(buildID, offset, w)
 }
+
+// Size returns the current byte length of a build log (0 when the log
+// does not exist). The SSE handler uses it to clamp resume offsets to
+// the truncation cap without reading the log body. Concurrently safe.
+func (o *OrchestratorImpl) Size(ctx context.Context, buildID string) (int64, error) {
+	return o.logs.Size(buildID)
+}

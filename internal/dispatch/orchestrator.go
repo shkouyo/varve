@@ -139,6 +139,7 @@ type Orchestrator interface {
 	ValidateConflicts(ctx context.Context) error
 	ReadLog(ctx context.Context, buildID string) ([]byte, error)
 	TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error)
+	Size(ctx context.Context, buildID string) (int64, error)
 }
 
 // OrchestratorImpl implements Orchestrator. Field notes:
