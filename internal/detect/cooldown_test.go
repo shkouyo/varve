@@ -26,10 +26,10 @@ import (
 
 // seedFailedPackage inserts a packages row whose last build failed: the
 // last-success records stay behind (so the current source still "differs")
-// and last_failed_at marks the failure. A builds row with failedHash
+// and last_failed_at marks the failure. A builds row with failedCommit
 // mirrors the failed build's own snapshot, which is what the cooldown
 // compares against to separate a stale difference from a fresh change.
-func seedFailedPackage(t *testing.T, dbPath, pkgbase, lastSuccessHash, failedHash string, failedAt time.Time) {
+func seedFailedPackage(t *testing.T, dbPath, pkgbase, lastSuccessCommit, failedCommit string, failedAt time.Time) {
 	t.Helper()
 	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
@@ -38,16 +38,16 @@ func seedFailedPackage(t *testing.T, dbPath, pkgbase, lastSuccessHash, failedHas
 	defer raw.Close()
 	if _, err := raw.Exec(`INSERT INTO packages
 		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
-		 last_srcinfo_hash, last_upstream_ref, last_failed_at, maintainers)
+		 last_commit, last_upstream_ref, last_failed_at, maintainers)
 		VALUES (?, '', '', 'x86_64', '', '', ?, '', ?, '[]')`,
-		pkgbase, lastSuccessHash, failedAt.UTC().Format(time.RFC3339Nano)); err != nil {
+		pkgbase, lastSuccessCommit, failedAt.UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("seed package %s: %v", pkgbase, err)
 	}
 	if _, err := raw.Exec(`INSERT INTO builds
 		(id, seq, package_id, branch, "commit", upstream_ref, srcinfo_hash, status,
 		 worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage)
-		VALUES ('failed-1', 1, 1, '', 'c', '', ?, 'failed',
-		        NULL, '', '', NULL, NULL, '', '[]', '[]')`, failedHash); err != nil {
+		VALUES ('failed-1', 1, 1, '', ?, '', 'h', 'failed',
+		        NULL, '', '', NULL, NULL, '', '[]', '[]')`, failedCommit); err != nil {
 		t.Fatalf("seed failed build for %s: %v", pkgbase, err)
 	}
 }
@@ -60,7 +60,8 @@ func TestPollOnceRebuildCooldownHolds(t *testing.T) {
 	src := newSourceRepo(t, "cool", map[string]string{".SRCINFO": body})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
-	seedFailedPackage(t, dbPath, "cool", "old-success-hash", hashOf(body),
+	tip := runGit(t, src, "rev-parse", "HEAD")
+	seedFailedPackage(t, dbPath, "cool", "old-success-commit", tip,
 		time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC))
 
 	d := newTestDetector(t, "file://"+src, store, sink)
@@ -68,7 +69,7 @@ func TestPollOnceRebuildCooldownHolds(t *testing.T) {
 	inside := time.Date(2026, 8, 5, 0, 30, 0, 0, time.UTC)
 	d.now = func() time.Time { return inside }
 
-	// Inside the cooldown: the srcinfo difference is the failed build's
+	// Inside the cooldown: the commit difference is the failed build's
 	// own, so the change is held.
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce: %v", err)
@@ -90,7 +91,8 @@ func TestPollOnceRebuildCooldownBypass(t *testing.T) {
 	src := newSourceRepo(t, "cool", map[string]string{".SRCINFO": srcinfoBody("cool", "1.0", "1")})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
-	seedFailedPackage(t, dbPath, "cool", "old-success-hash", hashOf(srcinfoBody("cool", "1.0", "1")),
+	tip := runGit(t, src, "rev-parse", "HEAD")
+	seedFailedPackage(t, dbPath, "cool", "old-success-commit", tip,
 		time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC))
 
 	d := newTestDetector(t, "file://"+src, store, sink)
@@ -98,16 +100,16 @@ func TestPollOnceRebuildCooldownBypass(t *testing.T) {
 	d.now = func() time.Time { return time.Date(2026, 8, 5, 0, 30, 0, 0, time.UTC) }
 
 	// The source bumps to 2.0 while the failed 1.0 build is still inside
-	// the cooldown: the new hash differs from the failed build's snapshot,
-	// so the change bypasses the gate.
+	// the cooldown: the new commit differs from the failed build's
+	// snapshot, so the change bypasses the gate.
 	commitFiles(t, src, map[string]string{".SRCINFO": srcinfoBody("cool", "2.0", "1")}, "bump")
 
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce: %v", err)
 	}
 	changes := assertChangeCount(t, sink, 1)
-	if changes[0].Reason != ReasonSrcinfo {
-		t.Errorf("change = %+v, want a srcinfo change bypassing the cooldown", changes[0])
+	if changes[0].Reason != ReasonCommit {
+		t.Errorf("change = %+v, want a commit change bypassing the cooldown", changes[0])
 	}
 }
 
@@ -119,8 +121,10 @@ func TestPollOnceRebuildCooldownClearedBySuccess(t *testing.T) {
 	src := newSourceRepo(t, "ok", map[string]string{".SRCINFO": body})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
-	// No last_failed_at: the package's last build succeeded.
-	seedPackageRow(t, dbPath, "ok", "old-success-hash", "")
+	// No last_failed_at: the package's last build succeeded, but its
+	// record is stale (the branch tip moved since), so the diff submits
+	// without any cooldown gate.
+	seedPackageRow(t, dbPath, "ok", "old-success-commit", "")
 
 	d := newTestDetector(t, "file://"+src, store, sink)
 	d.failedRebuildCooldown = time.Hour
@@ -159,7 +163,8 @@ func TestPollOnceRebuildCooldownBoundary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store, dbPath := openStore(t)
 			sink := &fakeSink{}
-			seedFailedPackage(t, dbPath, "cool", "old-success-hash", hashOf(body), failedAt)
+			tip := runGit(t, src, "rev-parse", "HEAD")
+			seedFailedPackage(t, dbPath, "cool", "old-success-commit", tip, failedAt)
 			d := newTestDetector(t, "file://"+src, store, sink)
 			d.failedRebuildCooldown = cooldown
 			d.now = func() time.Time { return tc.now }
@@ -199,7 +204,8 @@ func TestPollOnceRebuildCooldownRestartsOnNewFailure(t *testing.T) {
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
 	failedAt := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
-	seedFailedPackage(t, dbPath, "cool", "old-success-hash", hashOf(body), failedAt)
+	tip := runGit(t, src, "rev-parse", "HEAD")
+	seedFailedPackage(t, dbPath, "cool", "old-success-commit", tip, failedAt)
 
 	d := newTestDetector(t, "file://"+src, store, sink)
 	d.failedRebuildCooldown = time.Hour

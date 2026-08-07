@@ -96,8 +96,8 @@ func TestBranchSnapshot(t *testing.T) {
 }
 
 // seedBranchPackage inserts a packages row with the given branch name and
-// last successful srcinfo hash (detect never writes the database itself).
-func seedBranchPackage(t *testing.T, dbPath, pkgbase, branch, srcinfoHash string) {
+// last successful commit (detect never writes the database itself).
+func seedBranchPackage(t *testing.T, dbPath, pkgbase, branch, lastCommit string) {
 	t.Helper()
 	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
@@ -106,9 +106,9 @@ func seedBranchPackage(t *testing.T, dbPath, pkgbase, branch, srcinfoHash string
 	defer raw.Close()
 	if _, err := raw.Exec(`INSERT INTO packages
 		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
-		 last_srcinfo_hash, last_upstream_ref, maintainers)
+		 last_commit, last_upstream_ref, maintainers)
 		VALUES (?, ?, '', 'x86_64', '', '', ?, '', '[]')`,
-		pkgbase, branch, srcinfoHash); err != nil {
+		pkgbase, branch, lastCommit); err != nil {
 		t.Fatalf("seed package %s: %v", pkgbase, err)
 	}
 }
@@ -123,8 +123,8 @@ func TestPollOnceCascadesVanishedBranch(t *testing.T) {
 		{name: "drop", files: map[string]string{".SRCINFO": srcinfoBody("drop", "1.0", "1")}},
 	})
 	store, dbPath := openStore(t)
-	seedBranchPackage(t, dbPath, "keep", "keep", hashOf(srcinfoBody("keep", "1.0", "1")))
-	seedBranchPackage(t, dbPath, "drop", "drop", hashOf(srcinfoBody("drop", "1.0", "1")))
+	seedBranchPackage(t, dbPath, "keep", "keep", runGit(t, src, "rev-parse", "refs/heads/keep"))
+	seedBranchPackage(t, dbPath, "drop", "drop", runGit(t, src, "rev-parse", "refs/heads/drop"))
 
 	// Delete the drop branch upstream; the next pruned fetch drops it.
 	runGit(t, src, "checkout", "keep")

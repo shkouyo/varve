@@ -16,10 +16,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package detect polls the configured source repository mirror, computes
-// .SRCINFO hashes and VCS upstream references per enabled branch and
+// branch commit and VCS upstream references per enabled branch and
 // enqueues changes through the Sink interface. It also owns dotfile
 // parsing and merging. The database is read-only here: the
-// packages.last_srcinfo_hash / last_upstream_ref records are only updated
+// packages.last_commit / last_upstream_ref records are only updated
 // after a successful build, which is what makes failed builds naturally
 // re-queue on the next round (throttled by the failed-rebuild cooldown).
 package detect
@@ -53,11 +53,14 @@ const sourceRoot = "/data/source"
 const vcsQueryConcurrency = 4
 
 // Change reasons. ReasonManual is used by the admin rebuild
-// path in dispatch, not by detect itself.
+// path in dispatch, not by detect itself. ReasonSrcinfo is retained
+// for callers that classify legacy .SRCINFO-driven changes; detect now
+// triggers on branch commits.
 const (
+	ReasonCommit   = "commit"
 	ReasonSrcinfo  = "srcinfo"
 	ReasonUpstream = "upstream"
-	ReasonBoth     = "srcinfo+upstream"
+	ReasonBoth     = "commit+upstream"
 	ReasonManual   = "manual"
 )
 
@@ -76,7 +79,8 @@ type Package struct {
 // Change is one detected package update handed to the Sink. UpstreamRef
 // carries the upstream reference queried at detection time for VCS
 // packages and is empty for plain packages; URL/Licenses/Conflicts/
-// Provides carry the .SRCINFO metadata recorded on the package row.
+// Provides/Pkgname/Source/Pkgver/Pkgrel carry the .SRCINFO metadata
+// recorded on the package row.
 type Change struct {
 	Package     Package
 	Maintainers []string
@@ -84,6 +88,10 @@ type Change struct {
 	Licenses    []string
 	Conflicts   []string
 	Provides    []string
+	Pkgname     []string
+	Source      []string
+	Pkgver      string
+	Pkgrel      string
 	Hooks       Hooks
 	Collect     Collect
 	UpstreamRef string
@@ -246,7 +254,7 @@ func (d *Detector) removeVanishedBranches(ctx context.Context, branches []string
 type branchPlan struct {
 	branch      string
 	info        *srcinfo.Info
-	hash        string
+	commit      string
 	dotfile     *Dotfile
 	kind        vcs.Kind
 	upstreamURL string
@@ -254,9 +262,10 @@ type branchPlan struct {
 	upstreamErr error
 }
 
-// planBranch runs steps 1-3 of the per-branch pipeline: read .SRCINFO, hash
-// it, parse the dotfile (with extras) and detect the VCS kind. It returns
-// nil when the branch must be skipped with a warning.
+// planBranch runs steps 1-3 of the per-branch pipeline: read .SRCINFO,
+// snapshot the branch commit, parse the dotfile (with extras) and detect
+// the VCS kind. It returns nil when the branch must be skipped with a
+// warning.
 func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
 	data, err := d.showFile(ctx, branch, ".SRCINFO")
 	if err != nil {
@@ -273,11 +282,16 @@ func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
 		d.logger.Warn("detect: invalid dotfile, skipping", "branch", branch, "error", err)
 		return nil
 	}
+	commit, err := d.BranchSnapshot(ctx, branch)
+	if err != nil {
+		d.logger.Warn("detect: cannot snapshot branch commit, skipping", "branch", branch, "error", err)
+		return nil
+	}
 	kind := vcs.DetectKind(info.Pkgbase, info.Pkgname, dotfile.VCS)
 	p := &branchPlan{
 		branch:  branch,
 		info:    info,
-		hash:    srcinfo.Hash(data),
+		commit:  commit,
 		dotfile: dotfile,
 		kind:    kind,
 	}
@@ -330,10 +344,11 @@ func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 	wg.Wait()
 }
 
-// submitChange runs steps 5-6 of the pipeline: compare the current hash
-// and the upstream ref against the last successful-build records and
-// submit a Change when either differs. A package whose last build failed
-// is additionally gated by the rebuild cooldown (see withinCooldown).
+// submitChange runs steps 5-6 of the pipeline: compare the current branch
+// commit and the upstream ref against the last successful-build records
+// and submit a Change when either differs. A package whose last build
+// failed is additionally gated by the rebuild cooldown (see
+// withinCooldown).
 func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 	if p.upstreamErr != nil {
 		d.logger.Warn("detect: upstream query failed, skipping", "branch", p.branch,
@@ -355,12 +370,12 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 	}
 
 	reason := ""
-	if p.hash != prev.LastSrcinfoHash {
-		reason = ReasonSrcinfo
+	if p.commit != prev.LastCommit {
+		reason = ReasonCommit
 	}
 	if p.upstreamRef != prev.LastUpstreamRef {
 		switch reason {
-		case ReasonSrcinfo:
+		case ReasonCommit:
 			reason = ReasonBoth
 		default:
 			reason = ReasonUpstream
@@ -387,6 +402,10 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 		Licenses:    p.info.Licenses,
 		Conflicts:   p.info.Conflicts,
 		Provides:    p.info.Provides,
+		Pkgname:     p.info.Pkgname,
+		Source:      p.info.Source,
+		Pkgver:      p.info.Pkgver,
+		Pkgrel:      p.info.Pkgrel,
 		Hooks:       p.dotfile.Hooks,
 		Collect:     p.dotfile.Collect,
 		UpstreamRef: p.upstreamRef,
@@ -401,11 +420,11 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 // withinCooldown reports whether the change is the residue of a failed
 // build still inside the rebuild cooldown: the package's last build
 // failed (last_failed_at set) and the current snapshot still matches that
-// failed build's records. A source change since the failure — a srcinfo
-// hash or upstream ref differing from the failed build's snapshot —
+// failed build's records. A source change since the failure — a branch
+// commit or upstream ref differing from the failed build's snapshot —
 // bypasses the gate and is submitted immediately.
 //
-// A failed build never advances the package's last_srcinfo_hash /
+// A failed build never advances the package's last_commit /
 // last_upstream_ref records (they only move on success), so the plain
 // comparison above stays "changed" on every round; comparing against the
 // failed build row itself separates that stale difference from a fresh
@@ -424,7 +443,7 @@ func (d *Detector) withinCooldown(ctx context.Context, prev *db.Package, p *bran
 			"pkgbase", prev.Pkgbase, "error", err)
 		return true // be conservative: hold until the cooldown ends
 	}
-	return p.hash == latest.SrcinfoHash && p.upstreamRef == latest.UpstreamRef
+	return p.commit == latest.Commit && p.upstreamRef == latest.UpstreamRef
 }
 
 // showFile reads one file from the branch tree via "git show".

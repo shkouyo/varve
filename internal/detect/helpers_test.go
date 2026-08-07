@@ -32,7 +32,6 @@ import (
 
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
-	"git.0x0f.dev/varve/internal/detect/srcinfo"
 )
 
 // fakeSink records submitted changes and cascade removals, and can be
@@ -112,9 +111,10 @@ func openStore(t *testing.T) (*db.Store, string) {
 }
 
 // seedPackageRow inserts one packages row with the given last successful
-// build records. detect never writes the database itself; tests seed it
-// the same way a successful build would have updated it.
-func seedPackageRow(t *testing.T, dbPath, pkgbase, srcinfoHash, upstreamRef string) {
+// build records (branch commit + upstream ref). detect never writes the
+// database itself; tests seed it the same way a successful build would
+// have updated it.
+func seedPackageRow(t *testing.T, dbPath, pkgbase, lastCommit, upstreamRef string) {
 	t.Helper()
 	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
@@ -123,9 +123,9 @@ func seedPackageRow(t *testing.T, dbPath, pkgbase, srcinfoHash, upstreamRef stri
 	defer raw.Close()
 	if _, err := raw.Exec(`INSERT INTO packages
 		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
-		 last_srcinfo_hash, last_upstream_ref, maintainers)
+		 last_commit, last_upstream_ref, maintainers)
 		VALUES (?, '', '', 'x86_64', '', '', ?, ?, '[]')`,
-		pkgbase, srcinfoHash, upstreamRef); err != nil {
+		pkgbase, lastCommit, upstreamRef); err != nil {
 		t.Fatalf("seed package %s: %v", pkgbase, err)
 	}
 }
@@ -292,10 +292,4 @@ func srcinfoWithSource(pkgbase, pkgver, pkgrel, source string) string {
 		"\tarch = x86_64\n" +
 		"\tsource = " + source + "\n" +
 		"pkgname = " + pkgbase + "\n"
-}
-
-// hashOf computes the srcinfo hash of a file content string, matching what
-// the pipeline computes on the raw bytes.
-func hashOf(content string) string {
-	return srcinfo.Hash([]byte(content))
 }

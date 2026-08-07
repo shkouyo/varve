@@ -81,52 +81,69 @@ func TestNewDetectorMirrorDir(t *testing.T) {
 
 // TestPollOncePlainPackage walks the full lifecycle of a plain package:
 // first enqueue, no change after a recorded successful build, enqueue on a
-// .SRCINFO change, and the natural re-queue while the build outcome is
-// not recorded.
+// PKGBUILD-only commit (the .SRCINFO is untouched), enqueue on a .SRCINFO
+// change and the natural re-queue while the build outcome is not
+// recorded.
 func TestPollOncePlainPackage(t *testing.T) {
 	src := newSourceRepo(t, "foo", map[string]string{
 		".SRCINFO": srcinfoBody("foo", "1.0", "1"),
+		"PKGBUILD": "# pkgbuild v1\n",
 	})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
 	d := newTestDetector(t, "file://"+src, store, sink)
 
-	// 1. First poll of a new branch: enqueue (srcinfo).
+	// 1. First poll of a new branch: enqueue (commit).
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #1: %v", err)
 	}
 	changes := assertChangeCount(t, sink, 1)
 	want := Change{
 		Package: Package{Pkgbase: "foo", Branch: "foo", VCSKind: "", Arch: "x86_64"},
-		Reason:  ReasonSrcinfo,
+		Pkgname: []string{"foo"},
+		Pkgver:  "1.0",
+		Pkgrel:  "1",
+		Reason:  ReasonCommit,
 	}
 	if !reflect.DeepEqual(changes[0], want) {
 		t.Errorf("change #1 = %+v, want %+v", changes[0], want)
 	}
 
 	// 2. Successful build recorded: no change on the next poll.
-	seedPackageRow(t, dbPath, "foo", hashOf(srcinfoBody("foo", "1.0", "1")), "")
+	tip := runGit(t, src, "rev-parse", "HEAD")
+	seedPackageRow(t, dbPath, "foo", tip, "")
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #2: %v", err)
 	}
 	assertChangeCount(t, sink, 1)
 
-	// 3. .SRCINFO change: enqueue (srcinfo).
-	commitFiles(t, src, map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "2")}, "bump pkgrel")
+	// 3. A PKGBUILD-only commit (the .SRCINFO bytes are unchanged)
+	// moves the branch tip and triggers.
+	commitFiles(t, src, map[string]string{"PKGBUILD": "# pkgbuild v2\n"}, "bump pkgbuild")
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #3: %v", err)
 	}
 	changes = assertChangeCount(t, sink, 2)
-	if changes[1].Reason != ReasonSrcinfo || changes[1].Package.Pkgbase != "foo" {
-		t.Errorf("change #3 = %+v, want srcinfo for foo", changes[1])
+	if changes[1].Reason != ReasonCommit || changes[1].Package.Pkgbase != "foo" {
+		t.Errorf("change #3 = %+v, want a commit change for foo", changes[1])
 	}
 
-	// 4. The failed build left the record stale, so the same diff is
-	// detected again on the next round.
+	// 4. A .SRCINFO change also triggers.
+	commitFiles(t, src, map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "2")}, "bump pkgrel")
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #4: %v", err)
 	}
-	assertChangeCount(t, sink, 3)
+	changes = assertChangeCount(t, sink, 3)
+	if changes[2].Reason != ReasonCommit || changes[2].Pkgrel != "2" {
+		t.Errorf("change #4 = %+v, want a commit change with pkgrel 2", changes[2])
+	}
+
+	// 5. The failed build left the record stale, so the same diff is
+	// detected again on the next round.
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce #5: %v", err)
+	}
+	assertChangeCount(t, sink, 4)
 }
 
 // TestPollOnceVCSGitUpstream covers a -git package whose upstream HEAD is
@@ -146,14 +163,18 @@ func TestPollOnceVCSGitUpstream(t *testing.T) {
 	const h2 = "2222222222222222222222222222222222222222"
 	t.Setenv("VARVE_TEST_GIT_HEAD", h1)
 
-	// 1. First poll: both the hash and the upstream ref differ from the
-	// (empty) records, so the reason is srcinfo+upstream.
+	// 1. First poll: both the commit and the upstream ref differ from the
+	// (empty) records, so the reason is commit+upstream.
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #1: %v", err)
 	}
 	changes := assertChangeCount(t, sink, 1)
 	want := Change{
 		Package:     Package{Pkgbase: "foo-git", Branch: "foo-git", VCSKind: "git", Arch: "x86_64"},
+		Pkgname:     []string{"foo-git"},
+		Source:      []string{"git+https://example.org/upstream.git"},
+		Pkgver:      "1.0",
+		Pkgrel:      "1",
 		UpstreamRef: h1,
 		Reason:      ReasonBoth,
 	}
@@ -162,7 +183,8 @@ func TestPollOnceVCSGitUpstream(t *testing.T) {
 	}
 
 	// 2. Successful build recorded: no change.
-	seedPackageRow(t, dbPath, "foo-git", hashOf(srcinfoWithSource("foo-git", "1.0", "1", "git+https://example.org/upstream.git")), h1)
+	tip := runGit(t, src, "rev-parse", "HEAD")
+	seedPackageRow(t, dbPath, "foo-git", tip, h1)
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #2: %v", err)
 	}
@@ -206,7 +228,8 @@ func TestPollOnceVCSSVNUpstream(t *testing.T) {
 	}
 
 	// Successful build recorded: only the upstream can change now.
-	seedPackageRow(t, dbPath, "foo-svn", hashOf(srcinfoWithSource("foo-svn", "1.0", "1", "svn+https://example.org/upstream")), "42")
+	tip := runGit(t, src, "rev-parse", "HEAD")
+	seedPackageRow(t, dbPath, "foo-svn", tip, "42")
 	t.Setenv("VARVE_TEST_SVN_REV", "43")
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #2: %v", err)
@@ -247,8 +270,8 @@ exclude = ["*-debug"]
 	if !reflect.DeepEqual(changes[0].Collect.Exclude, []string{"*-debug"}) {
 		t.Errorf("Collect.Exclude = %v", changes[0].Collect.Exclude)
 	}
-	if changes[0].Package.VCSKind != "" || changes[0].Reason != ReasonSrcinfo {
-		t.Errorf("change = %+v, want plain srcinfo change (vcs overridden to none)", changes[0])
+	if changes[0].Package.VCSKind != "" || changes[0].Reason != ReasonCommit {
+		t.Errorf("change = %+v, want plain commit change (vcs overridden to none)", changes[0])
 	}
 }
 
@@ -331,8 +354,8 @@ func TestPollOnceUpstreamQueryFailureSkips(t *testing.T) {
 		t.Fatalf("PollOnce: %v", err)
 	}
 	changes := assertChangeCount(t, sink, 1)
-	if changes[0].UpstreamRef != "" || changes[0].Reason != ReasonSrcinfo {
-		t.Errorf("change = %+v, want srcinfo change with empty upstream ref", changes[0])
+	if changes[0].UpstreamRef != "" || changes[0].Reason != ReasonCommit {
+		t.Errorf("change = %+v, want commit change with empty upstream ref", changes[0])
 	}
 }
 
@@ -457,22 +480,22 @@ func TestArchSet(t *testing.T) {
 	}
 }
 
-// TestPlanBranchSrcinfoPath is the regression guard for the leading-dot
+// TestPlanBranchCommitPath is the regression guard for the leading-dot
 // bug: planBranch must read the dotted ".SRCINFO" from the branch tree
 // (git show <branch>:.SRCINFO), so a branch carrying .SRCINFO is planned
-// with the expected hash while a branch without it — or with only a
-// non-dotted SRCINFO file — is skipped.
-func TestPlanBranchSrcinfoPath(t *testing.T) {
+// with the expected branch commit while a branch without it — or with
+// only a non-dotted SRCINFO file — is skipped.
+func TestPlanBranchCommitPath(t *testing.T) {
 	tests := []struct {
-		name     string
-		files    map[string]string
-		wantNil  bool
-		wantHash string
+		name       string
+		files      map[string]string
+		wantNil    bool
+		wantCommit string
 	}{
 		{
-			name:     "dotted .SRCINFO is read and hashed",
-			files:    map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "1")},
-			wantHash: hashOf(srcinfoBody("foo", "1.0", "1")),
+			name:       "dotted .SRCINFO is read and the commit snapshotted",
+			files:      map[string]string{".SRCINFO": srcinfoBody("foo", "1.0", "1")},
+			wantCommit: "", // filled below from the repo HEAD
 		},
 		{
 			name:    "missing .SRCINFO is skipped",
@@ -502,16 +525,17 @@ func TestPlanBranchSrcinfoPath(t *testing.T) {
 			if p == nil {
 				t.Fatal("planBranch = nil, want a plan for a branch carrying .SRCINFO")
 			}
-			if p.hash != tt.wantHash {
-				t.Errorf("plan.hash = %q, want %q", p.hash, tt.wantHash)
+			want := runGit(t, src, "rev-parse", "HEAD")
+			if p.commit != want {
+				t.Errorf("plan.commit = %q, want %q", p.commit, want)
 			}
 		})
 	}
 }
 
 // TestPollOnceSrcinfoMetadata asserts the .SRCINFO metadata (url,
-// licenses, conflicts, provides) flows from the branch into the submitted
-// change.
+// licenses, conflicts, provides, pkgname, source, pkgver, pkgrel) flows
+// from the branch into the submitted change.
 func TestPollOnceSrcinfoMetadata(t *testing.T) {
 	src := newSourceRepo(t, "meta-pkg", map[string]string{
 		".SRCINFO": "pkgbase = meta-pkg\n" +
@@ -524,7 +548,9 @@ func TestPollOnceSrcinfoMetadata(t *testing.T) {
 			"\tlicense = MIT\n" +
 			"\tconflict = old-meta\n" +
 			"\tprovides = meta-shim\n" +
-			"pkgname = meta-pkg\n",
+			"\tsource = https://example.org/meta-pkg.tar.gz\n" +
+			"pkgname = meta-pkg\n" +
+			"pkgname = meta-extra\n",
 	})
 	store, _ := openStore(t)
 	sink := &fakeSink{}
@@ -546,5 +572,14 @@ func TestPollOnceSrcinfoMetadata(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.Provides, []string{"meta-shim"}) {
 		t.Errorf("Provides = %v, want [meta-shim]", c.Provides)
+	}
+	if !reflect.DeepEqual(c.Pkgname, []string{"meta-pkg", "meta-extra"}) {
+		t.Errorf("Pkgname = %v, want [meta-pkg meta-extra]", c.Pkgname)
+	}
+	if !reflect.DeepEqual(c.Source, []string{"https://example.org/meta-pkg.tar.gz"}) {
+		t.Errorf("Source = %v, want the source list", c.Source)
+	}
+	if c.Pkgver != "1.0" || c.Pkgrel != "1" {
+		t.Errorf("Pkgver/Pkgrel = %q/%q, want 1.0/1", c.Pkgver, c.Pkgrel)
 	}
 }
