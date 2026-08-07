@@ -20,6 +20,7 @@ package dispatch
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -83,6 +84,28 @@ func TestReportSucceeded(t *testing.T) {
 	}
 	if pkg.CurrentVersion != "1.0-1" || pkg.Pkgdesc != "test package" || pkg.LastBuildID != task.BuildID {
 		t.Errorf("package update = %+v, want version 1.0-1 / pkgdesc / last build", pkg)
+	}
+	// The built commit must advance packages.last_commit, otherwise
+	// detection re-enqueues the unchanged branch on every round
+	// (infinite rebuild loop). The detect side (TestPollOncePlainPackage)
+	// asserts a recorded build suppresses the next change.
+	if pkg.LastCommit != "deadbeef" {
+		t.Errorf("last_commit = %q, want the built commit deadbeef", pkg.LastCommit)
+	}
+	// The .SRCINFO metadata parsed at ingest must reach the package row:
+	// pkgname/source/pkgver/pkgrel used to be dropped.
+	if !reflect.DeepEqual(pkg.Pkgname, []string{"testpkg"}) ||
+		!reflect.DeepEqual(pkg.Source, []string{"https://example.org/foo.tar.gz"}) ||
+		pkg.Pkgver != "1.2.3" || pkg.Pkgrel != "1" {
+		t.Errorf("pkgname/source/pkgver/pkgrel = %v/%v/%q/%q, want testpkg/url/1.2.3/1",
+			pkg.Pkgname, pkg.Source, pkg.Pkgver, pkg.Pkgrel)
+	}
+	if pkg.URL != "https://example.org/foo" ||
+		!reflect.DeepEqual(pkg.Licenses, []string{"MIT"}) ||
+		!reflect.DeepEqual(pkg.Conflicts, []string{"testpkg-legacy"}) ||
+		!reflect.DeepEqual(pkg.Provides, []string{"testpkg-provided"}) {
+		t.Errorf("url/licenses/conflicts/provides = %q/%v/%v/%v, want the staged .SRCINFO values",
+			pkg.URL, pkg.Licenses, pkg.Conflicts, pkg.Provides)
 	}
 	if env.up.worker != "w1" {
 		t.Errorf("ingest workerName = %q, want w1", env.up.worker)

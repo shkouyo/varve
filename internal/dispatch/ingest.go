@@ -114,7 +114,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// 3. One SQLite transaction: finalize succeeded + update the package
 	// record (after repo-add, before staging cleanup).
 	samples := o.finalSamples(ctx, task.BuildID, res.ResourceUsage)
-	currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides := o.packageUpdateFields(ctx, task.ID, res.Artifacts)
+	currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel := o.packageUpdateFields(ctx, task.ID, res.Artifacts)
 	err = o.store.WithTx(ctx, func(tx *db.Tx) error {
 		if err := tx.FinalizeTask(ctx, task.ID, "succeeded", "", o.now().UTC(),
 			toDBArtifacts(res.Artifacts), samples); err != nil {
@@ -130,6 +130,15 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 			Licenses:       licenses,
 			Conflicts:      conflicts,
 			Provides:       provides,
+			Pkgname:        pkgname,
+			Source:         source,
+			Pkgver:         pkgver,
+			Pkgrel:         pkgrel,
+			// The commit actually built (the reported checkout commit,
+			// falling back to the dispatched one): without it the
+			// package's last_commit never advances and detection
+			// re-enqueues the unchanged branch forever.
+			Commit: build.Commit,
 		})
 	})
 	if err != nil {
@@ -324,9 +333,10 @@ func (o *OrchestratorImpl) finalSamples(ctx context.Context, buildID string, rep
 // packageUpdateFields derives the package record updates from the manifest:
 // current_version (first package artifact), pkgdesc (from the staged
 // .SRCINFO snapshot), srcinfo_hash (the srcinfo entry's verified hash) and
-// the .SRCINFO metadata (url, licenses, conflicts, provides) so the
-// verified build refreshes the package page fields.
-func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID string, manifest []repo.Artifact) (currentVersion, pkgdesc, srcinfoHash, url string, licenses, conflicts, provides []string) {
+// the .SRCINFO metadata (url, licenses, conflicts, provides, pkgname,
+// source, pkgver, pkgrel) so the verified build refreshes the package page
+// fields.
+func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID string, manifest []repo.Artifact) (currentVersion, pkgdesc, srcinfoHash, url string, licenses, conflicts, provides, pkgname, source []string, pkgver, pkgrel string) {
 	var src *repo.Artifact
 	for i := range manifest {
 		if manifest[i].Kind == "package" && currentVersion == "" {
@@ -346,6 +356,10 @@ func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID strin
 				licenses = info.Licenses
 				conflicts = info.Conflicts
 				provides = info.Provides
+				pkgname = info.Pkgname
+				source = info.Source
+				pkgver = info.Pkgver
+				pkgrel = info.Pkgrel
 			} else {
 				log.Printf("dispatch: parse .SRCINFO for package update: %v", perr)
 			}
@@ -353,5 +367,5 @@ func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID strin
 			log.Printf("dispatch: read .SRCINFO for package update: %v", err)
 		}
 	}
-	return currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides
+	return currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel
 }

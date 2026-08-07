@@ -557,7 +557,7 @@ func detectChangeArch(pkgbase, branch, arch string) detect.Change {
 // manifest sha256 values can be computed in advance.
 func stagedContent(file string) string {
 	if file == ".SRCINFO" {
-		return "pkgbase = testpkg\npkgname = testpkg\npkgver = 1.2.3\npkgrel = 1\npkgdesc = test package\narch = x86_64\n"
+		return "pkgbase = testpkg\npkgname = testpkg\npkgver = 1.2.3\npkgrel = 1\npkgdesc = test package\nurl = https://example.org/foo\nlicense = MIT\nsource = https://example.org/foo.tar.gz\nconflict = testpkg-legacy\nprovides = testpkg-provided\narch = x86_64\n"
 	}
 	return "content-of-" + file
 }
