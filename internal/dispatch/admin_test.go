@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/repo"
 )
 
@@ -46,9 +47,31 @@ func TestRebuildPackage(t *testing.T) {
 	if task.State != "queued" {
 		t.Errorf("rebuild task state = %q, want queued", task.State)
 	}
-	// A rebuild while the task is active conflicts.
-	if err := env.o.RebuildPackage(ctx(), "foo"); !errors.Is(err, ErrConflict) {
-		t.Errorf("RebuildPackage while active = %v, want ErrConflict", err)
+	// A rebuild while the task is active is idempotent: the active task
+	// already covers it, so the duplicate submission succeeds.
+	if err := env.o.RebuildPackage(ctx(), "foo"); err != nil {
+		t.Errorf("RebuildPackage while active = %v, want nil (idempotent)", err)
+	}
+	tasks, err := env.store.ListActiveTasks(ctx())
+	if err != nil {
+		t.Fatalf("ListActiveTasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != taskID {
+		t.Errorf("active tasks = %v, want only the original task %s", tasks, taskID)
+	}
+
+	// A rebuild after the task finished enqueues a fresh task.
+	if err := env.store.WithTx(ctx(), func(tx *db.Tx) error {
+		return tx.FinalizeTask(ctx(), taskID, "succeeded", "", env.now.UTC(), nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	if err := env.o.RebuildPackage(ctx(), "foo"); err != nil {
+		t.Fatalf("RebuildPackage after success: %v", err)
+	}
+	second := env.activeTaskFor(t, "foo")
+	if second == taskID {
+		t.Errorf("rebuild after success reused the finished task %s", taskID)
 	}
 }
 
@@ -62,8 +85,9 @@ func TestRemoveWorker(t *testing.T) {
 	if err := env.o.RemoveWorker(ctx(), "w1"); !errors.Is(err, ErrConflict) {
 		t.Errorf("RemoveWorker with active task = %v, want ErrConflict", err)
 	}
-	if err := env.o.RemoveWorker(ctx(), "ghost"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("RemoveWorker(unknown) = %v, want ErrNotFound", err)
+	// A missing worker is already removed: the operation is idempotent.
+	if err := env.o.RemoveWorker(ctx(), "ghost"); err != nil {
+		t.Errorf("RemoveWorker(unknown) = %v, want nil (idempotent)", err)
 	}
 
 	env.registerWorker(t, "w2", "host", "host", 1)
@@ -73,10 +97,14 @@ func TestRemoveWorker(t *testing.T) {
 	if _, err := env.store.GetWorkerByName(ctx(), "w2"); err == nil {
 		t.Error("idle worker not removed")
 	}
+	// Removing again is a no-op.
+	if err := env.o.RemoveWorker(ctx(), "w2"); err != nil {
+		t.Errorf("RemoveWorker again = %v, want nil (idempotent)", err)
+	}
 }
 
 // TestEnableWorker covers the re-enable operation: a disabled worker
-// becomes online again and claims work, an unknown worker is not found.
+// becomes online again and claims work, a missing worker is a no-op.
 func TestEnableWorker(t *testing.T) {
 	env := newTestEnv(t)
 	env.registerWorker(t, "w1", "host", "host", 1)
@@ -99,8 +127,80 @@ func TestEnableWorker(t *testing.T) {
 	if claimed == "" {
 		t.Fatal("enabled worker could not claim")
 	}
-	if err := env.o.EnableWorker(ctx(), "ghost"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("EnableWorker(unknown) = %v, want ErrNotFound", err)
+	if err := env.o.EnableWorker(ctx(), "ghost"); err != nil {
+		t.Errorf("EnableWorker(unknown) = %v, want nil (idempotent)", err)
+	}
+}
+
+// TestAdminIdempotency covers the repeated-submission matrix: every admin
+// operation applied twice yields the same success and never leaves a
+// misleading error behind.
+func TestAdminIdempotency(t *testing.T) {
+	env := newTestEnv(t)
+
+	// disable/enable twice: the second call is a no-op on the same row.
+	env.registerWorker(t, "w1", "host", "host", 1)
+	for i := 0; i < 2; i++ {
+		if err := env.o.DisableWorker(ctx(), "w1"); err != nil {
+			t.Fatalf("DisableWorker pass %d: %v", i, err)
+		}
+	}
+	w, err := env.store.GetWorkerByName(ctx(), "w1")
+	if err != nil {
+		t.Fatalf("GetWorkerByName: %v", err)
+	}
+	if w.Status != "disabled" {
+		t.Errorf("status = %q, want disabled", w.Status)
+	}
+	for i := 0; i < 2; i++ {
+		if err := env.o.EnableWorker(ctx(), "w1"); err != nil {
+			t.Fatalf("EnableWorker pass %d: %v", i, err)
+		}
+	}
+
+	// remove twice: the second submission finds the worker gone.
+	if err := env.o.RemoveWorker(ctx(), "w1"); err != nil {
+		t.Fatalf("RemoveWorker: %v", err)
+	}
+	if err := env.o.RemoveWorker(ctx(), "w1"); err != nil {
+		t.Errorf("RemoveWorker again = %v, want nil", err)
+	}
+	// disable/enable after removal are no-ops too.
+	if err := env.o.DisableWorker(ctx(), "w1"); err != nil {
+		t.Errorf("DisableWorker after removal = %v, want nil", err)
+	}
+
+	// cancel twice on a queued task: the first finalizes it, the second
+	// sees a terminal task and is a no-op.
+	taskID := env.enqueue(t, "c2", "c2")
+	for i := 0; i < 2; i++ {
+		if err := env.o.CancelTask(ctx(), taskID); err != nil {
+			t.Fatalf("CancelTask pass %d: %v", i, err)
+		}
+	}
+	task, err := env.store.GetTask(ctx(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.State != "cancelled" {
+		t.Errorf("state = %q, want cancelled", task.State)
+	}
+
+	// cancel twice on a running task: the flag is set twice, harmlessly.
+	taskID2 := env.enqueue(t, "c3", "c3")
+	env.registerWorker(t, "w2", "host", "host", 1)
+	env.claim(t, "w2")
+	for i := 0; i < 2; i++ {
+		if err := env.o.CancelTask(ctx(), taskID2); err != nil {
+			t.Fatalf("CancelTask running pass %d: %v", i, err)
+		}
+	}
+	task2, err := env.store.GetTask(ctx(), taskID2)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !task2.CancelRequested {
+		t.Error("cancel_requested not set on running task")
 	}
 }
 

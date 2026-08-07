@@ -31,7 +31,10 @@ import (
 
 // RebuildPackage force-enqueues a rebuild of an existing package (admin,
 // reason "manual"). The name-conflict comparison is skipped (force) but
-// the partial unique index still rejects a package with an active task.
+// the partial unique index still rejects a package with an active task;
+// that conflict is reported as success — the rebuild is already queued
+// or running — so repeated submissions never produce a misleading
+// failure. A package whose last build is terminal gets a fresh task.
 // Concurrently safe.
 func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) error {
 	pkg, err := o.store.GetPackageByBase(ctx, pkgbase)
@@ -56,17 +59,25 @@ func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) e
 		UpstreamRef: pkg.LastUpstreamRef,
 		Reason:      detect.ReasonManual,
 	}
-	return o.Enqueue(ctx, c, true)
+	if err := o.Enqueue(ctx, c, true); err != nil {
+		if errors.Is(err, ErrConflict) {
+			return nil // an active task already covers this rebuild
+		}
+		return err
+	}
+	return nil
 }
 
 // DisableWorker stops new work from being assigned to a node: its status
 // becomes "disabled" and Poll refuses to claim for it (db.ClaimTask itself
 // does not check status; the check lives here). The node keeps its history
-// and may be re-enabled with EnableWorker. Concurrently safe.
+// and may be re-enabled with EnableWorker. A missing worker is reported
+// as success — an absent node trivially receives no work — so repeated
+// submissions (e.g. after a removal) are idempotent. Concurrently safe.
 func (o *OrchestratorImpl) DisableWorker(ctx context.Context, name string) error {
 	if _, err := o.store.GetWorkerByName(ctx, name); err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return ErrNotFound
+			return nil // absent worker is trivially disabled
 		}
 		return err
 	}
@@ -74,12 +85,13 @@ func (o *OrchestratorImpl) DisableWorker(ctx context.Context, name string) error
 }
 
 // EnableWorker reverses DisableWorker: the node's status becomes "online"
-// again and Poll resumes claiming for it once it heartbeats. The node must
-// be registered (ErrNotFound otherwise). Concurrently safe.
+// again and Poll resumes claiming for it once it heartbeats. A missing
+// worker is reported as success (the worker is gone, so the disabled
+// state it was in no longer exists). Concurrently safe.
 func (o *OrchestratorImpl) EnableWorker(ctx context.Context, name string) error {
 	if _, err := o.store.GetWorkerByName(ctx, name); err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return ErrNotFound
+			return nil // absent worker is trivially enabled
 		}
 		return err
 	}
@@ -88,12 +100,14 @@ func (o *OrchestratorImpl) EnableWorker(ctx context.Context, name string) error 
 
 // RemoveWorker deletes a node record. A node with active tasks cannot be
 // removed (ErrConflict); builds keep the display name as plain text
-// (worker_name), so history survives the deletion. Concurrently safe.
+// (worker_name), so history survives the deletion. A missing worker is
+// reported as success — the desired state is already reached — so a
+// repeated submission is idempotent. Concurrently safe.
 func (o *OrchestratorImpl) RemoveWorker(ctx context.Context, name string) error {
 	w, err := o.store.GetWorkerByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return ErrNotFound
+			return nil // already removed
 		}
 		return err
 	}
