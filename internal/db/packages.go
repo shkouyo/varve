@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-const packageColumns = `id, pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, url, licenses, conflicts, provides, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
+const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
 
 // GetPackageByBase returns one package by its pkgbase with maintainers
 // decoded. ErrNotFound when the package does not exist.
@@ -128,8 +128,8 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 	}
 	var id int64
 	err = s.write.QueryRowContext(ctx, `INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, maintainers, url, licenses, conflicts, provides)
-		VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+		(pkgbase, branch, vcs_kind, arch, maintainers, url, licenses, conflicts, provides)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(pkgbase) DO UPDATE SET
 			branch = excluded.branch,
 			vcs_kind = excluded.vcs_kind,
@@ -181,15 +181,13 @@ func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase string, u Pack
 // scanPackage decodes one packages row.
 func scanPackage(rs rowScanner) (*Package, error) {
 	var p Package
-	var enabled int64
 	var maintainers, licenses, conflicts, provides string
 	var lastFailedAt sql.NullString
-	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch, &enabled,
+	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch,
 		&p.CurrentVersion, &p.Pkgdesc, &p.URL, &licenses, &conflicts, &provides,
 		&p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID, &maintainers); err != nil {
 		return nil, err
 	}
-	p.Enabled = enabled != 0
 	if lastFailedAt.Valid {
 		at, err := parseTime(lastFailedAt.String)
 		if err != nil {

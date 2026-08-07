@@ -46,9 +46,6 @@ func TestUpsertPackage(t *testing.T) {
 	if got.Pkgbase != "fresh" || got.Branch != "foo" || got.VCSKind != "git" {
 		t.Errorf("fresh row = %+v, want branch foo / vcs git", got)
 	}
-	if got.Enabled != true {
-		t.Errorf("fresh package enabled = %v, want true", got.Enabled)
-	}
 
 	// Second upsert refreshes metadata + maintainers snapshot, keeps id.
 	again := Package{Pkgbase: "fresh", Branch: "bar", VCSKind: "", Arch: "aarch64", Maintainers: []string{"b@example.com"}}

@@ -48,7 +48,6 @@ type Package struct {
 	Branch          string
 	VCSKind         string
 	Arch            string // "any" or "|"-joined architecture set
-	Enabled         bool
 	CurrentVersion  string
 	Pkgdesc         string
 	URL             string   // upstream url from .SRCINFO

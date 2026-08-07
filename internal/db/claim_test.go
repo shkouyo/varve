@@ -110,8 +110,8 @@ func TestClaimCapacity(t *testing.T) {
 // TestClaimArchFilter asserts arch matching against the package arch.
 func TestClaimArchFilter(t *testing.T) {
 	s := newTestStore(t)
-	x86 := seedPackage(t, s, Package{Pkgbase: "x86", Branch: "main", Arch: "x86_64", Enabled: true})
-	arm := seedPackage(t, s, Package{Pkgbase: "arm", Branch: "main", Arch: "aarch64", Enabled: true})
+	x86 := seedPackage(t, s, Package{Pkgbase: "x86", Branch: "main", Arch: "x86_64"})
+	arm := seedPackage(t, s, Package{Pkgbase: "arm", Branch: "main", Arch: "aarch64"})
 	createTask(t, s, "x86-1", "queued", x86, at(time.Second))
 	createTask(t, s, "arm-1", "queued", arm, at(2*time.Second))
 
@@ -154,7 +154,7 @@ func TestClaimAnyArchMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newTestStore(t)
-			pkg := seedPackage(t, s, Package{Pkgbase: "p", Branch: "main", Arch: tt.pkgArch, Enabled: true})
+			pkg := seedPackage(t, s, Package{Pkgbase: "p", Branch: "main", Arch: tt.pkgArch})
 			createTask(t, s, "p-1", "queued", pkg, at(0))
 			w := registerWorkerArch(t, s, "w", tt.wkArch, 1)
 
@@ -179,9 +179,9 @@ func TestClaimAnyArchMatrix(t *testing.T) {
 // The old code stored and matched only the first element.
 func TestClaimMultiArch(t *testing.T) {
 	s := newTestStore(t)
-	multi := seedPackage(t, s, Package{Pkgbase: "multi", Branch: "main", Arch: "aarch64|x86_64", Enabled: true})
+	multi := seedPackage(t, s, Package{Pkgbase: "multi", Branch: "main", Arch: "aarch64|x86_64"})
 	createTask(t, s, "multi-1", "queued", multi, at(time.Second))
-	armOnly := seedPackage(t, s, Package{Pkgbase: "arm", Branch: "main", Arch: "aarch64|riscv64", Enabled: true})
+	armOnly := seedPackage(t, s, Package{Pkgbase: "arm", Branch: "main", Arch: "aarch64|riscv64"})
 	createTask(t, s, "arm-1", "queued", armOnly, at(2*time.Second))
 
 	// x86_64 worker: matches multi (second element), filters arm-only.

@@ -115,9 +115,9 @@ func (s *Store) insertRebuiltPackage(ctx context.Context, tx *sql.Tx, p *Rebuild
 		return 0, fmt.Errorf("db: rebuild index: encode maintainers for package %q: %w", p.Pkgbase, err)
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc,
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
 		 last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
-		VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
 		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, p.CurrentVersion, p.Pkgdesc,
 		p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
 	if err != nil {

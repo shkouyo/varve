@@ -56,8 +56,6 @@
           <dd class="text-stone-900 dark:text-stone-100">{{if .Pkg.VCSKind}}{{.Pkg.VCSKind}}{{else}}<span class="text-stone-500 dark:text-stone-400">·</span>{{end}}</dd>
           <dt class="font-medium text-stone-500 dark:text-stone-400">Architecture</dt>
           <dd class="text-stone-900 dark:text-stone-100">{{displayArch .Pkg.Arch}}</dd>
-          <dt class="font-medium text-stone-500 dark:text-stone-400">Enabled</dt>
-          <dd class="text-stone-900 dark:text-stone-100">{{if .Pkg.Enabled}}yes{{else}}no{{end}}</dd>
           <dt class="font-medium text-stone-500 dark:text-stone-400">Maintainers</dt>
           <dd class="text-stone-900 dark:text-stone-100">{{range $i, $m := .Pkg.Maintainers}}{{if $i}}, {{end}}{{$m}}{{else}}<span class="text-stone-500 dark:text-stone-400">·</span>{{end}}</dd>
           {{if .Pkg.URL}}

@@ -65,14 +65,10 @@ func seedPackage(t *testing.T, s *Store, p Package) Package {
 	if err != nil {
 		t.Fatalf("encode maintainers: %v", err)
 	}
-	enabled := 0
-	if p.Enabled {
-		enabled = 1
-	}
 	res, err := s.write.Exec(`INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, enabled, p.CurrentVersion, p.Pkgdesc,
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, p.CurrentVersion, p.Pkgdesc,
 		p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
 	if err != nil {
 		t.Fatalf("seed package %q: %v", p.Pkgbase, err)
@@ -93,7 +89,6 @@ func mustSeedPackage(t *testing.T, s *Store, pkgbase string) Package {
 		Branch:      "main",
 		VCSKind:     "",
 		Arch:        "x86_64",
-		Enabled:     true,
 		Maintainers: []string{"alice@example.com"},
 	})
 }

@@ -59,41 +59,6 @@ func TestTimeConventions(t *testing.T) {
 	}
 }
 
-// TestBoolConventions asserts booleans are stored as INTEGER 0/1.
-func TestBoolConventions(t *testing.T) {
-	s := newTestStore(t)
-	seedPackage(t, s, Package{Pkgbase: "enabled-true", Branch: "main", Arch: "x86_64", Enabled: true})
-	seedPackage(t, s, Package{Pkgbase: "enabled-false", Branch: "main", Arch: "x86_64", Enabled: false})
-
-	var raw int
-	if err := s.read.QueryRow(
-		`SELECT enabled FROM packages WHERE pkgbase = 'enabled-true'`).Scan(&raw); err != nil {
-		t.Fatalf("enabled-true: %v", err)
-	}
-	if raw != 1 {
-		t.Errorf("enabled=true stored as %d, want 1", raw)
-	}
-	if err := s.read.QueryRow(
-		`SELECT enabled FROM packages WHERE pkgbase = 'enabled-false'`).Scan(&raw); err != nil {
-		t.Fatalf("enabled-false: %v", err)
-	}
-	if raw != 0 {
-		t.Errorf("enabled=false stored as %d, want 0", raw)
-	}
-
-	truePkg, err := s.GetPackageByBase(testCtx, "enabled-true")
-	if err != nil {
-		t.Fatalf("get true: %v", err)
-	}
-	falsePkg, err := s.GetPackageByBase(testCtx, "enabled-false")
-	if err != nil {
-		t.Fatalf("get false: %v", err)
-	}
-	if !truePkg.Enabled || falsePkg.Enabled {
-		t.Errorf("decoded Enabled = %v/%v, want true/false", truePkg.Enabled, falsePkg.Enabled)
-	}
-}
-
 // TestJSONConventions asserts the maintainers/artifacts/resource_usage
 // columns store JSON text and decode back to slices.
 func TestJSONConventions(t *testing.T) {
@@ -102,7 +67,6 @@ func TestJSONConventions(t *testing.T) {
 		Pkgbase:     "json",
 		Branch:      "main",
 		Arch:        "x86_64",
-		Enabled:     true,
 		Maintainers: []string{"a@example.com", "b@example.com"},
 	})
 	_, b := createTask(t, s, "json-1", "assigned", pkg, at(0))
@@ -147,7 +111,6 @@ func TestCorruptJSONNoPanic(t *testing.T) {
 		Pkgbase: "corrupt-json",
 		Branch:  "main",
 		Arch:    "x86_64",
-		Enabled: true,
 	})
 	_, b := createTask(t, s, "corrupt-json-1", "queued", pkg, at(0))
 

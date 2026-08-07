@@ -105,9 +105,9 @@ func seedBranchPackage(t *testing.T, dbPath, pkgbase, branch, srcinfoHash string
 	}
 	defer raw.Close()
 	if _, err := raw.Exec(`INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc,
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
 		 last_srcinfo_hash, last_upstream_ref, maintainers)
-		VALUES (?, ?, '', 'x86_64', 1, '', '', ?, '', '[]')`,
+		VALUES (?, ?, '', 'x86_64', '', '', ?, '', '[]')`,
 		pkgbase, branch, srcinfoHash); err != nil {
 		t.Fatalf("seed package %s: %v", pkgbase, err)
 	}

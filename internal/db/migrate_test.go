@@ -58,6 +58,16 @@ func TestMigrateFresh(t *testing.T) {
 		t.Fatalf("second queued task for same package: got %v, want ErrConflict", err)
 	}
 
+	// The dead packages.enabled column is dropped by migration 005.
+	var cols int
+	if err := s.read.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('packages') WHERE name = 'enabled'`).Scan(&cols); err != nil {
+		t.Fatalf("check enabled column: %v", err)
+	}
+	if cols != 0 {
+		t.Error("packages.enabled column still present after migration")
+	}
+
 	// schema_migrations records every migration exactly once.
 	var versions []int
 	rows, err := s.read.Query(`SELECT version FROM schema_migrations ORDER BY version`)
@@ -72,8 +82,8 @@ func TestMigrateFresh(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 4 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 {
-		t.Errorf("schema_migrations = %v, want [1 2 3 4]", versions)
+	if len(versions) != 5 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 {
+		t.Errorf("schema_migrations = %v, want [1 2 3 4 5]", versions)
 	}
 
 	// WAL journal mode.
@@ -94,7 +104,7 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Open: %v", err)
 	}
-	pkg := seedPackage(t, s1, Package{Pkgbase: "keepme", Branch: "main", Arch: "x86_64", Enabled: true})
+	pkg := seedPackage(t, s1, Package{Pkgbase: "keepme", Branch: "main", Arch: "x86_64"})
 	createTask(t, s1, "keep-task", "queued", pkg, at(0))
 	if err := s1.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -115,8 +125,8 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := s2.read.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if n != 4 {
-		t.Errorf("schema_migrations count = %d after reopen, want 4", n)
+	if n != 5 {
+		t.Errorf("schema_migrations count = %d after reopen, want 5", n)
 	}
 }
 
@@ -161,8 +171,8 @@ func TestMigrateFromFixture(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 5 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 999 {
-		t.Errorf("schema_migrations = %v, want [1 2 3 4 999]", versions)
+	if len(versions) != 6 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 999 {
+		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 999]", versions)
 	}
 }
 
@@ -220,7 +230,7 @@ func TestStoreConcurrency(t *testing.T) {
 	done := make(chan error, n)
 	for i := 0; i < n; i++ {
 		go func(i int) {
-			pkg := Package{Pkgbase: "conc-" + string(rune('a'+i)), Branch: "main", Arch: "x86_64", Enabled: true}
+			pkg := Package{Pkgbase: "conc-" + string(rune('a'+i)), Branch: "main", Arch: "x86_64"}
 			done <- seedPackageErr(s, pkg)
 		}(i)
 	}
@@ -244,8 +254,8 @@ func seedPackageErr(s *Store, p Package) error {
 		return err
 	}
 	_, err = s.write.Exec(`INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
-		VALUES (?, ?, ?, ?, 1, '', '', '', '', NULL, ?)`,
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
+		VALUES (?, ?, ?, ?, '', '', '', '', NULL, ?)`,
 		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, m)
 	return err
 }

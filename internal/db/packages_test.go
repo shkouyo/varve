@@ -32,7 +32,6 @@ func TestGetPackageByBase(t *testing.T) {
 		Branch:          "foo",
 		VCSKind:         "git",
 		Arch:            "x86_64",
-		Enabled:         true,
 		CurrentVersion:  "1.2.3-1",
 		Pkgdesc:         "a foo package",
 		LastSrcinfoHash: "abc",
@@ -46,9 +45,6 @@ func TestGetPackageByBase(t *testing.T) {
 	}
 	if got.Pkgbase != "foo" || got.Branch != "foo" || got.VCSKind != "git" || got.Arch != "x86_64" {
 		t.Errorf("scalar fields mismatch: %+v", got)
-	}
-	if !got.Enabled {
-		t.Error("Enabled = false, want true")
 	}
 	if got.CurrentVersion != "1.2.3-1" || got.Pkgdesc != "a foo package" {
 		t.Errorf("version/desc mismatch: %+v", got)
@@ -73,10 +69,10 @@ func TestGetPackageByBase(t *testing.T) {
 func TestListPackages(t *testing.T) {
 	s := newTestStore(t)
 	pkgs := []Package{
-		{Pkgbase: "alpha", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "letters first"},
-		{Pkgbase: "beta", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "letters second"},
-		{Pkgbase: "gamma", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "greek letter"},
-		{Pkgbase: "delta", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "river delta"},
+		{Pkgbase: "alpha", Branch: "main", Arch: "x86_64", Pkgdesc: "letters first"},
+		{Pkgbase: "beta", Branch: "main", Arch: "x86_64", Pkgdesc: "letters second"},
+		{Pkgbase: "gamma", Branch: "main", Arch: "x86_64", Pkgdesc: "greek letter"},
+		{Pkgbase: "delta", Branch: "main", Arch: "x86_64", Pkgdesc: "river delta"},
 	}
 	for _, p := range pkgs {
 		seedPackage(t, s, p)
@@ -188,8 +184,8 @@ func TestListPackages(t *testing.T) {
 // search term match literally instead of acting as wildcards.
 func TestListPackagesLikeEscape(t *testing.T) {
 	s := newTestStore(t)
-	seedPackage(t, s, Package{Pkgbase: "lib-100%", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "percent package"})
-	seedPackage(t, s, Package{Pkgbase: "lib-100x", Branch: "main", Arch: "x86_64", Enabled: true, Pkgdesc: "plain package"})
+	seedPackage(t, s, Package{Pkgbase: "lib-100%", Branch: "main", Arch: "x86_64", Pkgdesc: "percent package"})
+	seedPackage(t, s, Package{Pkgbase: "lib-100x", Branch: "main", Arch: "x86_64", Pkgdesc: "plain package"})
 
 	rows, total, err := s.ListPackages(testCtx, "100%", 1, 100)
 	if err != nil {
@@ -200,8 +196,8 @@ func TestListPackagesLikeEscape(t *testing.T) {
 	}
 
 	// A bare underscore matches only a literal underscore, not any char.
-	seedPackage(t, s, Package{Pkgbase: "lib_1", Branch: "main", Arch: "x86_64", Enabled: true})
-	seedPackage(t, s, Package{Pkgbase: "libx1", Branch: "main", Arch: "x86_64", Enabled: true})
+	seedPackage(t, s, Package{Pkgbase: "lib_1", Branch: "main", Arch: "x86_64"})
+	seedPackage(t, s, Package{Pkgbase: "libx1", Branch: "main", Arch: "x86_64"})
 	rows, total, err = s.ListPackages(testCtx, "lib_1", 1, 100)
 	if err != nil {
 		t.Fatalf("search literal underscore: %v", err)

@@ -37,9 +37,9 @@ func seedFailedPackage(t *testing.T, dbPath, pkgbase, lastSuccessHash, failedHas
 	}
 	defer raw.Close()
 	if _, err := raw.Exec(`INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, enabled, current_version, pkgdesc,
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
 		 last_srcinfo_hash, last_upstream_ref, last_failed_at, maintainers)
-		VALUES (?, '', '', 'x86_64', 1, '', '', ?, '', ?, '[]')`,
+		VALUES (?, '', '', 'x86_64', '', '', ?, '', ?, '[]')`,
 		pkgbase, lastSuccessHash, failedAt.UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("seed package %s: %v", pkgbase, err)
 	}
