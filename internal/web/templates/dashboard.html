@@ -76,7 +76,7 @@
     <section aria-labelledby="queue-heading" class="mb-8">
       <h2 id="queue-heading" class="mb-3 text-xl font-semibold">Task queue</h2>
       {{if .Tasks}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
         <table class="w-full text-left text-sm">
           <caption class="sr-only">Active tasks with package, state, machine and cancel action</caption>
           <thead>
@@ -94,7 +94,7 @@
             <tr class="border-b border-slate-100 last:border-0 dark:border-slate-800">
               <td class="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-300">{{shortID .ID}}</td>
               <td class="px-4 py-3">
-                {{if .Pkgbase}}<a class="font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}
+                {{if .Pkgbase}}<a class="font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}
               </td>
               <td class="px-4 py-3">{{template "statusBadge" .State}}</td>
               <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Worker}}{{.Worker}}{{else}}<span class="text-slate-500 dark:text-slate-400">not assigned</span>{{end}}</td>
@@ -118,7 +118,7 @@
     <section aria-labelledby="recent-heading" class="mb-8">
       <h2 id="recent-heading" class="mb-3 text-xl font-semibold">Recent builds</h2>
       {{if .Recent}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
         <table class="w-full text-left text-sm">
           <caption class="sr-only">Recent builds with status, package, executing machine and timestamps</caption>
           <thead>
@@ -139,7 +139,7 @@
                 <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
               </td>
               <td class="px-4 py-3">
-                {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-slate-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}
+                {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-slate-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}
               </td>
               <td class="px-4 py-3">{{template "statusBadge" .Status}}</td>
               <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-slate-400">not assigned</span>{{end}}</td>
@@ -167,7 +167,7 @@
     <section aria-labelledby="workers-heading">
       <h2 id="workers-heading" class="mb-3 text-xl font-semibold">Workers</h2>
       {{if .Workers}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
         <table class="w-full text-left text-sm">
           <caption class="sr-only">Worker nodes with online status, role, architecture, capacity and heartbeat</caption>
           <thead>

@@ -78,3 +78,16 @@
     color: #cbd5e1;
   }
 }
+
+/*
+ * Motion: the only animation on the site is the running-status spinner;
+ * it is decorative (the status word carries the meaning), so it stops for
+ * users who prefer reduced motion (WCAG 2.3.3 AA). The SSE log follow and
+ * the auto-refresh reload are instant, not animated, so nothing else
+ * needs guarding.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+}

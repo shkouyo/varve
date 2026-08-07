@@ -57,7 +57,7 @@ func TestBuildDetailRenders(t *testing.T) {
 		"not assigned",                   // machine fallback (no worker)
 		"making package: demo-pkg",       // log history
 		"CPU 37%",                        // utilization from adjacent samples
-		"Memory 512 MiB / peak 512 MiB",  // current vs run peak
+		"Memory 512 MiB, peak 512 MiB",   // current vs run peak
 		"26.8 GB used of 53.7 GB (50%)",  // humanized disk used/total
 		"available 26.8 GB",              // humanized disk free
 		"/builds/"+itoa(build.ID)+"/log", // live log link

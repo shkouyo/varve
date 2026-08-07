@@ -56,7 +56,7 @@
     {{end}}
 
     {{if .Builds}}
-    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
       <table class="w-full text-left text-sm">
         <caption class="sr-only">Failed builds with package, error summary and links to details and log</caption>
         <thead>
@@ -75,7 +75,7 @@
               <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.BuildURL}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
             </td>
             <td class="px-4 py-3">
-              {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-slate-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}
+              {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-slate-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}
             </td>
             <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{.Error}}</td>
             <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{.StartedAt}}</td>
@@ -95,7 +95,7 @@
       {{else}}
       <span></span>
       {{end}}
-      <p class="text-sm text-slate-600 dark:text-slate-400" role="status">Page {{.Page}} of {{.Pages}} · {{.Total}} failed builds</p>
+      <p class="text-sm text-slate-600 dark:text-slate-400" role="status">Page {{.Page}} of {{.Pages}}, {{.Total}} failed builds</p>
       {{if lt .Page .Pages}}
       <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700" href="/admin/builds?failed=1&amp;page={{add .Page 1}}">Next</a>
       {{else}}

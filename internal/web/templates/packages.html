@@ -58,7 +58,7 @@
         <option value="x86_64">x86_64</option>
         <option value="any">any</option>
       </select>
-      <button type="submit" class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500">
+      <button type="submit" aria-label="Search" class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <span class="hidden sm:inline">Search</span>
       </button>
@@ -73,7 +73,7 @@
     <section aria-labelledby="list-heading">
       <h2 id="list-heading" class="sr-only">Package list</h2>
     {{if .Packages}}
-    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
       <table class="w-full text-left text-sm">
         <caption class="sr-only">Packages with version, description and architecture</caption>
         <thead>
@@ -109,7 +109,7 @@
       {{else}}
       <span></span>
       {{end}}
-      <p class="text-sm text-slate-600 dark:text-slate-400" role="status">Page {{.Page}} of {{.Pages}} · {{.Total}} packages</p>
+      <p class="text-sm text-slate-600 dark:text-slate-400" role="status">Page {{.Page}} of {{.Pages}}, {{.Total}} packages</p>
       {{if lt .Page .Pages}}
       <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700" href="/packages?page={{add .Page 1}}{{if .Query}}&amp;q={{.Query}}{{end}}">Next</a>
       {{else}}

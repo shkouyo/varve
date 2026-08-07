@@ -61,7 +61,7 @@
     <div class="grid gap-6 lg:grid-cols-2">
       <section aria-labelledby="meta-heading" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h2 id="meta-heading" class="mb-3 text-xl font-semibold">Metadata</h2>
-        <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+        <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <dt class="font-medium text-slate-500 dark:text-slate-400">Version</dt>
           <dd class="text-slate-900 dark:text-slate-100">{{if .Pkg.Pkgver}}{{.Pkg.Pkgver}}{{if .Pkg.Pkgrel}}-{{.Pkg.Pkgrel}}{{end}}{{else}}{{.Pkg.CurrentVersion}}{{end}}</dd>
           {{if .Pkg.Pkgname}}
@@ -75,11 +75,11 @@
           <dt class="font-medium text-slate-500 dark:text-slate-400">Branch</dt>
           <dd class="text-slate-900 dark:text-slate-100">{{.Pkg.Branch}}</dd>
           <dt class="font-medium text-slate-500 dark:text-slate-400">VCS</dt>
-          <dd class="text-slate-900 dark:text-slate-100">{{if .Pkg.VCSKind}}{{.Pkg.VCSKind}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</dd>
+          <dd class="text-slate-900 dark:text-slate-100">{{if .Pkg.VCSKind}}{{.Pkg.VCSKind}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
           <dt class="font-medium text-slate-500 dark:text-slate-400">Architecture</dt>
           <dd class="text-slate-900 dark:text-slate-100">{{displayArch .Pkg.Arch}}</dd>
           <dt class="font-medium text-slate-500 dark:text-slate-400">Maintainers</dt>
-          <dd class="text-slate-900 dark:text-slate-100">{{range $i, $m := .Pkg.Maintainers}}{{if $i}}, {{end}}{{$m}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</dd>
+          <dd class="text-slate-900 dark:text-slate-100">{{range $i, $m := .Pkg.Maintainers}}{{if $i}}, {{end}}{{$m}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</dd>
           {{if .Pkg.URL}}
           <dt class="font-medium text-slate-500 dark:text-slate-400">Upstream</dt>
           <dd><a class="break-all text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.Pkg.URL}}" target="_blank" rel="noopener noreferrer">{{.Pkg.URL}}</a></dd>
@@ -106,7 +106,7 @@
       <section aria-labelledby="art-heading" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h2 id="art-heading" class="mb-3 text-xl font-semibold">Latest artifacts</h2>
         {{if .LatestArt}}
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto" tabindex="0">
           <table class="w-full text-left text-sm">
             <caption class="sr-only">Artifacts of the latest build with type, version, architecture and size</caption>
             <thead>
@@ -123,18 +123,18 @@
               {{range .LatestArt}}
               <tr class="border-b border-slate-100 last:border-0 dark:border-slate-800">
                 <td class="px-4 py-3">
-                  <p class="font-medium text-slate-900 dark:text-slate-100">{{.File}}</p>
-                  <p class="mt-0.5 break-all font-mono text-xs text-slate-500 dark:text-slate-400" title="{{.SHA256}}">sha256: {{if .SHA256}}{{slice .SHA256 0 16}}…{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</p>
+                  <p class="font-medium break-all text-slate-900 dark:text-slate-100">{{.File}}</p>
+                  <p class="mt-0.5 break-all font-mono text-xs text-slate-500 dark:text-slate-400" title="{{.SHA256}}">sha256: {{if .SHA256}}{{slice .SHA256 0 16}}…{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{.Kind}}</td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Version}}{{.Version}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Arch}}{{.Arch}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Version}}{{.Version}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .Arch}}{{.Arch}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
                 <td class="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-400">{{humanSize .Size}}</td>
                 <td class="px-4 py-3">
                   {{if and $.Download (eq .File $.Download.File)}}
                   <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{$.Download.URL}}">Download</a>
                   {{else}}
-                  <span class="text-slate-500 dark:text-slate-400">·</span>
+                  <span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>
                   {{end}}
                 </td>
               </tr>
@@ -151,7 +151,7 @@
     <section aria-labelledby="history-heading" class="mt-8">
       <h2 id="history-heading" class="mb-3 text-xl font-semibold">Build history</h2>
       {{if .Builds}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" tabindex="0">
         <table class="w-full text-left text-sm">
           <caption class="sr-only">Build history with status, executing machine and timestamps</caption>
           <thead>
@@ -170,8 +170,8 @@
                 <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
               </td>
               <td class="px-4 py-3">{{template "statusBadge" .Status}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .StartedAt}}{{.StartedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .FinishedAt}}{{.FinishedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400">·</span>{{end}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .StartedAt}}{{.StartedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{if .FinishedAt}}{{.FinishedAt}}{{else}}<span class="text-slate-500 dark:text-slate-400" aria-hidden="true">·</span>{{end}}</td>
               <td class="px-4 py-3">
                 <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}/log">View log</a>
               </td>

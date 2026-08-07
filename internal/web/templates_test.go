@@ -287,7 +287,7 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 	mustContain(t, rec.Body.String(),
 		`id="log"`,
 		`max-h-[70vh] overflow-auto whitespace-pre`,
-		`<span class="mr-4 inline-block w-10 select-none text-right text-slate-500">1</span>==&gt; done`)
+		`<span class="mr-4 inline-block w-10 select-none text-right text-slate-400">1</span>==&gt; done`)
 
 	// 404 big status numeral: slate-500 on white (~4.8:1 >= 3:1 large text).
 	rec = get(t, s, http.MethodGet, "/packages/nope", nil)
