@@ -99,10 +99,18 @@
               <dd class="break-all font-medium text-slate-900 dark:text-neutral-100">{{.File}}</dd>
               <dt class="font-medium text-slate-500 dark:text-neutral-400">Type</dt>
               <dd class="text-slate-900 dark:text-neutral-100">{{.Kind}}</dd>
+              {{if .Pkgname}}
+              <dt class="font-medium text-slate-500 dark:text-neutral-400">Package</dt>
+              <dd class="text-slate-900 dark:text-neutral-100">{{.Pkgname}}</dd>
+              {{end}}
               <dt class="font-medium text-slate-500 dark:text-neutral-400">Size</dt>
               <dd class="tabular-nums text-slate-900 dark:text-neutral-100">{{humanSize .Size}}</dd>
               <dt class="font-medium text-slate-500 dark:text-neutral-400">SHA256</dt>
               <dd class="break-all font-mono text-xs text-slate-700 dark:text-neutral-300" title="{{.SHA256}}">{{if .SHA256}}{{slice .SHA256 0 16}}…{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+              {{if .URL}}
+              <dt class="font-medium text-slate-500 dark:text-neutral-400">Download</dt>
+              <dd><a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.URL}}">{{if .Pkgname}}Download {{.Pkgname}}{{else}}Download {{.File}}{{end}}</a></dd>
+              {{end}}
             </dl>
           </li>
           {{end}}
@@ -138,7 +146,7 @@
               <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{if .StartedAt}}{{absTime .StartedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</td>
               <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{if .FinishedAt}}{{absTime .FinishedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</td>
               <td class="px-4 py-3">
-                <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}/log">View log</a>
+                <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}#log">View log</a>
               </td>
             </tr>
             {{end}}

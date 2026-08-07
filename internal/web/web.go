@@ -166,7 +166,28 @@ type base struct {
 	// PageActive marks a page whose log stream is still live; only the
 	// build page uses it, to gate its SSE client.
 	PageActive bool
+	// RenderMs records the time the page template took to execute, in
+	// whole milliseconds, measured by the render wrapper after the
+	// buffered execution completes. The footer reads the live value
+	// from ElapsedMs at the end of the same pass, so the number it
+	// shows is this measurement taken a moment earlier.
+	RenderMs    int
+	renderStart time.Time
 }
+
+// beginRender marks the start of the template execution so the footer
+// can report the live render time while the pass is still running. The
+// render wrappers call it on the page data before executing.
+func (b *base) beginRender() { b.renderStart = time.Now() }
+
+// ElapsedMs returns the whole milliseconds elapsed since beginRender.
+// The footer renders last in every document, so the value it reads is
+// effectively the page's render time.
+func (b *base) ElapsedMs() int { return int(time.Since(b.renderStart).Milliseconds()) }
+
+// recordRenderMs stores the elapsed time since the render started; the
+// render wrappers call it after the buffered execution completes.
+func (b *base) recordRenderMs() { b.RenderMs = int(time.Since(b.renderStart).Milliseconds()) }
 
 // flash is a one-shot message carried through the redirect query string;
 // there are no cookies on the web UI.
@@ -188,13 +209,26 @@ func (s *Server) page(r *http.Request, title string, f *flash) base {
 
 // render executes a named template with the page data. The stylesheet is
 // inlined via the base struct, so the page issues no external requests
-// and the fixed route table needs no /static route.
+// and the fixed route table needs no /static route. The page renders
+// into a buffer first: the render time is then known for the footer, and
+// a template failure can still produce a clean 500 instead of appending
+// a fallback to a partially written body. The data must be a pointer so
+// the wrappers can stamp the measured render time onto its base.
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
-		// The body is already partially written; emit a plain fallback.
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	if c, ok := data.(interface{ beginRender() }); ok {
+		c.beginRender()
 	}
+	var buf bytes.Buffer
+	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
+		// Nothing has been written yet; emit a clean fallback.
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if c, ok := data.(interface{ recordRenderMs() }); ok {
+		c.recordRenderMs()
+	}
+	w.Write(buf.Bytes())
 }
 
 // errorData feeds error.html (404/401/500 pages).
@@ -206,18 +240,22 @@ type errorData struct {
 
 // renderError writes a full error page with the given status. The page
 // is frozen: PageActive is off (a 404/401 page carries no SSE client).
+// Like render it buffers the page so a template failure produces a clean
+// 500 and the footer can show the live render time.
 func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
 	b := s.page(r, http.StatusText(status), nil)
 	b.PageActive = false
-	if err := s.tmpl.ExecuteTemplate(w, "error.html", errorData{
-		base:    b,
-		Status:  status,
-		Message: message,
-	}); err != nil {
+	ed := errorData{base: b, Status: status, Message: message}
+	ed.beginRender()
+	var buf bytes.Buffer
+	if err := s.tmpl.ExecuteTemplate(&buf, "error.html", &ed); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
+	ed.recordRenderMs()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	w.Write(buf.Bytes())
 }
 
 // buildIDLen is the fixed width of a build id (16 lowercase hex

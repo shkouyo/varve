@@ -216,11 +216,11 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 			Pkgbase:   name,
 			Error:     b.Error,
 			BuildURL:  "/builds/" + id,
-			LogURL:    "/builds/" + id + "/log",
+			LogURL:    "/builds/" + id + "#log",
 			StartedAt: absTime(b.StartedAt),
 		})
 	}
-	s.render(w, "admin_builds.html", data)
+	s.render(w, "admin_builds.html", &data)
 }
 
 // pathToken matches an absolute POSIX path: a run of slash-separated

@@ -101,7 +101,7 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build.")
 	default:
-		s.render(w, "build.html", data)
+		s.render(w, "build.html", &data)
 	}
 }
 

@@ -20,6 +20,7 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -221,6 +222,30 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// TestFooterRenderTime asserts every page footer carries the source link
+// ("Powered by Varve"), the license link, and a live render time in
+// whole milliseconds measured by the buffered render wrapper.
+func TestFooterRenderTime(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader(""))
+	ms := regexp.MustCompile(`Render: \d+ms`)
+	for _, path := range []string{"/", "/packages", "/packages/demo-pkg", "/builds", "/packages/nope"} {
+		rec := get(t, s, http.MethodGet, path, nil)
+		body := rec.Body.String()
+		mustContain(t, body,
+			`href="https://git.0x0f.dev/shkouyo/varve"`,
+			"Powered by Varve",
+			`href="/COPYING.txt"`,
+			"License: AGPL-3.0-or-later",
+		)
+		if !ms.MatchString(body) {
+			t.Errorf("%s: footer render time missing (want %q in body)", path, ms)
+		}
+	}
 }
 
 // TestA11yContrastAndKeyboard pins the WCAG 2.2 AA fixes from the

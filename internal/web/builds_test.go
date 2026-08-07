@@ -41,7 +41,7 @@ func TestBuildsListRenders(t *testing.T) {
 	mustContain(t, body,
 		"/builds/"+itoa(build.ID),
 		"demo-pkg",
-		"/builds/"+itoa(build.ID)+"/log",
+		"/builds/"+itoa(build.ID)+"#log",
 	)
 	if strings.Contains(body, "No builds recorded yet") {
 		t.Error("builds page must not show the empty state with rows present")

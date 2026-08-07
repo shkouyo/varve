@@ -102,24 +102,54 @@ func TestPackageDetailRenders(t *testing.T) {
 	)
 }
 
-// TestDownloadButtonMatrix drives download_enabled × artifact presence:
-// the button appears only when downloads are enabled and the latest build
-// carries an artifact.
+// TestDownloadButtonMatrix drives download_enabled × artifact set: the
+// hero button appears only when downloads are enabled and the latest
+// build carries exactly one package artifact, while the artifact card
+// links every package artifact individually and side files (signature,
+// srcinfo) never get a link.
 func TestDownloadButtonMatrix(t *testing.T) {
 	cases := []struct {
 		name      string
 		enabled   bool
 		baseURI   string
 		artifacts []db.Artifact
-		wantLink  bool
+		wantHero  bool     // hero download button rendered
+		heroText  string   // hero button label when present
+		wantLinks []string // artifact-card download URLs that must render
+		noLinks   []string // URLs that must not render anywhere
 	}{
-		{"enabled with artifact", true, "https://dl.example.org/pool",
-			[]db.Artifact{{File: "p.pkg.tar.zst", Kind: "package"}}, true},
+		{"enabled with one package", true, "https://dl.example.org/pool",
+			[]db.Artifact{{File: "p.pkg.tar.zst", Kind: "package", Pkgname: "p"}}, true,
+			"Download p.pkg.tar.zst", []string{"https://dl.example.org/pool/p.pkg.tar.zst"}, nil},
 		{"disabled with artifact", false, "https://dl.example.org/pool",
-			[]db.Artifact{{File: "p.pkg.tar.zst", Kind: "package"}}, false},
-		{"enabled without artifact", true, "https://dl.example.org/pool", nil, false},
+			[]db.Artifact{{File: "p.pkg.tar.zst", Kind: "package", Pkgname: "p"}}, false,
+			"", nil, []string{"https://dl.example.org/pool/p.pkg.tar.zst"}},
+		{"enabled without artifact", true, "https://dl.example.org/pool", nil, false,
+			"", nil, nil},
 		{"enabled with only srcinfo", true, "https://dl.example.org/pool",
-			[]db.Artifact{{File: ".SRCINFO", Kind: "srcinfo"}}, false},
+			[]db.Artifact{{File: ".SRCINFO", Kind: "srcinfo"}}, false,
+			"", nil, []string{"https://dl.example.org/pool/.SRCINFO"}},
+		{"enabled with split packages", true, "https://dl.example.org/pool",
+			[]db.Artifact{
+				{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "a"},
+				{File: "b-1-1-any.pkg.tar.zst", Kind: "package", Pkgname: "b"},
+			}, false,
+			"", []string{
+				"https://dl.example.org/pool/a-1-1-x86_64.pkg.tar.zst",
+				"https://dl.example.org/pool/b-1-1-any.pkg.tar.zst",
+			}, nil},
+		{"enabled with package plus side files", true, "https://dl.example.org/pool",
+			[]db.Artifact{
+				{File: "p-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "p"},
+				{File: "p-1-1-x86_64.pkg.tar.zst.sig", Kind: "signature"},
+				{File: ".SRCINFO", Kind: "srcinfo"},
+			}, true,
+			"Download p-1-1-x86_64.pkg.tar.zst",
+			[]string{"https://dl.example.org/pool/p-1-1-x86_64.pkg.tar.zst"},
+			[]string{
+				"https://dl.example.org/pool/p-1-1-x86_64.pkg.tar.zst.sig",
+				"https://dl.example.org/pool/.SRCINFO",
+			}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -134,10 +164,22 @@ func TestDownloadButtonMatrix(t *testing.T) {
 			s := newTestServer(t, cfg, &fakeOrchestrator{}, store, newFakeLogReader(""))
 			rec := get(t, s, http.MethodGet, "/packages/demo-pkg", nil)
 			body := rec.Body.String()
-			if tc.wantLink {
-				mustContain(t, body, tc.baseURI+"/p.pkg.tar.zst", "Download p.pkg.tar.zst")
-			} else if strings.Contains(body, tc.baseURI+"/p.pkg.tar.zst") {
-				t.Error("download link rendered although downloads should be hidden")
+			// The hero button is the only element with this class combo
+			// (gap-2 + rounded-lg + bg-blue-700); card links are plain
+			// underlined text links.
+			hero := `class="inline-flex items-center gap-2 rounded-lg bg-blue-700`
+			if tc.wantHero {
+				mustContain(t, body, hero, tc.heroText)
+			} else if strings.Contains(body, hero) {
+				t.Error("hero download button rendered although it should be hidden")
+			}
+			for _, link := range tc.wantLinks {
+				mustContain(t, body, link)
+			}
+			for _, link := range tc.noLinks {
+				if strings.Contains(body, link) {
+					t.Errorf("download link %q rendered although it should be hidden", link)
+				}
 			}
 		})
 	}
@@ -154,7 +196,9 @@ func TestPackageNotFound(t *testing.T) {
 	mustContain(t, rec.Body.String(), "Not Found", "Package not found")
 }
 
-// TestDownloadFor prefers the package artifact over other kinds.
+// TestDownloadFor pins the hero-link rules: one package artifact links,
+// a split build has no single hero button (the card covers it), and
+// disabled or buildless states are nil.
 func TestDownloadFor(t *testing.T) {
 	latest := &db.Build{Artifacts: []db.Artifact{
 		{File: "pkg-1-1-x86_64.pkg.tar.zst", Kind: "package"},
@@ -169,6 +213,18 @@ func TestDownloadFor(t *testing.T) {
 	}
 	if downloadFor(true, "https://dl.example.org", nil) != nil {
 		t.Error("downloadFor must be nil without a build")
+	}
+	if downloadFor(true, "https://dl.example.org", &db.Build{Artifacts: []db.Artifact{
+		{File: ".SRCINFO", Kind: "srcinfo"},
+	}}) != nil {
+		t.Error("downloadFor must be nil without a package artifact")
+	}
+	split := &db.Build{Artifacts: []db.Artifact{
+		{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package"},
+		{File: "b-1-1-any.pkg.tar.zst", Kind: "package"},
+	}}
+	if downloadFor(true, "https://dl.example.org", split) != nil {
+		t.Error("downloadFor must be nil when the build split into several packages")
 	}
 }
 

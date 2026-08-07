@@ -72,5 +72,5 @@ func (s *Server) handleBuilds(w http.ResponseWriter, r *http.Request) {
 		Admin:  s.authorized(r),
 	}
 	data.Nav = "builds"
-	s.render(w, "builds.html", data)
+	s.render(w, "builds.html", &data)
 }

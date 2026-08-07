@@ -112,7 +112,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Nav = "dashboard"
-	s.render(w, "dashboard.html", data)
+	s.render(w, "dashboard.html", &data)
 }
 
 // dashboardData assembles the dashboard page data. The public view shows

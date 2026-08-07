@@ -183,7 +183,7 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 		Admin:    s.authorized(r),
 	}
 	data.Nav = "packages"
-	s.render(w, "packages.html", data)
+	s.render(w, "packages.html", &data)
 }
 
 // pages computes the number of pages for a total item count.

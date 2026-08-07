@@ -37,17 +37,25 @@ type packageData struct {
 	Page      int // build history page
 	Pages     int
 	Total     int
-	Download  *downloadLink // nil when downloads are disabled or there is no artifact
-	LatestArt []db.Artifact
+	Download  *downloadLink // hero button; nil when downloads are disabled or the build split into several packages
+	LatestArt []artifactView
 	Admin     bool
 }
 
-// downloadLink is the artifact download destination: DownloadBaseURI +
-// "/" + the latest build's package artifact file name.
+// downloadLink is the hero download destination: DownloadBaseURI +
+// "/" + the package artifact file name of the latest build.
 type downloadLink struct {
 	URL   string
 	File  string
 	Bytes int64
+}
+
+// artifactView is one artifact row of the latest build's card. URL is the
+// download destination for package artifacts while downloads are enabled;
+// signature and srcinfo side files are metadata and never get one.
+type artifactView struct {
+	db.Artifact
+	URL string
 }
 
 // handlePackage renders GET /packages/{pkgbase}.
@@ -68,7 +76,7 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Nav = "packages"
-	s.render(w, "package.html", data)
+	s.render(w, "package.html", &data)
 }
 
 // packageData assembles the package page data: the package row (with its
@@ -118,40 +126,56 @@ func (s *Server) packageData(r *http.Request, pkgbase string, page int) (package
 		Pages:     p,
 		Total:     total,
 		Download:  downloadFor(s.cfg.Web.DownloadEnabled, s.cfg.Web.DownloadBaseURI, latest),
-		LatestArt: latestArtifacts(latest),
+		LatestArt: artifactViews(s.cfg.Web.DownloadEnabled, s.cfg.Web.DownloadBaseURI, latest),
 		Admin:     s.authorized(r),
 	}, nil
 }
 
-// latestArtifacts returns the artifact list of the latest build.
-func latestArtifacts(latest *db.Build) []db.Artifact {
+// artifactViews maps the latest build's artifacts to their card rows,
+// attaching a download URL to each package artifact when downloads are
+// enabled. Side files (signatures, .SRCINFO) stay link-free; they are
+// metadata about the packages, not packages themselves.
+func artifactViews(enabled bool, baseURI string, latest *db.Build) []artifactView {
 	if latest == nil {
 		return nil
 	}
-	return latest.Artifacts
+	views := make([]artifactView, 0, len(latest.Artifacts))
+	for _, a := range latest.Artifacts {
+		v := artifactView{Artifact: a}
+		if enabled && a.Kind == "package" {
+			v.URL = baseURI + "/" + a.File
+		}
+		views = append(views, v)
+	}
+	return views
 }
 
-// downloadFor builds the download link for the latest build, or nil when
-// downloads are disabled or the latest build has no package artifact.
-// Only the primary package artifact is downloadable; signature and
-// srcinfo side files are metadata, not packages.
+// downloadFor builds the hero download link for the latest build, or nil
+// when downloads are disabled, the build has no package artifact, or the
+// build split into several packages. A split build has no single obvious
+// download, so the hero button hides and the artifact card links every
+// package artifact individually.
 func downloadFor(enabled bool, baseURI string, latest *db.Build) *downloadLink {
-	if !enabled || latest == nil || len(latest.Artifacts) == 0 {
+	if !enabled || latest == nil {
 		return nil
 	}
-	var art *db.Artifact
+	var first *db.Artifact
+	count := 0
 	for i := range latest.Artifacts {
 		if latest.Artifacts[i].Kind == "package" {
-			art = &latest.Artifacts[i]
-			break
+			count++
+			if first == nil {
+				a := latest.Artifacts[i]
+				first = &a
+			}
 		}
 	}
-	if art == nil {
+	if count != 1 {
 		return nil
 	}
 	return &downloadLink{
-		URL:   baseURI + "/" + art.File,
-		File:  art.File,
-		Bytes: art.Size,
+		URL:   baseURI + "/" + first.File,
+		File:  first.File,
+		Bytes: first.Size,
 	}
 }
