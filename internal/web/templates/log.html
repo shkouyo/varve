@@ -4,40 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>{{.Title}} · varve</title>
+  <title>{{.Title}} · Varve</title>
   <style>{{.CSS}}</style>
   <!-- No-JavaScript fallback: without script support the page re-fetches
        itself on an interval so the log stays fresh. -->
   <noscript><meta http-equiv="refresh" content="5"></noscript>
 </head>
-<body class="min-h-screen bg-stone-100 text-stone-900 antialiased">
+<body class="min-h-screen bg-stone-100 text-stone-900 antialiased dark:bg-stone-950 dark:text-stone-100">
   <a class="skip-link" href="#main">Skip to main content</a>
-  <header class="border-b border-stone-200 bg-white">
-    <nav class="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3" aria-label="Main">
-      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-stone-900">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700" aria-hidden="true" focusable="false">
+  <header class="border-b border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
+    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3" aria-label="Main">
+      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-stone-900 dark:text-stone-100">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false">
           <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
           <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
           <line x1="12" y1="22.08" x2="12" y2="12"></line>
         </svg>
-        varve
+        Varve
       </a>
-      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "dashboard"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>Dashboard</a>
-      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
-      <a href="/admin" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "admin"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "admin"}}aria-current="page"{{end}}>Admin</a>
+      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "dashboard"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100{{end}}" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>Dashboard</a>
+      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
+      <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
     </nav>
   </header>
 
-  <main id="main" class="mx-auto max-w-6xl px-4 py-8">
-    <nav class="mb-1 text-sm text-stone-600" aria-label="Breadcrumb">
-      <a class="text-blue-800 underline underline-offset-2" href="/builds/{{.BuildID}}">Build #{{.BuildID}}</a>
+  <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
+    <nav class="mb-1 text-sm text-stone-600 dark:text-stone-400" aria-label="Breadcrumb">
+      <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.BuildID}}">Build #{{.BuildID}}</a>
       <span aria-hidden="true"> / </span>
-      <span class="text-stone-700">Log</span>
+      <span class="text-stone-700 dark:text-stone-300">Log</span>
     </nav>
-    <h1 class="mb-4 text-3xl font-bold tracking-tight">Live log — build #{{.BuildID}}</h1>
+    <h1 class="mb-4 text-2xl font-bold tracking-tight sm:text-3xl">Live log for build #{{.BuildID}}</h1>
 
-    <pre id="log" tabindex="0" class="max-h-[70vh] overflow-auto rounded-xl border border-stone-200 bg-stone-950 p-4 font-mono text-xs leading-relaxed text-stone-100">{{.Log}}</pre>
-    <p id="status" class="mt-3 text-sm text-stone-600" role="status">{{if .HasLog}}Connected — live updates follow below.{{else}}Waiting for log output…{{end}}</p>
+    <pre id="log" tabindex="0" aria-live="polite" class="max-h-[70vh] overflow-auto rounded-xl border border-stone-200 bg-stone-950 p-4 font-mono text-xs leading-relaxed text-stone-100 dark:border-stone-800">{{.Log}}</pre>
+    <p id="status" class="mt-3 text-sm text-stone-600 dark:text-stone-400" role="status">{{if .Note}}{{.Note}}{{else if .Wait}}Waiting for log output…{{else}}Connected. Live updates follow below.{{end}}</p>
   </main>
 
   <script>
@@ -45,19 +45,27 @@
       "use strict";
       var pre = document.getElementById("log");
       var status = document.getElementById("status");
+      // Auto-scroll only while the reader stays at the bottom; scrolling
+      // up pauses the follow so earlier output can be inspected.
+      var pinned = true;
+      pre.addEventListener("scroll", function () {
+        pinned = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 48;
+      });
       var es = new EventSource("{{.SSEURL}}");
       es.addEventListener("log", function (e) {
         var msg = JSON.parse(e.data);
         pre.textContent += msg.data;
-        pre.scrollTop = pre.scrollHeight;
-        status.textContent = "Connected — live updates follow below.";
+        if (pinned) {
+          pre.scrollTop = pre.scrollHeight;
+        }
+        status.textContent = "Connected. Live updates follow below.";
       });
       es.addEventListener("done", function () {
         es.close();
         status.textContent = "Log complete.";
       });
       es.onerror = function () {
-        status.textContent = "Connection interrupted — retrying…";
+        status.textContent = "Connection interrupted. Retrying…";
       };
       window.addEventListener("beforeunload", function () {
         es.close();
@@ -65,8 +73,11 @@
     })();
   </script>
 
-  <footer class="border-t border-stone-200 py-6">
-    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+  <footer class="border-t border-stone-200 py-6 dark:border-stone-800">
+    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 text-sm text-stone-600 dark:text-stone-400" aria-label="Footer">
+      <a class="underline underline-offset-2 hover:text-stone-900 dark:hover:text-stone-200" href="/copying.txt">License: AGPL-3.0-or-later</a>
+      <a class="underline underline-offset-2 hover:text-stone-900 dark:hover:text-stone-200" href="https://git.0x0f.dev/shkouyo/varve" rel="noopener noreferrer">Source code</a>
+    </nav>
   </footer>
 </body>
 </html>

@@ -4,74 +4,70 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>{{.Title}} · varve</title>
+  <title>{{.Title}} · Varve</title>
   <style>{{.CSS}}</style>
 </head>
-<body class="min-h-screen bg-stone-100 text-stone-900 antialiased">
+<body class="min-h-screen bg-stone-100 text-stone-900 antialiased dark:bg-stone-950 dark:text-stone-100">
   <a class="skip-link" href="#main">Skip to main content</a>
-  <header class="border-b border-stone-200 bg-white">
-    <nav class="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3" aria-label="Main">
-      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-stone-900">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700" aria-hidden="true" focusable="false">
+  <header class="border-b border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
+    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3" aria-label="Main">
+      <a href="/" class="mr-4 flex items-center gap-2 rounded-lg text-lg font-bold tracking-tight text-stone-900 dark:text-stone-100">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false">
           <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
           <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
           <line x1="12" y1="22.08" x2="12" y2="12"></line>
         </svg>
-        varve
+        Varve
       </a>
-      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "dashboard"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>Dashboard</a>
-      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
-      <a href="/admin" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "admin"}}bg-blue-50 text-blue-800{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900{{end}}" {{if eq .Nav "admin"}}aria-current="page"{{end}}>Admin</a>
+      <a href="/" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "dashboard"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100{{end}}" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>Dashboard</a>
+      <a href="/packages" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "packages"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100{{end}}" {{if eq .Nav "packages"}}aria-current="page"{{end}}>Packages</a>
+      <a href="/builds" class="rounded-lg px-3 py-2 text-sm font-medium {{if eq .Nav "builds"}}bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300{{else}}text-stone-600 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100{{end}}" {{if eq .Nav "builds"}}aria-current="page"{{end}}>Builds</a>
     </nav>
   </header>
 
-  <main id="main" class="mx-auto max-w-6xl px-4 py-8">
+  <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
     <div class="mb-6">
-      <nav class="mb-1 text-sm text-stone-600" aria-label="Breadcrumb">
+      <nav class="mb-1 text-sm text-stone-600 dark:text-stone-400" aria-label="Breadcrumb">
         {{if .Pkgbase}}
-        <a class="text-blue-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+        <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
         <span aria-hidden="true"> / </span>
         {{end}}
-        <span class="text-stone-700">Build #{{.Build.ID}}</span>
+        <span class="text-stone-700 dark:text-stone-300">Build #{{.Build.ID}}</span>
       </nav>
-      <h1 class="text-3xl font-bold tracking-tight">Build #{{.Build.ID}}</h1>
+      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Build #{{.Build.ID}}</h1>
     </div>
 
-    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900">
       <h2 id="summary-heading" class="mb-3 text-xl font-semibold">Summary</h2>
       <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-        <dt class="font-medium text-stone-500">Status</dt>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Status</dt>
         <dd>{{buildBadge .Build.Status}}</dd>
-        <dt class="font-medium text-stone-500">Package</dt>
-        <dd>{{if .Pkgbase}}<a class="text-blue-800 underline underline-offset-2" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}—{{end}}</dd>
-        <dt class="font-medium text-stone-500">Machine</dt>
-        <dd class="text-stone-900">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-stone-500">not assigned</span>{{end}}</dd>
-        <dt class="font-medium text-stone-500">Branch</dt>
-        <dd class="text-stone-900">{{.Build.Branch}}</dd>
-        <dt class="font-medium text-stone-500">Commit</dt>
-        <dd class="break-all font-mono text-xs text-stone-700">{{.Build.Commit}}</dd>
-        <dt class="font-medium text-stone-500">Upstream ref</dt>
-        <dd class="text-stone-900">{{if .Build.UpstreamRef}}{{.Build.UpstreamRef}}{{else}}—{{end}}</dd>
-        <dt class="font-medium text-stone-500">Started</dt>
-        <dd class="text-stone-900">{{if .Build.StartedAt}}{{.Build.StartedAt}}{{else}}—{{end}}</dd>
-        <dt class="font-medium text-stone-500">Finished</dt>
-        <dd class="text-stone-900">{{if .Build.FinishedAt}}{{.Build.FinishedAt}}{{else}}—{{end}}</dd>
-        {{if .Build.Error}}
-        <dt class="font-medium text-stone-500">Error</dt>
-        <dd class="text-stone-900">{{.Build.Error}}</dd>
-        {{end}}
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Package</dt>
+        <dd>{{if .Pkgbase}}<a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-stone-500 dark:text-stone-400">·</span>{{end}}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Machine</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-stone-500 dark:text-stone-400">not assigned</span>{{end}}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Branch</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{.Build.Branch}}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Commit</dt>
+        <dd class="break-all font-mono text-xs text-stone-700 dark:text-stone-300">{{.Build.Commit}}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Upstream ref</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{if .Build.UpstreamRef}}{{.Build.UpstreamRef}}{{else}}<span class="text-stone-500 dark:text-stone-400">·</span>{{end}}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Started</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{absTime .Build.StartedAt}}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">Finished</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{absTime .Build.FinishedAt}}</dd>
       </dl>
     </section>
 
     <section aria-labelledby="log-heading" class="mb-8">
       <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="log-heading" class="text-xl font-semibold">Command log</h2>
-        <a class="text-sm font-medium text-blue-800 underline underline-offset-2" href="{{.LogURL}}">Open live log</a>
+        <a class="text-sm font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.LogURL}}">Open live log</a>
       </div>
       {{if .HasLog}}
-      <pre tabindex="0" class="max-h-[32rem] overflow-auto rounded-xl border border-stone-200 bg-stone-950 p-4 font-mono text-xs leading-relaxed text-stone-100">{{.Log}}</pre>
+      <pre tabindex="0" class="max-h-[32rem] overflow-auto rounded-xl border border-stone-200 bg-stone-950 p-4 font-mono text-xs leading-relaxed text-stone-100 dark:border-stone-800">{{.Log}}</pre>
       {{else}}
-      <p class="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-stone-500">No log content yet. Follow the live log for streaming output.</p>
+      <p class="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">No log content yet. Follow the live log for streaming output.</p>
       {{end}}
     </section>
 
@@ -80,27 +76,30 @@
       {{if .Samples}}
       <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {{range .Samples}}
-        <li class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-          <p class="text-xs text-stone-500">Sample at {{.At}}</p>
-          <p class="mt-1 text-sm text-stone-900">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+        <li class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm dark:border-stone-800 dark:bg-stone-900">
+          <p class="text-xs text-stone-500 dark:text-stone-400">Sample at {{.At}}</p>
+          <p class="mt-1 text-sm text-stone-900 dark:text-stone-100">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
             CPU {{.CPU}}
           </p>
-          <p class="mt-1 text-sm text-stone-900">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700" aria-hidden="true" focusable="false"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+          <p class="mt-1 text-sm text-stone-900 dark:text-stone-100">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 inline h-4 w-4 text-blue-700 dark:text-blue-400" aria-hidden="true" focusable="false"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
             Memory {{.Mem}}
           </p>
         </li>
         {{end}}
       </ul>
       {{else}}
-      <p class="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-stone-500">No resource samples recorded.</p>
+      <p class="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">No resource samples recorded.</p>
       {{end}}
     </section>
   </main>
 
-  <footer class="border-t border-stone-200 py-6">
-    <p class="mx-auto max-w-6xl px-4 text-sm text-stone-600">varve — AUR-style package build farm. Metrics are shown as text only; no charts, no external resources.</p>
+  <footer class="border-t border-stone-200 py-6 dark:border-stone-800">
+    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 text-sm text-stone-600 dark:text-stone-400" aria-label="Footer">
+      <a class="underline underline-offset-2 hover:text-stone-900 dark:hover:text-stone-200" href="/copying.txt">License: AGPL-3.0-or-later</a>
+      <a class="underline underline-offset-2 hover:text-stone-900 dark:hover:text-stone-200" href="https://git.0x0f.dev/shkouyo/varve" rel="noopener noreferrer">Source code</a>
+    </nav>
   </footer>
 </body>
 </html>

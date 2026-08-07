@@ -179,7 +179,7 @@ func truncate(s string, n int) string {
 // axe-core audit to the rendered HTML:
 //
 //   - no sub-threshold secondary text (stone-400, 2.59:1 on white) and
-//     footer text uses stone-600 instead of stone-500 (4.39:1 on the
+//     footer links use stone-600 text instead of stone-500 (4.39:1 on the
 //     stone-100 page background), WCAG 1.4.3;
 //   - every in-text link is always underlined rather than only on hover,
 //     so links are distinguishable without relying on color (WCAG 1.4.1
@@ -224,7 +224,7 @@ func TestA11yContrastAndKeyboard(t *testing.T) {
 		if strings.Contains(body, `class="text-stone-400"`) {
 			t.Errorf("%s: sub-threshold text-stone-400 still rendered", pg.name)
 		}
-		mustContain(t, body, `text-stone-600">varve`) // footer contrast
+		mustContain(t, body, `href="/copying.txt"`, "License: AGPL-3.0-or-later", "https://git.0x0f.dev/shkouyo/varve") // footer links
 		if pg.links {
 			mustContain(t, body, "underline underline-offset-2")
 			if strings.Contains(body, "underline-offset-2 hover:underline") {
