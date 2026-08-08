@@ -248,6 +248,60 @@ func TestFooterRenderTime(t *testing.T) {
 	}
 }
 
+// TestFooterLayout pins the footer split into two opposite groups: the
+// source link and render time sit in a left-hand list, the license link
+// in a right-hand one, and the flex nav pushes them apart with
+// justify-between so they never crowd the center (narrow screens wrap
+// the right-hand group to its own line instead of overlapping).
+func TestFooterLayout(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader(""))
+
+	rec := get(t, s, http.MethodGet, "/", nil)
+	body := rec.Body.String()
+	start := strings.Index(body, "<footer")
+	if start < 0 {
+		t.Fatal("page renders no <footer> landmark")
+	}
+	end := strings.Index(body[start:], "</footer>")
+	if end < 0 {
+		t.Fatal("<footer> has no closing tag")
+	}
+	footer := body[start : start+end]
+
+	mustContain(t, footer, `aria-label="Footer"`, "justify-between")
+
+	// The two groups are sibling lists, each carrying exactly one item.
+	uls := listBlocks(footer)
+	if len(uls) != 2 {
+		t.Fatalf("footer renders %d list groups, want 2", len(uls))
+	}
+	mustContain(t, uls[0], `href="https://git.0x0f.dev/shkouyo/varve"`, "Powered by Varve", "Render:")
+	mustContain(t, uls[1], `href="/COPYING.txt"`, "License: AGPL-3.0-or-later")
+}
+
+// listBlocks returns the text of every <ul>...</ul> element in order.
+func listBlocks(s string) []string {
+	var out []string
+	for i := 0; ; {
+		start := strings.Index(s[i:], "<ul")
+		if start < 0 {
+			break
+		}
+		start += i
+		end := strings.Index(s[start:], "</ul>")
+		if end < 0 {
+			break
+		}
+		end += start
+		out = append(out, s[start:end])
+		i = end + len("</ul>")
+	}
+	return out
+}
+
 // TestA11yContrastAndKeyboard pins the WCAG 2.2 AA fixes from the
 // axe-core audit to the rendered HTML:
 //
