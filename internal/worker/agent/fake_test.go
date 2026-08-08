@@ -61,6 +61,12 @@ type fakeClient struct {
 	hbCancelIDs []string
 	hbErr       error
 	heartbeats  []api.HeartbeatReq
+	// hbGate, when non-nil, gates the cancellation ids: Heartbeat only
+	// delivers hbCancelIDs once the gate reports true. Tests use it to
+	// synchronize the cancellation with an observable state (e.g. a
+	// makepkg stand-in proving its TERM trap is installed). The gate
+	// must not call back into the client (Heartbeat holds the lock).
+	hbGate func() bool
 
 	pollResp  api.PollResp
 	pollResps []api.PollResp // consumed in order, last one repeated
@@ -122,7 +128,11 @@ func (f *fakeClient) Heartbeat(ctx context.Context, req api.HeartbeatReq) (*api.
 	if f.hbErr != nil {
 		return nil, f.hbErr
 	}
-	return &api.HeartbeatResp{CancelledTaskIDs: f.hbCancelIDs}, nil
+	cancelIDs := f.hbCancelIDs
+	if f.hbGate != nil && !f.hbGate() {
+		cancelIDs = nil
+	}
+	return &api.HeartbeatResp{CancelledTaskIDs: cancelIDs}, nil
 }
 
 func (f *fakeClient) Poll(ctx context.Context, req api.PollReq) (*api.PollResp, error) {

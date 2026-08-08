@@ -37,6 +37,14 @@ func trapScript(t *testing.T, record string) string {
 	return writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\necho started\nwhile :; do echo RUNNING >> %s; sleep 0.01; done", record, record))
 }
 
+// trapScriptReady is trapScript with a readiness handshake: the TERM
+// trap is installed first, then a ready marker is touched, so a test
+// gating on the marker knows the trap is live before it sends SIGTERM.
+func trapScriptReady(t *testing.T, record, ready string) string {
+	t.Helper()
+	return writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\ntouch %s\necho started\nwhile :; do echo RUNNING >> %s; sleep 0.01; done", record, ready, record))
+}
+
 // TestCancelViaLogAck asserts channel 2: a Cancelled=true log ack stops
 // makepkg with SIGTERM escalated to SIGKILL and reports cancelled.
 func TestCancelViaLogAck(t *testing.T) {
@@ -83,17 +91,27 @@ func TestCancelViaLogAck(t *testing.T) {
 // stops the running pool task and reports cancelled.
 func TestCancelViaPoolHeartbeat(t *testing.T) {
 	record := t.TempDir() + "/signals"
+	ready := t.TempDir() + "/ready"
 	f := &fakeClient{}
-	f.hbCancelIDs = []string{"t-1"}
 	task := taskFor("t-1")
 	f.pollResps = []api.PollResp{{Task: task, ClaimToken: "tok"}}
 	f.taskDetail = task
+	// Gate the cancellation on the makepkg stand-in being demonstrably
+	// running: the heartbeat only delivers cancelled_task_ids once the
+	// ready marker exists (the TERM trap is installed before it), so
+	// SIGTERM cannot race the trap installation and the record is
+	// deterministic.
+	f.hbCancelIDs = []string{"t-1"}
+	f.hbGate = func() bool {
+		_, err := os.Stat(ready)
+		return err == nil
+	}
 
 	cfg := configForTest(t, false)
 	cfg.TaskID, cfg.TaskToken = "", "" // pool mode: no one-shot ids
 	r := NewRunner(cfg, f)
 	exec := flowExec(t, r.workDir, "t-1", testSrcinfo, nil, map[string]string{
-		"makepkg -s --noconfirm": trapScript(t, record),
+		"makepkg -s --noconfirm": trapScriptReady(t, record, ready),
 	})
 	r.execCommand = exec.command
 	r.pollInterval = 10 * time.Millisecond
@@ -122,8 +140,16 @@ func TestCancelViaPoolHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read signal record: %v", err)
 	}
-	if !strings.Contains(string(data), "TERM") {
-		t.Errorf("makepkg never received SIGTERM (record=%q)", data)
+	// Signal order, not wall clock: the trap recorded TERM and the loop
+	// kept appending RUNNING markers afterwards, so SIGTERM alone did not
+	// stop the process — only the SIGKILL escalation after killGrace could
+	// have ended the run.
+	recorded := string(data)
+	termIdx := strings.Index(recorded, "TERM")
+	if termIdx < 0 {
+		t.Errorf("makepkg never received SIGTERM (record=%q)", recorded)
+	} else if !strings.Contains(recorded[termIdx:], "RUNNING") {
+		t.Errorf("makepkg died on SIGTERM before the SIGKILL escalation (record=%q)", recorded)
 	}
 	if len(f.deregNames) != 1 {
 		t.Errorf("deregister calls = %v, want 1 on shutdown", f.deregNames)
