@@ -32,9 +32,11 @@ import (
 
 // Notifier delivers build failure notifications. Dispatch snapshots the
 // dotfile maintainers at enqueue time and calls SendFailure for every
-// failed build.
+// failed build; AUR push failures use SendAURFailure with the same
+// recipients.
 type Notifier interface {
 	SendFailure(ctx context.Context, to []string, info FailureInfo) error
+	SendAURFailure(ctx context.Context, to []string, info AURPushInfo) error
 }
 
 // FailureInfo carries the fields rendered into a failure notification.
@@ -45,6 +47,16 @@ type FailureInfo struct {
 	Stage   string // build stage at which the failure occurred
 	Summary string // short human-readable error summary
 	LogURL  string // public Web log link (cfg.Server.WebURL + /builds/{id})
+}
+
+// AURPushInfo carries the fields rendered into an AUR push failure
+// notification.
+type AURPushInfo struct {
+	Pkgbase string // package base name whose AUR push failed
+	Branch  string // source branch pushed
+	AURName string // AUR package name
+	Commit  string // commit the push attempted
+	Error   string // short human-readable push error
 }
 
 // Mailer sends failure notifications over SMTP. It holds no mutable state,
@@ -69,6 +81,24 @@ func NewMailer(cfg *config.MailConfig) *Mailer {
 // aggregated into the returned error. The caller only logs the error and
 // never lets it affect task state.
 func (m *Mailer) SendFailure(ctx context.Context, to []string, info FailureInfo) error {
+	return m.sendEach(ctx, to, func(rcpt string) []byte {
+		return m.buildMessage(info, []string{rcpt})
+	})
+}
+
+// SendAURFailure sends a plain-text AUR push failure notification to each
+// recipient, following the same connection and error semantics as
+// SendFailure.
+func (m *Mailer) SendAURFailure(ctx context.Context, to []string, info AURPushInfo) error {
+	return m.sendEach(ctx, to, func(rcpt string) []byte {
+		return m.buildAURMessage(info, []string{rcpt})
+	})
+}
+
+// sendEach delivers one message per recipient over its own SMTP
+// connection. It is a no-op when mail is disabled or no recipients are
+// given; send failures are aggregated into the returned error.
+func (m *Mailer) sendEach(ctx context.Context, to []string, build func(rcpt string) []byte) error {
 	if m == nil || m.cfg == nil || !m.cfg.Enabled || len(to) == 0 {
 		return nil
 	}
@@ -81,8 +111,7 @@ func (m *Mailer) SendFailure(ctx context.Context, to []string, info FailureInfo)
 			errs = append(errs, fmt.Errorf("mail: send to %s: %w", rcpt, err))
 			break
 		}
-		msg := m.buildMessage(info, []string{rcpt})
-		if err := m.send(ctx, rcpt, msg); err != nil {
+		if err := m.send(ctx, rcpt, build(rcpt)); err != nil {
 			errs = append(errs, fmt.Errorf("mail: send to %s: %w", rcpt, err))
 		}
 	}

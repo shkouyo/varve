@@ -61,6 +61,46 @@ func buildBody(info FailureInfo) string {
 	return b.String()
 }
 
+// buildAURMessage assembles the plain-text RFC 5322 AUR push failure
+// notification; it shares the header layout of buildMessage.
+func (m *Mailer) buildAURMessage(info AURPushInfo, to []string) []byte {
+	var b strings.Builder
+	b.Grow(512)
+	fmt.Fprintf(&b, "From: %s%s", m.cfg.From, crlf)
+	fmt.Fprintf(&b, "To: %s%s", strings.Join(to, ", "), crlf)
+	fmt.Fprintf(&b, "Date: %s%s", time.Now().Format(time.RFC1123Z), crlf)
+	fmt.Fprintf(&b, "Message-ID: %s%s", newMessageID(m.cfg.From), crlf)
+	fmt.Fprintf(&b, "Subject: %s%s", encodeAURSubject(info), crlf)
+	b.WriteString(crlf)
+	b.WriteString(buildAURBody(info))
+	return []byte(b.String())
+}
+
+// buildAURBody renders the plain-text AUR push failure body: package,
+// branch, AUR package name, attempted commit and the push error.
+func buildAURBody(info AURPushInfo) string {
+	var b strings.Builder
+	b.WriteString("AUR push failed" + crlf)
+	b.WriteString(crlf)
+	fmt.Fprintf(&b, "Package: %s%s", sanitize(info.Pkgbase), crlf)
+	fmt.Fprintf(&b, "Branch: %s%s", sanitize(info.Branch), crlf)
+	fmt.Fprintf(&b, "AUR package: %s%s", sanitize(info.AURName), crlf)
+	fmt.Fprintf(&b, "Commit: %s%s", sanitize(info.Commit), crlf)
+	fmt.Fprintf(&b, "Error: %s%s", sanitize(info.Error), crlf)
+	return b.String()
+}
+
+// encodeAURSubject builds the RFC 2047-encoded AUR push failure subject.
+func encodeAURSubject(info AURPushInfo) string {
+	subject := fmt.Sprintf("AUR push failed: %s (%s)",
+		sanitize(info.Pkgbase), sanitize(info.Branch))
+	enc := mime.QEncoding.Encode("utf-8", subject)
+	if enc == subject {
+		return subject
+	}
+	return strings.ReplaceAll(enc, "?= =?", "?="+crlf+" =?")
+}
+
 // encodeSubject encodes the Subject header per RFC 2047 when it contains
 // non-ASCII characters (e.g. a Chinese package name) and folds long encoded
 // words onto continuation lines so that no physical header line exceeds 78

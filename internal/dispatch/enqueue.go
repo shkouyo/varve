@@ -82,6 +82,8 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 		VCSKind:     c.Package.VCSKind,
 		Arch:        c.Package.Arch,
 		Maintainers: c.Maintainers,
+		AURName:     c.AUR.Name,
+		AURSubmit:   c.AUR.Submit,
 		URL:         c.URL,
 		Licenses:    c.Licenses,
 		Conflicts:   c.Conflicts,

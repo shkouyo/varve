@@ -22,9 +22,10 @@ LABEL org.opencontainers.image.title="Varve Controller" \
 RUN pacman -Sy --noconfirm
 
 # git: pull source repositories; subversion: query SVN upstream revisions;
-# gnupg: key hosting and per-task injection. repo-add/repo-remove ship
-# with the pacman package already present in the base image.
-RUN pacman -S --noconfirm git subversion gnupg
+# openssh: ssh transport for AUR package pushes; gnupg: key hosting and
+# per-task injection. repo-add/repo-remove ship with the pacman package
+# already present in the base image.
+RUN pacman -S --noconfirm git subversion openssh gnupg
 
 # Controller binary. Build it beforehand with `go build ./cmd/varve`.
 COPY varve /usr/bin/varve

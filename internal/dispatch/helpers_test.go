@@ -269,8 +269,10 @@ func (f *fakeSigner) ClearTask(taskID string) {
 }
 
 type fakeNotifier struct {
-	log   *opLog
-	calls []mail.FailureInfo
+	log           *opLog
+	calls         []mail.FailureInfo
+	aurCalls      []mail.AURPushInfo
+	aurRecipients []string
 }
 
 func newFakeNotifier(t *testing.T) *fakeNotifier {
@@ -281,6 +283,13 @@ func newFakeNotifier(t *testing.T) *fakeNotifier {
 func (f *fakeNotifier) SendFailure(ctx context.Context, to []string, info mail.FailureInfo) error {
 	f.calls = append(f.calls, info)
 	f.log.add("notify " + info.Pkgbase + " " + info.Stage)
+	return nil
+}
+
+func (f *fakeNotifier) SendAURFailure(ctx context.Context, to []string, info mail.AURPushInfo) error {
+	f.aurCalls = append(f.aurCalls, info)
+	f.aurRecipients = append(f.aurRecipients, to...)
+	f.log.add("notify-aur " + info.Pkgbase)
 	return nil
 }
 
@@ -536,11 +545,16 @@ func (e *testEnv) claim(t *testing.T, worker string) (string, string) {
 	return resp.Task.ID, resp.ClaimToken
 }
 
-// detectChange builds a detect.Change for a branch.
+// detectChange builds a detect.Change for a branch. The maintainers
+// arguments are email addresses mapped to email-only maintainer entries.
 func detectChange(pkgbase, branch string, maintainers ...string) detect.Change {
+	ms := make([]db.Maintainer, 0, len(maintainers))
+	for _, m := range maintainers {
+		ms = append(ms, db.Maintainer{Email: m})
+	}
 	return detect.Change{
 		Package:     detect.Package{Pkgbase: pkgbase, Branch: branch, VCSKind: "", Arch: "x86_64"},
-		Maintainers: maintainers,
+		Maintainers: ms,
 		Reason:      detect.ReasonSrcinfo,
 	}
 }

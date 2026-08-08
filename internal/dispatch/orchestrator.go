@@ -173,6 +173,10 @@ type OrchestratorImpl struct {
 	now         func() time.Time
 	execCommand func(ctx context.Context, name string, arg ...string) *exec.Cmd
 
+	// aurPusher publishes successful branch builds to AUR; built from
+	// cfg.AUR in NewOrchestrator and injectable for tests.
+	aurPusher AURPublisher
+
 	ingestMu   sync.Mutex
 	tokenMu    sync.Mutex
 	tokenCache map[string]string
@@ -246,6 +250,7 @@ func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend stor
 		stallInterval:  30 * time.Second,
 		hourlyInterval: time.Hour,
 		actions:        newActionsDispatcher(&cfg.Worker.Actions),
+		aurPusher:      NewAURPusher(&cfg.AUR),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	o.schedCancel = cancel
@@ -390,7 +395,7 @@ func (o *OrchestratorImpl) notifyFailure(ctx context.Context, task *db.Task, bui
 		Summary: summary,
 		LogURL:  url,
 	}
-	if err := o.notifier.SendFailure(ctx, pkg.Maintainers, info); err != nil {
+	if err := o.notifier.SendFailure(ctx, db.MaintainerEmails(pkg.Maintainers), info); err != nil {
 		log.Printf("dispatch: notify failure for %s: %v", task.ID, err)
 	}
 }

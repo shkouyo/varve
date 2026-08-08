@@ -200,3 +200,90 @@ func TestBuildMessageSanitize(t *testing.T) {
 		t.Errorf("sanitized subject missing package name: %q", got)
 	}
 }
+
+// TestBuildAURMessageBody asserts the AUR push failure message carries
+// every field: package, branch, AUR package name, attempted commit and
+// the push error, with no HTML markup and CRLF line endings.
+func TestBuildAURMessageBody(t *testing.T) {
+	m := testMailer(config.MailConfig{From: "varve@example.org"}, nil)
+	info := AURPushInfo{
+		Pkgbase: "foo",
+		Branch:  "main",
+		AURName: "foo-aur",
+		Commit:  "0123abc",
+		Error:   "git push rejected: non-fast-forward",
+	}
+
+	msg := string(m.buildAURMessage(info, []string{"a@example.org"}))
+	_, body := splitMessage(msg)
+	for _, want := range []string{
+		"Package: foo",
+		"Branch: main",
+		"AUR package: foo-aur",
+		"Commit: 0123abc",
+		"Error: git push rejected: non-fast-forward",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+	if strings.Contains(msg, "<html") || strings.Contains(msg, "<body") {
+		t.Error("message must not contain HTML markup")
+	}
+	for i := 0; i < len(msg); i++ {
+		if msg[i] == '\n' && (i == 0 || msg[i-1] != '\r') {
+			t.Fatalf("bare LF at byte %d", i)
+		}
+	}
+}
+
+// TestBuildAURMessageSubject asserts the AUR failure subject uses the
+// "AUR push failed" prefix and encodes non-ASCII package names.
+func TestBuildAURMessageSubject(t *testing.T) {
+	m := testMailer(config.MailConfig{From: "varve@example.org"}, nil)
+	plain := AURPushInfo{Pkgbase: "foo", Branch: "main"}
+	headers, _ := splitMessage(string(m.buildAURMessage(plain, []string{"a@example.org"})))
+	if subject := headerValue(headers, "Subject"); subject != "AUR push failed: foo (main)" {
+		t.Errorf("Subject = %q", subject)
+	}
+
+	nonASCII := AURPushInfo{Pkgbase: "构建包", Branch: "main"}
+	headers, _ = splitMessage(string(m.buildAURMessage(nonASCII, []string{"a@example.org"})))
+	subject := headerBlock(headers, "Subject")
+	if !strings.Contains(subject, "=?utf-8?q?") {
+		t.Fatalf("subject not RFC 2047 encoded: %q", subject)
+	}
+	got, err := (&mime.WordDecoder{}).DecodeHeader(subject)
+	if err != nil {
+		t.Fatalf("decode subject: %v", err)
+	}
+	if want := "AUR push failed: 构建包 (main)"; got != want {
+		t.Errorf("decoded subject = %q, want %q", got, want)
+	}
+}
+
+// TestBuildAURMessageSanitize asserts untrusted fields cannot inject
+// header lines or break the plain-text layout.
+func TestBuildAURMessageSanitize(t *testing.T) {
+	m := testMailer(config.MailConfig{From: "varve@example.org"}, nil)
+	info := AURPushInfo{
+		Pkgbase: "foo\r\nBcc: attacker@example.org",
+		Branch:  "main",
+		AURName: "pkg\r\nX-Evil: 1",
+		Commit:  "c",
+		Error:   "boom\nignored",
+	}
+	msg := string(m.buildAURMessage(info, []string{"a@example.org"}))
+	headers, _ := splitMessage(msg)
+	if v := headerValue(headers, "Bcc"); v != "" {
+		t.Errorf("Bcc header injected: %q", v)
+	}
+	if v := headerValue(headers, "X-Evil"); v != "" {
+		t.Errorf("X-Evil header injected: %q", v)
+	}
+	// The offending text survives only inside the body, with the line
+	// breaks replaced by spaces.
+	if !strings.Contains(msg, "Bcc: attacker@example.org") || !strings.Contains(msg, "X-Evil: 1") {
+		t.Error("sanitized content missing from the body")
+	}
+}

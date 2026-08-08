@@ -30,6 +30,7 @@ import (
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/detect/srcinfo"
+	"git.0x0f.dev/varve/internal/mail"
 	"git.0x0f.dev/varve/internal/repo"
 	"git.0x0f.dev/varve/internal/storage"
 )
@@ -153,7 +154,70 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// 4. Staging cleanup.
 	o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
 	o.clearSigner(task.ID)
+
+	// 5. AUR publishing: when the branch opted in and this change carried
+	// a branch commit, mirror it into the AUR package repository. The
+	// ingest already succeeded; a push failure is recorded and notified
+	// but never fails the build.
+	o.publishAUR(ctx, pkg, build)
 	return nil
+}
+
+// publishAUR pushes the built branch commit to AUR when every trigger
+// condition holds: the controller has AUR publishing enabled (an SSH key),
+// the branch dotfile opted in ([aur].submit with a package name) and the
+// change carried a branch commit (build.Commit differs from the
+// pre-ingest last successful commit — a pure upstream or manual rebuild
+// leaves the commit unchanged and is not pushed).
+//
+// The outcome is always recorded on the package row and a failure
+// additionally notifies the maintainers. The push runs synchronously
+// inside the ingest lock, so a push is never reordered against later
+// ingests of the same repository.
+func (o *OrchestratorImpl) publishAUR(ctx context.Context, pkg *db.Package, build *db.Build) {
+	if o.aurPusher == nil || pkg.AURName == "" || !pkg.AURSubmit {
+		return
+	}
+	if o.cfg.AUR.KeyFile == "" {
+		return // AUR publishing disabled by the controller configuration
+	}
+	if build.Commit == pkg.LastCommit {
+		return // no branch commit in this change
+	}
+	err := o.aurPusher.Push(ctx, o.mirrorDir, build.Branch, pkg.AURName)
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+	if rerr := o.store.RecordAURPush(ctx, pkg.Pkgbase, build.Commit, o.now().UTC(), errMsg); rerr != nil {
+		log.Printf("dispatch: record AUR push for %s: %v", pkg.Pkgbase, rerr)
+	}
+	if err != nil {
+		o.notifyAURFailure(ctx, pkg, build, err)
+	}
+}
+
+// notifyAURFailure sends an AUR push failure notification to the package
+// maintainers' email addresses. Send failures are only logged: they never
+// affect the build or the recorded push outcome.
+func (o *OrchestratorImpl) notifyAURFailure(ctx context.Context, pkg *db.Package, build *db.Build, pushErr error) {
+	if o.notifier == nil {
+		return
+	}
+	emails := db.MaintainerEmails(pkg.Maintainers)
+	if len(emails) == 0 {
+		return
+	}
+	info := mail.AURPushInfo{
+		Pkgbase: pkg.Pkgbase,
+		Branch:  build.Branch,
+		AURName: pkg.AURName,
+		Commit:  build.Commit,
+		Error:   pushErr.Error(),
+	}
+	if err := o.notifier.SendAURFailure(ctx, emails, info); err != nil {
+		log.Printf("dispatch: notify AUR push failure for %s: %v", pkg.Pkgbase, err)
+	}
 }
 
 // failTask finalizes a task as failed through the terminal path (verify
