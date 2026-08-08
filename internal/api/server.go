@@ -20,7 +20,8 @@
 // client, plus the shared wire types re-exported by alias. The server
 // depends only on the dispatch.Orchestrator interface and the
 // sign.KeyMaterial type; it contains no business logic and no storage
-// access.
+// access. Tests in this package swap package-level stubs (retryInterval)
+// and must not run t.Parallel.
 package api
 
 import (

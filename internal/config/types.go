@@ -23,6 +23,9 @@
 // LoadWorker). The returned structures are treated as read-only and are
 // shared concurrently by the other modules; callers must not modify them at
 // runtime.
+//
+// Tests in this package swap package-level stubs (warnW) and must not run
+// t.Parallel.
 package config
 
 import "time"

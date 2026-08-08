@@ -156,6 +156,8 @@ func TestNewSignerMissingKey(t *testing.T) {
 	}
 	if _, err := newSigner(&config.GPGConfig{KeyID: "DEADBEEFDEADBEEF"}, home); err == nil {
 		t.Fatal("newSigner with unknown key_id: want error, got nil")
+	} else if !strings.Contains(err.Error(), "DEADBEEFDEADBEEF") {
+		t.Errorf("newSigner error = %v, want the unknown key id", err)
 	}
 }
 
@@ -169,6 +171,8 @@ func TestNewSignerBadKeyFile(t *testing.T) {
 	}
 	if _, err := newSigner(&config.GPGConfig{KeyFile: bad}, t.TempDir()); err == nil {
 		t.Fatal("newSigner with bad key file: want error, got nil")
+	} else if !strings.Contains(err.Error(), "import key file") {
+		t.Errorf("newSigner error = %v, want an import failure", err)
 	}
 }
 

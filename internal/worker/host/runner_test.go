@@ -19,6 +19,7 @@ package host
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ func TestNewRunnerRequiresHostRole(t *testing.T) {
 	cfg.Role = "agent"
 	if _, err := NewRunner(cfg, newFakeClient()); err == nil {
 		t.Error("NewRunner must reject a non-host role")
+	} else if !strings.Contains(err.Error(), "cfg.Role=host") {
+		t.Errorf("NewRunner error = %v, want a role precondition message", err)
 	}
 }
 
@@ -40,6 +43,8 @@ func TestNewRunnerRequiresImage(t *testing.T) {
 	cfg.Image = ""
 	if _, err := NewRunner(cfg, newFakeClient()); err == nil {
 		t.Error("NewRunner must require VARVE_WORKER_IMAGE")
+	} else if !strings.Contains(err.Error(), "VARVE_WORKER_IMAGE") {
+		t.Errorf("NewRunner error = %v, want an image precondition message", err)
 	}
 }
 
@@ -175,9 +180,9 @@ func TestConcurrentCapacity(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 
-	// Both slots fill.
+	// Both slots fill; the full capacity semaphore parks the poll workers
+	// behind it, so no third container can start afterwards.
 	waitFor(t, 3*time.Second, func() bool { return rt.runCount() >= 2 })
-	time.Sleep(300 * time.Millisecond) // give any spurious third a chance
 	if got := rt.runCount(); got != 2 {
 		t.Errorf("concurrent containers = %d, want exactly 2", got)
 	}

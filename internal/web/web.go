@@ -25,6 +25,9 @@
 // anchor. The UI is fully usable without JavaScript: every admin action
 // is a plain form POST and every page renders semantic, keyboard
 // navigable markup (WCAG 2.2 AA).
+//
+// Tests in this package share package-level state (seedCounter) and must
+// not run t.Parallel.
 package web
 
 import (

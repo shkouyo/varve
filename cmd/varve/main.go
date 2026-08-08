@@ -25,6 +25,10 @@
 //	varve                  # default: serve (config /data/varve.toml)
 //	varve --config <path>  # serve with an explicit config file
 //	varve rebuild-index    # rebuild the SQLite index from side files
+//
+// Tests in this package replace package-level constructors (newSigner,
+// newOrchestrator, newDetector, startServer, waitSignal) and must not run
+// t.Parallel.
 package main
 
 import (

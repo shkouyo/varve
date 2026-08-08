@@ -22,6 +22,9 @@
 // normal / killed / OOM / timeout outcomes), reports results on the
 // agent's behalf when it cannot, and deregisters on graceful shutdown. The
 // host itself never runs makepkg.
+//
+// Tests in this package replace package-level stubs (execCommand) and must
+// not run t.Parallel.
 package host
 
 import (

@@ -99,6 +99,9 @@ func TestChildEnvUnusableHome(t *testing.T) {
 // TestChildEnvUnwritableHome asserts that a HOME the user cannot write
 // into is replaced.
 func TestChildEnvUnwritableHome(t *testing.T) {
+	if os.Getenv("VARVE_TEST_SKIP_PERM") != "" {
+		t.Skip("VARVE_TEST_SKIP_PERM set: permission-dependent behavior is not exercised")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("the writability probe bypasses permissions for root")
 	}

@@ -20,6 +20,9 @@
 // (including the optional CWD .env file) and dispatches to the host
 // runner (default) or the in-container agent runner by VARVE_ROLE. It
 // takes no subcommands.
+//
+// Tests in this package replace package-level constructors
+// (newHostRunner/newAgentRunner) and must not run t.Parallel.
 package main
 
 import (

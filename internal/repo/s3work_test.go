@@ -81,6 +81,9 @@ func TestS3RepoUpdateFlow(t *testing.T) {
 // warns and does not block the ingest; stale files are overwritten by the
 // next ingest.
 func TestS3WorkDirCleanupFailureWarns(t *testing.T) {
+	if os.Getenv("VARVE_TEST_SKIP_PERM") != "" {
+		t.Skip("VARVE_TEST_SKIP_PERM set: permission-dependent behavior is not exercised")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("permission-based cleanup failure cannot be provoked as root")
 	}

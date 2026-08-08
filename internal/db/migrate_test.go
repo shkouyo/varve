@@ -18,9 +18,74 @@
 package db
 
 import (
+	"io/fs"
+	"sort"
 	"strings"
 	"testing"
 )
+
+// migrationVersions enumerates the embedded migration versions in ascending
+// order — the ground truth the applied ledger is checked against, so adding
+// a migration never leaves stale magic numbers behind.
+func migrationVersions(t *testing.T) []int {
+	t.Helper()
+	names, err := fs.Glob(migrationsFS, "migrations/*.sql")
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	sort.Strings(names)
+	versions := make([]int, 0, len(names))
+	for _, name := range names {
+		v, err := migrationVersion(name)
+		if err != nil {
+			t.Fatalf("migration %s: %v", name, err)
+		}
+		versions = append(versions, v)
+	}
+	for i := 1; i < len(versions); i++ {
+		if versions[i] <= versions[i-1] {
+			t.Fatalf("migration versions not strictly increasing: %v", versions)
+		}
+	}
+	return versions
+}
+
+// assertMigrationLedger asserts the applied migration ledger is exactly the
+// embedded migrations, each applied once, in ascending order.
+func assertMigrationLedger(t *testing.T, versions []int) {
+	t.Helper()
+	want := migrationVersions(t)
+	if len(versions) != len(want) {
+		t.Errorf("schema_migrations = %v, want %v", versions, want)
+		return
+	}
+	for i := range want {
+		if versions[i] != want[i] {
+			t.Errorf("schema_migrations = %v, want %v", versions, want)
+			return
+		}
+	}
+}
+
+// assertMigrationLedgerWithFixture asserts the ledger matches the embedded
+// migrations plus one fixture version recorded last.
+func assertMigrationLedgerWithFixture(t *testing.T, versions []int, fixture int) {
+	t.Helper()
+	want := migrationVersions(t)
+	if len(versions) != len(want)+1 {
+		t.Errorf("schema_migrations = %v, want %v plus fixture %d", versions, want, fixture)
+		return
+	}
+	for i := range want {
+		if versions[i] != want[i] {
+			t.Errorf("schema_migrations = %v, want %v plus fixture %d", versions, want, fixture)
+			return
+		}
+	}
+	if versions[len(want)] != fixture {
+		t.Errorf("schema_migrations = %v, want fixture %d last", versions, fixture)
+	}
+}
 
 // TestMigrateFresh asserts that an empty database is migrated to the
 // latest schema with every table and index present and WAL journaling.
@@ -82,9 +147,7 @@ func TestMigrateFresh(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 8 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 || versions[6] != 7 || versions[7] != 8 {
-		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 6 7 8]", versions)
-	}
+	assertMigrationLedger(t, versions)
 
 	// WAL journal mode.
 	var mode string
@@ -125,8 +188,9 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := s2.read.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if n != 8 {
-		t.Errorf("schema_migrations count = %d after reopen, want 8", n)
+	want := len(migrationVersions(t))
+	if n != want {
+		t.Errorf("schema_migrations count = %d after reopen, want %d", n, want)
 	}
 }
 
@@ -171,9 +235,7 @@ func TestMigrateFromFixture(t *testing.T) {
 		}
 		versions = append(versions, v)
 	}
-	if len(versions) != 9 || versions[0] != 1 || versions[1] != 2 || versions[2] != 3 || versions[3] != 4 || versions[4] != 5 || versions[5] != 6 || versions[6] != 7 || versions[7] != 8 || versions[8] != 999 {
-		t.Errorf("schema_migrations = %v, want [1 2 3 4 5 6 7 8 999]", versions)
-	}
+	assertMigrationLedgerWithFixture(t, versions, 999)
 }
 
 // TestMigrationVersion exercises the filename version parser.

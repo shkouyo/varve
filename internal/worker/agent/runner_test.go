@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +104,8 @@ func TestOneShotGetTaskNotFoundExitsNonZero(t *testing.T) {
 	r.execCommand = newFakeExec().command
 	if err := r.Run(context.Background()); err == nil {
 		t.Fatal("Run with a 404 GetTask should return an error (D4③)")
+	} else if !strings.Contains(err.Error(), "get task t-1") {
+		t.Errorf("Run error = %v, want a GetTask failure mentioning the task", err)
 	}
 }
 

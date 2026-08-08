@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.0x0f.dev/varve/internal/config"
@@ -132,6 +133,8 @@ func TestVerifyDetachedMissingFiles(t *testing.T) {
 	}
 	if err := s.VerifyDetached("/nonexistent.sig", "/nonexistent.pkg"); err == nil {
 		t.Fatal("VerifyDetached(missing files): want error, got nil")
+	} else if !strings.Contains(err.Error(), "verify /nonexistent.sig") {
+		t.Errorf("VerifyDetached error = %v, want the missing signature path", err)
 	}
 }
 

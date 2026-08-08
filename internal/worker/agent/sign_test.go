@@ -20,6 +20,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +52,7 @@ func TestSignPackagesGpgArgs(t *testing.T) {
 	sigs, err := r.signPackages(context.Background(), taskFor("t-1"), "tok", []string{
 		filepath.Join(r.workDir, "t-1", "a.pkg.tar.zst"),
 		filepath.Join(r.workDir, "t-1", "b.pkg.tar.zst"),
-	}, gnupgHome, discardWriter{})
+	}, gnupgHome, io.Discard)
 	if err != nil {
 		t.Fatalf("signPackages: %v", err)
 	}
@@ -115,8 +116,3 @@ func TestSignKeyClaimFailureFailsTask(t *testing.T) {
 		t.Errorf("temporary GNUPGHOME left behind: %v", err)
 	}
 }
-
-// discardWriter discards build output in unit tests.
-type discardWriter struct{}
-
-func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
