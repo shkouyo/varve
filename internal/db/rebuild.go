@@ -40,7 +40,7 @@ type RebuildPackage struct {
 	Pkgdesc         string
 	LastSrcinfoHash string
 	LastUpstreamRef string
-	Maintainers     []string
+	Maintainers     []Maintainer
 
 	// Build metadata of the single (latest) build row to create.
 	WorkerID    int64  // 0 = unknown worker (builds.worker_id NULL)

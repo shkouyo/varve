@@ -22,6 +22,8 @@ import (
 	"fmt"
 
 	toml "github.com/pelletier/go-toml/v2"
+
+	"git.0x0f.dev/varve/internal/db"
 )
 
 // PkgbuildSource points at an external repository that replaces this
@@ -45,21 +47,38 @@ type Hooks struct {
 	OnFailure []string
 }
 
+// AURConfig is the per-branch [aur] dotfile section. Name is the AUR
+// package name (empty = the branch is not published); Submit enables the
+// push of every successful branch commit to that package repository.
+// The controller-wide [aur] configuration decides whether publishing is
+// enabled at all (an SSH key must be configured).
+type AURConfig struct {
+	Name   string
+	Submit bool
+}
+
 // Dotfile is the parsed and merged .varve.toml of one branch. Parsing
 // lives here; the agent never parses dotfiles. VCS is one of "auto",
 // "git", "svn" or "none".
 type Dotfile struct {
-	Maintainers    []string
+	Maintainers    []db.Maintainer
 	PkgbuildSource *PkgbuildSource
 	VCS            string
 	Collect        Collect
 	Hooks          Hooks
+	AUR            AURConfig
+}
+
+// rawMaintainer mirrors one [[maintainers]] entry.
+type rawMaintainer struct {
+	Name  string `toml:"name"`
+	Email string `toml:"email"`
 }
 
 // rawDotfile mirrors the TOML schema plus the extras reference list, which
 // is consumed during merging and not part of the exported Dotfile.
 type rawDotfile struct {
-	Maintainers    []string `toml:"maintainers"`
+	Maintainers    []rawMaintainer `toml:"maintainers"`
 	PkgbuildSource *struct {
 		URL       string `toml:"url"`
 		Branch    string `toml:"branch"`
@@ -75,6 +94,10 @@ type rawDotfile struct {
 		OnSuccess []string `toml:"on_success"`
 		OnFailure []string `toml:"on_failure"`
 	} `toml:"hooks"`
+	AUR struct {
+		Name   string `toml:"name"`
+		Submit bool   `toml:"submit"`
+	} `toml:"aur"`
 	Extras []string `toml:"extras"`
 }
 
@@ -95,8 +118,9 @@ func ParseDotfile(data []byte) (*Dotfile, error) {
 // ParseDotfileWithExtras parses data and recursively merges every extras
 // file referenced by it, resolving paths through get (relative to the
 // branch root). Merge semantics: maintainers and hooks append, scalars
-// (vcs, pkgbuild_source) are overridden by later files, collect.exclude
-// appends de-duplicated. Cyclic references, chains deeper than
+// (vcs, pkgbuild_source, aur name) are overridden by later files,
+// collect.exclude appends de-duplicated and the aur submit flag ORs
+// across the files. Cyclic references, chains deeper than
 // maxDotfileDepth and missing extras files are all errors so the caller
 // can skip the branch.
 func ParseDotfileWithExtras(get func(path string) ([]byte, error), data []byte) (*Dotfile, error) {
@@ -137,20 +161,66 @@ func parseDotfileWithExtras(get func(path string) ([]byte, error), data []byte, 
 	return merged, nil
 }
 
-// parseRawDotfile decodes one dotfile body into the schema mirror.
+// rawDotfileLegacy mirrors the dotfile schema with the pre-object
+// maintainers shape (a plain string list of email addresses). It embeds
+// the current schema so every other section decodes the same way; the
+// outer Maintainers field shadows the embedded one. It exists only to keep
+// old dotfiles parseable.
+type rawDotfileLegacy struct {
+	rawDotfile
+	Maintainers []string `toml:"maintainers"`
+}
+
+// parseRawDotfile decodes one dotfile body into the schema mirror. The
+// maintainers field changed from a plain string list of email addresses to
+// an array of [[maintainers]] tables; old dotfiles are still accepted by
+// re-parsing with the legacy mirror and mapping every address to an
+// email-only maintainer.
 func parseRawDotfile(data []byte) (*rawDotfile, error) {
 	var raw rawDotfile
-	if err := toml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("detect: parse dotfile: %w", err)
+	if err := toml.Unmarshal(data, &raw); err == nil {
+		if err := raw.validateMaintainers(); err != nil {
+			return nil, err
+		}
+		return &raw, nil
 	}
+	// Legacy shape: maintainers = ["a@example.org", ...].
+	var legacy rawDotfileLegacy
+	if lerr := toml.Unmarshal(data, &legacy); lerr != nil {
+		return nil, fmt.Errorf("detect: parse dotfile: %w", lerr)
+	}
+	for _, m := range legacy.Maintainers {
+		raw.Maintainers = append(raw.Maintainers, rawMaintainer{Email: m})
+	}
+	raw.PkgbuildSource = legacy.PkgbuildSource
+	raw.VCS = legacy.VCS
+	raw.Collect = legacy.Collect
+	raw.Hooks = legacy.Hooks
+	raw.AUR = legacy.AUR
+	raw.Extras = legacy.Extras
 	return &raw, nil
+}
+
+// validateMaintainers enforces the object-form contract: every
+// [[maintainers]] entry must carry both a name and an email address. The
+// legacy string-list path converts entries to email-only maintainers and
+// bypasses this check.
+func (r *rawDotfile) validateMaintainers() error {
+	for _, m := range r.Maintainers {
+		if m.Name == "" || m.Email == "" {
+			return fmt.Errorf("detect: dotfile maintainers entry requires both name and email (name %q, email %q)", m.Name, m.Email)
+		}
+	}
+	return nil
 }
 
 // toDotfile converts the schema mirror into the exported Dotfile.
 func (r *rawDotfile) toDotfile() *Dotfile {
 	d := &Dotfile{
-		Maintainers: r.Maintainers,
-		VCS:         r.VCS,
+		VCS: r.VCS,
+	}
+	for _, m := range r.Maintainers {
+		d.Maintainers = append(d.Maintainers, db.Maintainer{Name: m.Name, Email: m.Email})
 	}
 	if r.PkgbuildSource != nil {
 		d.PkgbuildSource = &PkgbuildSource{
@@ -164,12 +234,15 @@ func (r *rawDotfile) toDotfile() *Dotfile {
 	d.Hooks.PostBuild = r.Hooks.PostBuild
 	d.Hooks.OnSuccess = r.Hooks.OnSuccess
 	d.Hooks.OnFailure = r.Hooks.OnFailure
+	d.AUR = AURConfig{Name: r.AUR.Name, Submit: r.AUR.Submit}
 	return d
 }
 
 // mergeDotfile applies the merge semantics of src on top of dst: list
 // fields append, scalars are replaced when present, collect.exclude
-// appends de-duplicated.
+// appends de-duplicated. The AUR package name is overridden by the last
+// file that sets it; the submit flag ORs across the files (a later file
+// can enable publishing but not disable it).
 func mergeDotfile(dst, src *Dotfile) {
 	dst.Maintainers = append(dst.Maintainers, src.Maintainers...)
 	if src.PkgbuildSource != nil {
@@ -183,6 +256,10 @@ func mergeDotfile(dst, src *Dotfile) {
 	dst.Hooks.PostBuild = append(dst.Hooks.PostBuild, src.Hooks.PostBuild...)
 	dst.Hooks.OnSuccess = append(dst.Hooks.OnSuccess, src.Hooks.OnSuccess...)
 	dst.Hooks.OnFailure = append(dst.Hooks.OnFailure, src.Hooks.OnFailure...)
+	if src.AUR.Name != "" {
+		dst.AUR.Name = src.AUR.Name
+	}
+	dst.AUR.Submit = dst.AUR.Submit || src.AUR.Submit
 }
 
 // appendUnique appends the values of add that are not already present in

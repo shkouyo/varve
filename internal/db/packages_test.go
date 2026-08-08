@@ -36,7 +36,7 @@ func TestGetPackageByBase(t *testing.T) {
 		Pkgdesc:         "a foo package",
 		LastSrcinfoHash: "abc",
 		LastUpstreamRef: "refs/heads/main",
-		Maintainers:     []string{"alice@example.com", "bob@example.com"},
+		Maintainers:     []Maintainer{{Email: "alice@example.com"}, {Email: "bob@example.com"}},
 	})
 
 	got, err := s.GetPackageByBase(testCtx, "foo")
@@ -52,7 +52,7 @@ func TestGetPackageByBase(t *testing.T) {
 	if got.LastSrcinfoHash != "abc" || got.LastUpstreamRef != "refs/heads/main" {
 		t.Errorf("hash/ref mismatch: %+v", got)
 	}
-	if len(got.Maintainers) != 2 || got.Maintainers[0] != "alice@example.com" || got.Maintainers[1] != "bob@example.com" {
+	if len(got.Maintainers) != 2 || got.Maintainers[0].Email != "alice@example.com" || got.Maintainers[1].Email != "bob@example.com" {
 		t.Errorf("Maintainers = %v", got.Maintainers)
 	}
 	if got.ID == 0 {

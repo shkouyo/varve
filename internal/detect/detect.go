@@ -83,7 +83,7 @@ type Package struct {
 // metadata recorded on the package row.
 type Change struct {
 	Package     Package
-	Maintainers []string
+	Maintainers []db.Maintainer
 	URL         string
 	Licenses    []string
 	Conflicts   []string
@@ -95,6 +95,7 @@ type Change struct {
 	Epoch       int
 	Hooks       Hooks
 	Collect     Collect
+	AUR         AURConfig
 	UpstreamRef string
 	Reason      string
 }
@@ -410,6 +411,7 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 		Epoch:       p.info.Epoch,
 		Hooks:       p.dotfile.Hooks,
 		Collect:     p.dotfile.Collect,
+		AUR:         p.dotfile.AUR,
 		UpstreamRef: p.upstreamRef,
 		Reason:      reason,
 	}

@@ -97,7 +97,7 @@ func mustSeedPackage(t *testing.T, s *Store, pkgbase string) Package {
 		Branch:      "main",
 		VCSKind:     "",
 		Arch:        "x86_64",
-		Maintainers: []string{"alice@example.com"},
+		Maintainers: []Maintainer{{Email: "alice@example.com"}},
 	})
 }
 

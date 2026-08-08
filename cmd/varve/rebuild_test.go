@@ -56,7 +56,7 @@ func TestRebuildIndex(t *testing.T) {
 	if err := store.RegisterWorker(ctx, &db.Worker{Name: "w1", Role: "host", Mode: "host", Arch: "x86_64", Capacity: 1}); err != nil {
 		t.Fatal(err)
 	}
-	keep := &db.Package{Pkgbase: "keep", Branch: "master", VCSKind: "git", Arch: "x86_64", Maintainers: []string{"m@example.org"}}
+	keep := &db.Package{Pkgbase: "keep", Branch: "master", VCSKind: "git", Arch: "x86_64", Maintainers: []db.Maintainer{{Email: "m@example.org"}}}
 	if err := store.UpsertPackage(ctx, keep); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestRebuildIndex(t *testing.T) {
 	if keep2.Pkgdesc != "old desc" {
 		t.Errorf("keep.pkgdesc = %q, want preserved %q", keep2.Pkgdesc, "old desc")
 	}
-	if len(keep2.Maintainers) != 1 || keep2.Maintainers[0] != "m@example.org" {
+	if len(keep2.Maintainers) != 1 || keep2.Maintainers[0].Email != "m@example.org" {
 		t.Errorf("keep.maintainers = %v, want preserved [m@example.org]", keep2.Maintainers)
 	}
 	if keep2.LastSrcinfoHash != "h2" || keep2.LastUpstreamRef != "ref2" {

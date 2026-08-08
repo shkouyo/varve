@@ -327,7 +327,7 @@ func TestPackagesScopeArchFilter(t *testing.T) {
 			VCSKind:     "git",
 			Arch:        arch,
 			Pkgdesc:     desc,
-			Maintainers: []string{"alice@example.com"},
+			Maintainers: []db.Maintainer{{Email: "alice@example.com"}},
 		}
 		if err := store.UpsertPackage(testCtx, &p); err != nil {
 			t.Fatalf("upsert package %q: %v", pkgbase, err)

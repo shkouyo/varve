@@ -67,7 +67,7 @@ func TestJSONConventions(t *testing.T) {
 		Pkgbase:     "json",
 		Branch:      "main",
 		Arch:        "x86_64",
-		Maintainers: []string{"a@example.com", "b@example.com"},
+		Maintainers: []Maintainer{{Email: "a@example.com"}, {Email: "b@example.com"}},
 	})
 	_, b := createTask(t, s, "json-1", "assigned", pkg, at(0))
 

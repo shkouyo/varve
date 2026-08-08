@@ -32,7 +32,7 @@ import (
 // touches the build-derived records.
 func TestUpsertPackage(t *testing.T) {
 	s := newTestStore(t)
-	p := Package{Pkgbase: "fresh", Branch: "foo", VCSKind: "git", Arch: "x86_64", Maintainers: []string{"a@example.com"}}
+	p := Package{Pkgbase: "fresh", Branch: "foo", VCSKind: "git", Arch: "x86_64", Maintainers: []Maintainer{{Email: "a@example.com"}}}
 	if err := s.UpsertPackage(testCtx, &p); err != nil {
 		t.Fatalf("UpsertPackage(new): %v", err)
 	}
@@ -48,7 +48,7 @@ func TestUpsertPackage(t *testing.T) {
 	}
 
 	// Second upsert refreshes metadata + maintainers snapshot, keeps id.
-	again := Package{Pkgbase: "fresh", Branch: "bar", VCSKind: "", Arch: "aarch64", Maintainers: []string{"b@example.com"}}
+	again := Package{Pkgbase: "fresh", Branch: "bar", VCSKind: "", Arch: "aarch64", Maintainers: []Maintainer{{Email: "b@example.com"}}}
 	if err := s.UpsertPackage(testCtx, &again); err != nil {
 		t.Fatalf("UpsertPackage(existing): %v", err)
 	}
@@ -62,7 +62,7 @@ func TestUpsertPackage(t *testing.T) {
 	if got.Branch != "bar" || got.VCSKind != "" || got.Arch != "aarch64" {
 		t.Errorf("refreshed = %+v, want bar//aarch64", got)
 	}
-	if len(got.Maintainers) != 1 || got.Maintainers[0] != "b@example.com" {
+	if len(got.Maintainers) != 1 || got.Maintainers[0].Email != "b@example.com" {
 		t.Errorf("maintainers = %v, want refreshed snapshot", got.Maintainers)
 	}
 }

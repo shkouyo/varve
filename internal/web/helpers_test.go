@@ -230,7 +230,7 @@ func seedPackage(t *testing.T, s *db.Store, pkgbase, desc string) db.Package {
 		VCSKind:     "git",
 		Arch:        "x86_64",
 		Pkgdesc:     desc,
-		Maintainers: []string{"alice@example.com"},
+		Maintainers: []db.Maintainer{{Email: "alice@example.com"}},
 	}
 	if err := s.UpsertPackage(testCtx, &p); err != nil {
 		t.Fatalf("upsert package %q: %v", pkgbase, err)

@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"git.0x0f.dev/varve/internal/db"
 )
 
 // TestParseDotfileSingleFile covers the full schema of one dotfile body.
@@ -48,7 +50,7 @@ on_failure = ["scripts/fail.sh"]
 	if err != nil {
 		t.Fatalf("ParseDotfile: %v", err)
 	}
-	if !reflect.DeepEqual(d.Maintainers, []string{"alice@example.org"}) {
+	if !reflect.DeepEqual(d.Maintainers, []db.Maintainer{{Email: "alice@example.org"}}) {
 		t.Errorf("Maintainers = %v", d.Maintainers)
 	}
 	if d.VCS != "git" {
@@ -131,7 +133,9 @@ on_success = ["scripts/ok.sh"]
 		t.Fatalf("ParseDotfileWithExtras: %v", err)
 	}
 
-	if !reflect.DeepEqual(d.Maintainers, []string{"a@example.org", "b@example.org", "c@example.org"}) {
+	if !reflect.DeepEqual(d.Maintainers, []db.Maintainer{
+		{Email: "a@example.org"}, {Email: "b@example.org"}, {Email: "c@example.org"},
+	}) {
 		t.Errorf("Maintainers = %v", d.Maintainers)
 	}
 	if d.VCS != "git" {
@@ -218,7 +222,7 @@ func TestDotfileUnknownKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseDotfile with unknown keys: %v", err)
 	}
-	if !reflect.DeepEqual(d.Maintainers, []string{"a@example.org"}) {
+	if !reflect.DeepEqual(d.Maintainers, []db.Maintainer{{Email: "a@example.org"}}) {
 		t.Errorf("Maintainers = %v", d.Maintainers)
 	}
 }
@@ -248,7 +252,110 @@ func TestDotfileMaintainerOrder(t *testing.T) {
 		t.Fatalf("ParseDotfileWithExtras: %v", err)
 	}
 	want := "m@example.org one@example.org one-a@example.org two@example.org"
-	if got := strings.Join(d.Maintainers, " "); got != want {
+	if got := joinEmails(d.Maintainers); got != want {
 		t.Errorf("Maintainers order = %q, want %q", got, want)
+	}
+}
+
+// joinEmails renders the maintainer emails in order for assertions.
+func joinEmails(ms []db.Maintainer) string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, m.Email)
+	}
+	return strings.Join(out, " ")
+}
+
+// TestParseDotfileMaintainersObject covers the object-form maintainers
+// schema: every [[maintainers]] entry carries a name and an email, and the
+// parsed Dotfile exposes both.
+func TestParseDotfileMaintainersObject(t *testing.T) {
+	data := []byte(`
+[[maintainers]]
+name = "Alice"
+email = "alice@example.org"
+
+[[maintainers]]
+name = "Bob Example"
+email = "bob@example.org"
+`)
+	d, err := ParseDotfile(data)
+	if err != nil {
+		t.Fatalf("ParseDotfile: %v", err)
+	}
+	want := []db.Maintainer{
+		{Name: "Alice", Email: "alice@example.org"},
+		{Name: "Bob Example", Email: "bob@example.org"},
+	}
+	if !reflect.DeepEqual(d.Maintainers, want) {
+		t.Errorf("Maintainers = %+v, want %+v", d.Maintainers, want)
+	}
+}
+
+// TestParseDotfileMaintainersMissingKeys asserts the object-form contract:
+// an entry with only one of the two keys is an error.
+func TestParseDotfileMaintainersMissingKeys(t *testing.T) {
+	for _, data := range []string{
+		"[[maintainers]]\nname = \"Only Name\"\n",
+		"[[maintainers]]\nemail = \"only@example.org\"\n",
+		"[[maintainers]]\n",
+	} {
+		if _, err := ParseDotfile([]byte(data)); err == nil {
+			t.Errorf("ParseDotfile(%q) succeeded, want error", data)
+		}
+	}
+}
+
+// TestParseDotfileAUR covers the [aur] dotfile section.
+func TestParseDotfileAUR(t *testing.T) {
+	data := []byte(`[aur]
+name = "my-aur-package"
+submit = true
+`)
+	d, err := ParseDotfile(data)
+	if err != nil {
+		t.Fatalf("ParseDotfile: %v", err)
+	}
+	if d.AUR.Name != "my-aur-package" || !d.AUR.Submit {
+		t.Errorf("AUR = %+v, want {Name:my-aur-package Submit:true}", d.AUR)
+	}
+}
+
+// TestParseDotfileAURDefaults asserts the [aur] section defaults: empty
+// name, submit off.
+func TestParseDotfileAURDefaults(t *testing.T) {
+	data := []byte(`[aur]
+name = "my-aur-package"
+`)
+	d, err := ParseDotfile(data)
+	if err != nil {
+		t.Fatalf("ParseDotfile: %v", err)
+	}
+	if d.AUR.Name != "my-aur-package" || d.AUR.Submit {
+		t.Errorf("AUR = %+v, want name set with submit off", d.AUR)
+	}
+}
+
+// TestDotfileMergeAUR covers the [aur] merge semantics: the package name
+// is overridden by the later file that sets it, and the submit flag ORs
+// across the files (an extra can enable publishing but not disable it).
+func TestDotfileMergeAUR(t *testing.T) {
+	files := map[string]string{
+		"main": `extras = ["extra.toml"]
+
+[aur]
+name = "first"
+submit = true
+`,
+		"extra.toml": `[aur]
+name = "second"
+`,
+	}
+	d, err := ParseDotfileWithExtras(mapGetter(files), []byte(files["main"]))
+	if err != nil {
+		t.Fatalf("ParseDotfileWithExtras: %v", err)
+	}
+	if d.AUR.Name != "second" || !d.AUR.Submit {
+		t.Errorf("AUR = %+v, want {Name:second Submit:true} (extra overrides name, main keeps submit)", d.AUR)
 	}
 }

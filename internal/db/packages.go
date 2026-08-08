@@ -23,9 +23,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
-const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch, last_commit, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers`
+const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch, last_commit, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers, aur_name, aur_submit, last_aur_push_at, last_aur_commit, last_aur_error`
 
 // GetPackageByBase returns one package by its pkgbase with maintainers
 // decoded. ErrNotFound when the package does not exist.
@@ -138,14 +139,16 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 	}
 	var id int64
 	err = s.write.QueryRowContext(ctx, `INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, maintainers, url, licenses, conflicts, provides,
+		(pkgbase, branch, vcs_kind, arch, maintainers, aur_name, aur_submit, url, licenses, conflicts, provides,
 		 pkgname, source, pkgver, pkgrel, epoch)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(pkgbase) DO UPDATE SET
 			branch = excluded.branch,
 			vcs_kind = excluded.vcs_kind,
 			arch = excluded.arch,
 			maintainers = excluded.maintainers,
+			aur_name = excluded.aur_name,
+			aur_submit = excluded.aur_submit,
 			url = excluded.url,
 			licenses = excluded.licenses,
 			conflicts = excluded.conflicts,
@@ -156,7 +159,7 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 			pkgrel = excluded.pkgrel,
 			epoch = excluded.epoch
 		RETURNING id`,
-		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers, p.URL, licenses, conflicts, provides,
+		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers, p.AURName, p.AURSubmit, p.URL, licenses, conflicts, provides,
 		pkgname, source, p.Pkgver, p.Pkgrel, p.Epoch).Scan(&id)
 	if err != nil {
 		return fmt.Errorf("db: upsert package %q: %w", p.Pkgbase, err)
@@ -205,17 +208,36 @@ func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase string, u Pack
 	return requireAffected(res, fmt.Sprintf("update package %q after build", pkgbase))
 }
 
+// RecordAURPush records the outcome of one AUR push attempt on the package
+// row: the attempted commit, the attempt time and the error text (empty on
+// success). Both successes and failures are recorded so the package page
+// can show the last publish state; a push outcome never affects the build
+// records themselves.
+func (s *Store) RecordAURPush(ctx context.Context, pkgbase, commit string, attemptedAt time.Time, errMsg string) error {
+	res, err := s.write.ExecContext(ctx, `UPDATE packages SET
+		last_aur_push_at = ?, last_aur_commit = ?, last_aur_error = ?
+		WHERE pkgbase = ?`,
+		formatTime(attemptedAt), commit, errMsg, pkgbase)
+	if err != nil {
+		return fmt.Errorf("db: record AUR push for package %q: %w", pkgbase, err)
+	}
+	return requireAffected(res, fmt.Sprintf("record AUR push for package %q", pkgbase))
+}
+
 // scanPackage decodes one packages row.
 func scanPackage(rs rowScanner) (*Package, error) {
 	var p Package
 	var maintainers, licenses, conflicts, provides, pkgname, source string
-	var lastFailedAt sql.NullString
+	var lastFailedAt, lastAURPushAt sql.NullString
+	var aurSubmit int
 	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch,
 		&p.CurrentVersion, &p.Pkgdesc, &p.URL, &licenses, &conflicts, &provides,
 		&pkgname, &source, &p.Pkgver, &p.Pkgrel, &p.Epoch,
-		&p.LastCommit, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID, &maintainers); err != nil {
+		&p.LastCommit, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID,
+		&maintainers, &p.AURName, &aurSubmit, &lastAURPushAt, &p.LastAURCommit, &p.LastAURError); err != nil {
 		return nil, err
 	}
+	p.AURSubmit = aurSubmit != 0
 	if lastFailedAt.Valid {
 		at, err := parseTime(lastFailedAt.String)
 		if err != nil {
@@ -223,7 +245,14 @@ func scanPackage(rs rowScanner) (*Package, error) {
 		}
 		p.LastFailedAt = &at
 	}
-	ms, err := decodeStrings(maintainers)
+	if lastAURPushAt.Valid {
+		at, err := parseTime(lastAURPushAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("db: decode last_aur_push_at for package %q: %w", p.Pkgbase, err)
+		}
+		p.LastAURPushAt = &at
+	}
+	ms, err := decodeMaintainers(maintainers)
 	if err != nil {
 		return nil, fmt.Errorf("db: decode maintainers for package %q: %w", p.Pkgbase, err)
 	}

@@ -38,6 +38,29 @@ var (
 	ErrConflict = errors.New("db: conflict")
 )
 
+// Maintainer is one dotfile maintainer entry: a display name plus the
+// notification email address. The email feeds failure and AUR push
+// notifications; the name is the display form on the package page. The
+// packages.maintainers column stores a JSON object list of these entries;
+// legacy string-list rows decode as email-only maintainers (see
+// decodeMaintainers).
+type Maintainer struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// MaintainerEmails returns the notification addresses of the maintainers,
+// skipping entries without an email.
+func MaintainerEmails(ms []Maintainer) []string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		if m.Email != "" {
+			out = append(out, m.Email)
+		}
+	}
+	return out
+}
+
 // Package mirrors one packages row. Arch is the canonical architecture
 // set: "any" for architecture-independent packages, otherwise every
 // declared architecture joined with "|" (e.g. "aarch64|x86_64"). Claim
@@ -64,7 +87,15 @@ type Package struct {
 	LastUpstreamRef string
 	LastFailedAt    *time.Time // when the package's build last failed (rebuild cooldown marker)
 	LastBuildID     string     // 16-hex hash of the latest build row
-	Maintainers     []string
+	Maintainers     []Maintainer
+
+	// AUR publishing records (branch dotfile [aur] section, refreshed at
+	// enqueue; empty/zero = the branch is not published to AUR).
+	AURName       string     // AUR package name
+	AURSubmit     bool       // submit flag: push after every successful build
+	LastAURPushAt *time.Time // when the last AUR push was attempted
+	LastAURCommit string     // commit of the last attempted AUR push
+	LastAURError  string     // last push error text; empty when the last push succeeded
 }
 
 // PackageUpdate carries the outcome of a successful build onto the
@@ -208,7 +239,28 @@ func capSamples(s []Sample) []Sample {
 	return s[len(s)-maxSamples:]
 }
 
-// decodeStrings decodes a maintainers JSON array.
+// decodeMaintainers decodes a packages.maintainers JSON value. The current
+// shape is an object list ([{"name": .., "email": ..}]); rows written by
+// older versions store a plain string list of email addresses, which maps
+// to maintainers with an empty name. Any other value is an error so a
+// corrupt column surfaces instead of panicking.
+func decodeMaintainers(s string) ([]Maintainer, error) {
+	var out []Maintainer
+	if err := json.Unmarshal([]byte(s), &out); err == nil {
+		return out, nil
+	}
+	var legacy []string
+	if err := json.Unmarshal([]byte(s), &legacy); err != nil {
+		return nil, err
+	}
+	conv := make([]Maintainer, 0, len(legacy))
+	for _, email := range legacy {
+		conv = append(conv, Maintainer{Email: email})
+	}
+	return conv, nil
+}
+
+// decodeStrings decodes a JSON string array.
 func decodeStrings(s string) ([]string, error) {
 	var out []string
 	if err := json.Unmarshal([]byte(s), &out); err != nil {

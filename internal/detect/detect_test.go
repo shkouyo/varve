@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"git.0x0f.dev/varve/internal/config"
+	"git.0x0f.dev/varve/internal/db"
 )
 
 // TestMirrorDir covers the mirror name derivation table: the URL path
@@ -264,7 +265,7 @@ exclude = ["*-debug"]
 		t.Fatalf("PollOnce: %v", err)
 	}
 	changes := assertChangeCount(t, sink, 1)
-	if !reflect.DeepEqual(changes[0].Maintainers, []string{"main@example.org", "extra@example.org"}) {
+	if !reflect.DeepEqual(changes[0].Maintainers, []db.Maintainer{{Email: "main@example.org"}, {Email: "extra@example.org"}}) {
 		t.Errorf("Maintainers = %v", changes[0].Maintainers)
 	}
 	if !reflect.DeepEqual(changes[0].Collect.Exclude, []string{"*-debug"}) {
@@ -581,5 +582,36 @@ func TestPollOnceSrcinfoMetadata(t *testing.T) {
 	}
 	if c.Pkgver != "1.0" || c.Pkgrel != "1" {
 		t.Errorf("Pkgver/Pkgrel = %q/%q, want 1.0/1", c.Pkgver, c.Pkgrel)
+	}
+}
+
+// TestPollOnceDotfileAUR asserts the [aur] dotfile section flows through
+// the pipeline: the branch submit carries the AUR package name and submit
+// flag, and object-form maintainers keep their name/email pairs.
+func TestPollOnceDotfileAUR(t *testing.T) {
+	src := newSourceRepo(t, "foo-aur", map[string]string{
+		".SRCINFO": srcinfoBody("foo-aur", "1.0", "1"),
+		".varve.toml": `[[maintainers]]
+name = "Alice"
+email = "alice@example.org"
+
+[aur]
+name = "foo-aur-pkg"
+submit = true
+`,
+	})
+	store, _ := openStore(t)
+	sink := &fakeSink{}
+	d := newTestDetector(t, "file://"+src, store, sink)
+
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	changes := assertChangeCount(t, sink, 1)
+	if !reflect.DeepEqual(changes[0].Maintainers, []db.Maintainer{{Name: "Alice", Email: "alice@example.org"}}) {
+		t.Errorf("Maintainers = %+v", changes[0].Maintainers)
+	}
+	if changes[0].AUR.Name != "foo-aur-pkg" || !changes[0].AUR.Submit {
+		t.Errorf("AUR = %+v, want {Name:foo-aur-pkg Submit:true}", changes[0].AUR)
 	}
 }
