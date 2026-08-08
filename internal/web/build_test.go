@@ -99,7 +99,7 @@ func TestBuildInvalidID(t *testing.T) {
 // TestBuildPageSSEClient asserts the merged log section carries the
 // live-log client: the #log anchor the legacy /log redirect lands on,
 // the log increment region, the resumed byte offset in the
-// EventSource URL and the auto-refresh timer — and that a terminal
+// EventSource URL and the auto-refresh timer, and that a terminal
 // build renders neither the refresh script nor any meta refresh.
 func TestBuildPageSSEClient(t *testing.T) {
 	store := newTestDB(t)

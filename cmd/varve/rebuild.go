@@ -75,7 +75,7 @@ func runRebuildIndex(args []string) error {
 // rebuildIndex reconstructs the SQLite index from the storage side files:
 // every "*.meta.toml" in the flat repository root is parsed (repo.Sidecar)
 // and turned into one authoritative package record; the database is then
-// rebuilt in a single transaction — tasks cleared, packages and the single
+// rebuilt in a single transaction: tasks cleared, packages and the single
 // latest build per package recreated, workers untouched. Side files that
 // cannot be read or parsed are logged as warnings and skipped; they never
 // abort the rebuild.

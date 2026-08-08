@@ -33,7 +33,7 @@ func (r *Runner) terminate(cmd *exec.Cmd, done <-chan struct{}) {
 	}
 	pid := cmd.Process.Pid
 	// A process that already exited makes the signal fail with ESRCH;
-	// that is fine — done fires immediately in that case.
+	// that is fine: done fires immediately in that case.
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
 	select {
 	case <-done:

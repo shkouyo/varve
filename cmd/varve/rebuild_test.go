@@ -231,7 +231,7 @@ func TestRebuildIndex(t *testing.T) {
 
 // TestRebuildIndexEmpty covers the empty interface: no side files must
 // rebuild without error. An empty database stays empty; a populated one is
-// cleared — the index must mirror the side files, so packages without a
+// cleared. The index must mirror the side files, so packages without a
 // side file (and their tasks) are removed.
 func TestRebuildIndexEmpty(t *testing.T) {
 	dir := t.TempDir()

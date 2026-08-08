@@ -201,7 +201,7 @@ func TestPackageNotFound(t *testing.T) {
 // branch published to AUR ([aur] name set) renders the AUR package link
 // plus the recorded push state (attempt time, short commit, sanitized
 // failure summary when the last push failed), while a branch without an
-// AUR name renders no AUR row at all — most packages are not published,
+// AUR name renders no AUR row at all. Most packages are not published,
 // so a quiet page is the default and no "not enabled" placeholder is
 // printed.
 func TestPackageAURRow(t *testing.T) {
@@ -269,8 +269,8 @@ func TestPackageAURRow(t *testing.T) {
 }
 
 // TestPackageMaintainerNames asserts the maintainers row renders display
-// names only — the email of a named entry never appears and no mailto
-// link is emitted — while legacy email-only entries fall back to the
+// names only. The email of a named entry never appears and no mailto
+// link is emitted, while legacy email-only entries fall back to the
 // address so the row still shows something.
 func TestPackageMaintainerNames(t *testing.T) {
 	store := newTestDB(t)

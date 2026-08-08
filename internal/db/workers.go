@@ -132,8 +132,8 @@ func (s *Store) ListWorkers(ctx context.Context) ([]Worker, error) {
 }
 
 // DistinctWorkerArches returns the distinct architectures of all
-// registered workers regardless of status. Registration alone — not
-// current online state — is what makes an architecture buildable, so
+// registered workers regardless of status. Registration alone, not
+// current online state, is what makes an architecture buildable, so
 // offline and disabled workers still contribute to the supported set used
 // by the enqueue gate.
 func (s *Store) DistinctWorkerArches(ctx context.Context) ([]string, error) {

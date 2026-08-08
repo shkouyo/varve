@@ -139,7 +139,7 @@ const archBaseline = "x86_64"
 // checkSupportedArch rejects a change whose declared architecture set has
 // no intersection with the architectures the deployment can build: the
 // static baseline plus every architecture registered by a worker
-// (registration alone — any status — makes an architecture buildable, so
+// (registration alone, at any status, makes an architecture buildable, so
 // this never depends on whether a worker happens to be online). "any"
 // (architecture-independent) packages are always supported. Skipping
 // unsupported packages keeps them from sitting in the queue forever with

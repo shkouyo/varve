@@ -161,7 +161,7 @@ func (c *Client) GetSigningKey(ctx context.Context, taskID, token string) (*KeyM
 // UploadFile streams one artifact segment into the task staging area (PUT
 // /api/v1/tasks/{id}/files/{name}?offset=N). No per-request timeout: the
 // whole file streams under the caller's context. Idempotent at a given
-// offset, so transient failures are retried — but a retry must re-send the
+// offset, so transient failures are retried, but a retry must re-send the
 // same bytes, which requires a re-readable source: when r implements
 // io.Seeker (a file or byte buffer) it is rewound for every attempt,
 // otherwise the request runs once and the first error is returned.

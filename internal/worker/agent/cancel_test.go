@@ -29,7 +29,7 @@ import (
 )
 
 // trapScript builds a makepkg stand-in that records SIGTERM and keeps
-// running until SIGKILL — making the SIGTERM→SIGKILL escalation observable.
+// running until SIGKILL, making the SIGTERM→SIGKILL escalation observable.
 func trapScript(t *testing.T, record string) string {
 	t.Helper()
 	return writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\necho started\nwhile :; do sleep 0.5; echo tick; done", record))
@@ -67,7 +67,7 @@ func TestCancelViaLogAck(t *testing.T) {
 		t.Errorf("makepkg never received SIGTERM (record=%q)", data)
 	}
 	// The process ignored SIGTERM, so the kill had to escalate to SIGKILL
-	// after killGrace — the run cannot have finished faster.
+	// after killGrace; the run cannot have finished faster.
 	if elapsed < r.killGrace*8/10 {
 		t.Errorf("cancel finished after %v, want the SIGTERM→SIGKILL grace to elapse", elapsed)
 	}

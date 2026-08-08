@@ -27,7 +27,7 @@ import (
 )
 
 // signDetached creates a detached signature of file into sigPath using the
-// keyring at home — the worker-side flow, gpg --detach-sign.
+// keyring at home, mirroring the worker-side flow: gpg --detach-sign.
 func signDetached(t *testing.T, home, keyID, passphrase, file, sigPath string) {
 	t.Helper()
 	cmd := exec.Command("gpg", "--homedir", home, "--batch", "--pinentry-mode", "loopback",

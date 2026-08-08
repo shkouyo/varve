@@ -167,7 +167,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 // condition holds: the controller has AUR publishing enabled (an SSH key),
 // the branch dotfile opted in ([aur].submit with a package name) and the
 // change carried a branch commit (build.Commit differs from the
-// pre-ingest last successful commit — a pure upstream or manual rebuild
+// pre-ingest last successful commit; a pure upstream or manual rebuild
 // leaves the commit unchanged and is not pushed).
 //
 // The outcome is always recorded on the package row and a failure

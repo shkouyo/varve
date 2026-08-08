@@ -298,8 +298,8 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 
 // TestRunServeSignerWiring pins the signer wiring contract: with
 // repo.sign="off" the orchestrator injectable must receive a true nil
-// signer, and with signing enabled a non-nil one. The pre-fix shape — a
-// typed nil *sign.Signer inside the interface — defeats dispatch's nil
+// signer, and with signing enabled a non-nil one. The pre-fix shape, a
+// typed nil *sign.Signer inside the interface, defeats dispatch's nil
 // checks and crashes when a task reaches a terminal state.
 func TestRunServeSignerWiring(t *testing.T) {
 	run := func(t *testing.T, sign, gpgKey string) signerSurface {

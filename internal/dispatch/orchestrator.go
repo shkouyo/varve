@@ -202,7 +202,7 @@ type OrchestratorImpl struct {
 
 // signerUsable reports whether a signer dependency is present and
 // dereferenceable. A plain interface == nil comparison is defeated by a
-// typed nil stored inside the interface — e.g. a nil *sign.Signer passed
+// typed nil stored inside the interface, e.g. a nil *sign.Signer passed
 // by a caller with repo.sign="off": the interface itself is non-nil and
 // the first method call would panic with a nil pointer dereference. Every
 // nilable kind is handled so any future concrete implementation type
@@ -339,7 +339,7 @@ func (o *OrchestratorImpl) clearToken(taskID string) {
 }
 
 // finalizeTask writes a terminal state through the store transaction
-// helper. ErrConflict (already terminal — a concurrent agent report, cancel
+// helper. ErrConflict (already terminal: a concurrent agent report, cancel
 // or scheduler scan won the race) and ErrNotFound propagate unwrapped so
 // callers can classify them.
 func (o *OrchestratorImpl) finalizeTask(ctx context.Context, taskID, state, errMsg string, artifacts []db.Artifact, samples []db.Sample) error {

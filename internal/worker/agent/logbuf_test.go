@@ -189,7 +189,7 @@ func TestLogBufferConflictResyncsOffset(t *testing.T) {
 // the producer drains the whole pipe into the buffer while the flush loop
 // is busy with an in-flight append, so one flush can find far more than
 // threshold bytes buffered. The segment must be split into bounded
-// batches — a single oversized segment would exceed the controller's
+// batches; a single oversized segment would exceed the controller's
 // segment cap, get rejected, and stall the log stream forever (the build
 // succeeds but the log is truncated).
 func TestLogBufferBurstSplitsSegments(t *testing.T) {

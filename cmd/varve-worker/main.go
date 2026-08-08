@@ -16,8 +16,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Command varve-worker is the worker-side binary of the varve build
-// system. It loads the worker configuration from the environment —
-// including the optional CWD .env file — and dispatches to the host
+// system. It loads the worker configuration from the environment
+// (including the optional CWD .env file) and dispatches to the host
 // runner (default) or the in-container agent runner by VARVE_ROLE. It
 // takes no subcommands.
 package main

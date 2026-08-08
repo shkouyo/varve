@@ -220,7 +220,7 @@ func (d *Detector) PollOnce(ctx context.Context) error {
 // whose branch is no longer enumerated by the mirror (a branch deleted
 // upstream disappears after the pruned fetch). Excluded branches are not
 // enumerated either, so a package that moved into an exclude pattern is
-// removed too — exclusion means "stop serving this branch". Removal
+// removed too, since exclusion means "stop serving this branch". Removal
 // failures are warnings: the package row stays and the next round retries
 // the idempotent cascade.
 func (d *Detector) removeVanishedBranches(ctx context.Context, branches []string) {
@@ -424,8 +424,8 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 // withinCooldown reports whether the change is the residue of a failed
 // build still inside the rebuild cooldown: the package's last build
 // failed (last_failed_at set) and the current snapshot still matches that
-// failed build's records. A source change since the failure — a branch
-// commit or upstream ref differing from the failed build's snapshot —
+// failed build's records. A source change since the failure (a branch
+// commit or upstream ref differing from the failed build's snapshot)
 // bypasses the gate and is submitted immediately.
 //
 // A failed build never advances the package's last_commit /
@@ -476,7 +476,7 @@ func vcsKindName(k vcs.Kind) string {
 // into the packages.arch storage format: "any" (architecture-independent)
 // dominates the set, otherwise the deduplicated elements are sorted and
 // joined with "|" so every declared architecture is stored and matched at
-// claim time — never just the first element. An empty declaration keeps
+// claim time, never just the first element. An empty declaration keeps
 // the x86_64 deployment baseline.
 func archSet(arch []string) string {
 	seen := make(map[string]bool, len(arch))

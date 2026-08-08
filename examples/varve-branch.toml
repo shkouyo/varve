@@ -1,4 +1,4 @@
-# .varve.toml — per-branch build configuration
+# .varve.toml: per-branch build configuration
 #
 # Drop this file into the root of a source branch (next to PKGBUILD and
 # .SRCINFO) to configure how varve builds it. Every branch is one package:
@@ -30,7 +30,7 @@ email = "bob@example.org"
 # package name suffix -git/-svn), "git", "svn" or "none" (default "auto").
 vcs = "auto"
 
-# [pkgbuild_source] — build from an external PKGBUILD repository instead
+# [pkgbuild_source]: build from an external PKGBUILD repository instead
 # of the branch tree. The branch only declares the package metadata; the
 # actual PKGBUILD and .SRCINFO are read from url (optional subdirectory and
 # branch). Omit the whole section to build the branch tree itself.
@@ -39,13 +39,13 @@ vcs = "auto"
 # branch = "master"
 # directory = "packages/foo"
 
-# [collect] — artifact collection rules for the build result.
+# [collect]: artifact collection rules for the build result.
 [collect]
 # Exclude artifacts whose name matches any of these globs (the ".pkg.tar"
 # parts stay attached, e.g. "*-debug.pkg.tar.zst").
 exclude = ["*-debug"]
 
-# [hooks] — scripts executed inside the build container. Each list holds
+# [hooks]: scripts executed inside the build container. Each list holds
 # repository-relative paths (or shell commands starting with a "/"); they
 # run through "/bin/sh -e" in the container's PKGBUILD working directory.
 [hooks]
@@ -59,7 +59,7 @@ exclude = ["*-debug"]
 # working directory.
 # on_failure = ["scripts/collect-log.sh"]
 
-# [aur] — publish the branch to the Arch User Repository. The controller
+# [aur]: publish the branch to the Arch User Repository. The controller
 # must enable AUR publishing globally (an [aur] key_file in the controller
 # configuration) or this section is inert.
 [aur]

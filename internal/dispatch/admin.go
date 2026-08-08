@@ -32,8 +32,8 @@ import (
 // RebuildPackage force-enqueues a rebuild of an existing package (admin,
 // reason "manual"). The name-conflict comparison is skipped (force) but
 // the partial unique index still rejects a package with an active task;
-// that conflict is reported as success — the rebuild is already queued
-// or running — so repeated submissions never produce a misleading
+// that conflict is reported as success (the rebuild is already queued
+// or running), so repeated submissions never produce a misleading
 // failure. A package whose last build is terminal gets a fresh task.
 // Concurrently safe.
 func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) error {
@@ -72,7 +72,7 @@ func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) e
 // becomes "disabled" and Poll refuses to claim for it (db.ClaimTask itself
 // does not check status; the check lives here). The node keeps its history
 // and may be re-enabled with EnableWorker. A missing worker is reported
-// as success — an absent node trivially receives no work — so repeated
+// as success (an absent node trivially receives no work), so repeated
 // submissions (e.g. after a removal) are idempotent. Concurrently safe.
 func (o *OrchestratorImpl) DisableWorker(ctx context.Context, name string) error {
 	if _, err := o.store.GetWorkerByName(ctx, name); err != nil {
@@ -101,7 +101,7 @@ func (o *OrchestratorImpl) EnableWorker(ctx context.Context, name string) error 
 // RemoveWorker deletes a node record. A node with active tasks cannot be
 // removed (ErrConflict); builds keep the display name as plain text
 // (worker_name), so history survives the deletion. A missing worker is
-// reported as success — the desired state is already reached — so a
+// reported as success (the desired state is already reached), so a
 // repeated submission is idempotent. Concurrently safe.
 func (o *OrchestratorImpl) RemoveWorker(ctx context.Context, name string) error {
 	w, err := o.store.GetWorkerByName(ctx, name)

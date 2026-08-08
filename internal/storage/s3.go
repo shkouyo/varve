@@ -54,7 +54,7 @@ type objectListPage struct {
 //
 // ListObjects deliberately deviates from minio.Client's channel API: it
 // returns one explicit page plus a continuation token so that pagination is
-// driven — and testable — in this package. The real adapter drains
+// driven and testable in this package. The real adapter drains
 // minio-go's internally-paged ListObjectsV2 stream into one page.
 type objectAPI interface {
 	// PutObject stores an object. size < 0 means the length is unknown and
@@ -296,7 +296,7 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 
 // Append merges the stored object with r and re-uploads it under name
 // (Appender capability). This is the degraded resume path for s3:
-// correctness is preserved, efficiency is lost — every chunk re-uploads the
+// correctness is preserved, efficiency is lost: every chunk re-uploads the
 // whole object. The caller pre-checks offset == stored size; the backend
 // re-checks it defensively. The existing content is buffered in memory
 // (bounded by the staging object size).

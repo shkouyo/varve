@@ -142,8 +142,8 @@ func (o *OrchestratorImpl) finalizeCancelled(ctx context.Context, t *db.Task) {
 
 // finalizeFailed finalizes a control-plane failure (stall, timeout):
 // terminal state with the package cooldown marker, maintainer
-// notification and signer cleanup. Control-plane failures are not retried
-// — the retry budget is reserved for agent-reported build failures, whose
+// notification and signer cleanup. Control-plane failures are not retried:
+// the retry budget is reserved for agent-reported build failures, whose
 // first stall already re-queues once (attempts < 1).
 func (o *OrchestratorImpl) finalizeFailed(ctx context.Context, t *db.Task, stage, summary string) {
 	if err := o.finalizeFailure(ctx, t, stage, summary, nil, nil); err != nil {
@@ -218,8 +218,8 @@ func (o *OrchestratorImpl) sweepWorkers(ctx context.Context) {
 // sweepStaging removes staging directories older than 24h (residue from
 // failed ingests and crashes; the ingest path preserves staging on purpose
 // but only until a retry or this sweep). The local backend is enumerated
-// through the filesystem; on s3 the sweep is skipped — object-store residue
-// is bounded by operator-side lifecycle rules.
+// through the filesystem; on s3 the sweep is skipped, because object-store
+// residue is bounded by operator-side lifecycle rules.
 func (o *OrchestratorImpl) sweepStaging(ctx context.Context) {
 	if o.cfg.Storage.Backend != "local" {
 		log.Printf("dispatch: staging sweep skipped for backend %q", o.cfg.Storage.Backend)

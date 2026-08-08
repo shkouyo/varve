@@ -121,7 +121,7 @@ var (
 // (VARVE_CONTAINER_RUNTIME override, else docker → podman via "command
 // -v"), resolves the stable node name (VARVE_WORKER_NAME or a persisted
 // auto-generated name) and builds the capacity semaphore. It returns an
-// error — the *Runner-only signature cannot express it — when no container
+// error (the *Runner-only signature cannot express it) when no container
 // runtime is available or the node name cannot be resolved, so the caller
 // fails startup.
 func NewRunner(cfg *config.WorkerConfig, client client) (*Runner, error) {

@@ -104,9 +104,10 @@ func (s *Store) GetTask(ctx context.Context, id string) (*Task, error) {
 
 // ClaimTaskToken claims a queued task for a one-shot runner that holds a
 // pre-issued dispatch token (actions runners are never registered as
-// workers): the task moves straight to running — the runner starts
-// executing right after GetTask, so there is no separate assigned phase
-// — with the token, assigned_at and last_progress_at recorded, and the
+// workers): the task moves straight to running (the runner starts
+// executing right after GetTask, so there is no separate assigned
+// phase) with the token, assigned_at and last_progress_at recorded,
+// and the
 // mirrored build row follows with started_at. No worker row exists, so
 // worker_id and worker_name stay empty. ErrConflict when the task is not
 // queued (another runner claimed it first), ErrNotFound when it does not
@@ -197,7 +198,7 @@ func (s *Store) RequeueTask(ctx context.Context, id string) error {
 // attempt: state=queued, fail_count+1, the worker and claim token are
 // released and attempts is incremented; the mirrored build row returns to
 // queued with worker fields and started_at cleared. The state guard makes
-// the retry decision atomic — only one caller wins when several finalize
+// the retry decision atomic: only one caller wins when several finalize
 // paths race. ErrConflict when the task is not in assigned/running
 // (already terminal or re-queued), ErrNotFound when it does not exist.
 // The retry policy uses this primitive while a task's fail counter stays

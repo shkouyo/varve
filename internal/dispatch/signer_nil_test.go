@@ -27,8 +27,8 @@ import (
 )
 
 // TestTypedNilSignerNoPanic reproduces the typed-nil signer bug: a typed
-// nil *sign.Signer threaded through the signVerifier interface — exactly
-// the shape cmd/varve/serve.go produced with repo.sign="off" — must be
+// nil *sign.Signer threaded through the signVerifier interface (exactly
+// the shape cmd/varve/serve.go produced with repo.sign="off") must be
 // treated as "no signer" instead of crashing task finalization. Every
 // terminal transition runs clearSigner: failed via the scheduler scan
 // (scanStalled -> finalizeFailed -> clearSigner), succeeded via ingest,
@@ -40,7 +40,8 @@ func TestTypedNilSignerNoPanic(t *testing.T) {
 	env.o.Stop() // halt the fakeSigner-backed scheduler before replacing it
 
 	// The production failure shape: a nil *sign.Signer stored in the
-	// interface — the interface is non-nil, the concrete pointer is nil.
+	// interface, so the interface is non-nil while the concrete pointer
+	// is nil.
 	var typedNil *sign.Signer
 	env.o = NewOrchestrator(env.cfg, env.store, env.fs, typedNil, env.up, env.not, env.logs)
 	env.o.now = func() time.Time { return env.now }

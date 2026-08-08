@@ -29,7 +29,7 @@ import (
 // cmd/varve derives it from the storage side file of the package plus the
 // previous packages row: the side file carries the branch, the VCS kind, the
 // latest build metadata and the artifact manifest, while pkgdesc and
-// maintainers — detection metadata absent from the side file — are preserved
+// maintainers (detection metadata absent from the side file) are preserved
 // from the row being replaced.
 type RebuildPackage struct {
 	Pkgbase         string

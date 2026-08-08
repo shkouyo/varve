@@ -29,7 +29,7 @@ import (
 const crlf = "\r\n"
 
 // buildMessage assembles a plain-text RFC 5322 failure notification. It is
-// a pure function of its inputs — no network access and no side effects —
+// a pure function of its inputs (no network access and no side effects),
 // apart from the wall-clock Date and the random Message-ID, which keeps it
 // trivially testable without a server.
 func (m *Mailer) buildMessage(info FailureInfo, to []string) []byte {

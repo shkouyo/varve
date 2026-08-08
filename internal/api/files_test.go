@@ -114,8 +114,8 @@ func TestDownloadStreams(t *testing.T) {
 }
 
 // TestLargeUploadStreams asserts the streaming property: a 10 MiB upload
-// must never be loaded into memory as a whole — the fake records the
-// largest read chunk it received — and the staged content must hash
+// must never be loaded into memory as a whole. The fake records the
+// largest read chunk it received, and the staged content must hash
 // identically to the source.
 func TestLargeUploadStreams(t *testing.T) {
 	const size = 10 << 20 // 10 MiB

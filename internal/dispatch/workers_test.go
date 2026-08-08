@@ -163,7 +163,7 @@ func TestPollNotForOfflineOrDisabled(t *testing.T) {
 
 // TestClaimBackfillsWorkerAndStarted covers Task B: claiming a task
 // stamps the build row with the worker's plain-text name and started_at,
-// in both host and pool (agent) modes — the shared Poll/ClaimTask path.
+// in both host and pool (agent) modes via the shared Poll/ClaimTask path.
 func TestClaimBackfillsWorkerAndStarted(t *testing.T) {
 	env := newTestEnv(t)
 	env.enqueue(t, "host-pkg", "host-pkg")

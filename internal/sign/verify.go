@@ -24,8 +24,8 @@ import (
 )
 
 // VerifyDetached checks a detached signature over a package artifact using
-// the managed keyring (gpg --verify <sig> <pkg>). Any non-zero gpg exit — a
-// bad signature, a tampered artifact or a missing key — is returned as an
+// the managed keyring (gpg --verify <sig> <pkg>). Any non-zero gpg exit (a
+// bad signature, a tampered artifact or a missing key) is returned as an
 // error so that dispatch can fail the task. Concurrently safe: every call
 // runs an isolated subprocess.
 func (s *Signer) VerifyDetached(sigPath, pkgPath string) error {

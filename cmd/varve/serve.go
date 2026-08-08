@@ -160,7 +160,7 @@ func runServe(args []string) error {
 		return err
 	}
 
-	// 4. GPG signer: "off" leaves the signerSurface nil — dispatch
+	// 4. GPG signer: "off" leaves the signerSurface nil. Dispatch
 	// and repo branch on cfg.Repo.Sign and never touch the signer
 	// then. The interface type keeps the nil a true nil: a typed nil
 	// *sign.Signer in the interface would defeat dispatch's checks and

@@ -428,7 +428,7 @@ func assertChangeCount(t *testing.T, sink *fakeSink, want int) []Change {
 }
 
 // TestPollOnceMultiArch asserts that every declared .SRCINFO architecture
-// is carried into the submitted change — the old archOf picked only the
+// is carried into the submitted change. The old archOf picked only the
 // first element, losing the rest before they reached storage and matching.
 func TestPollOnceMultiArch(t *testing.T) {
 	body := "pkgbase = foo\n" +
@@ -484,8 +484,8 @@ func TestArchSet(t *testing.T) {
 // TestPlanBranchCommitPath is the regression guard for the leading-dot
 // bug: planBranch must read the dotted ".SRCINFO" from the branch tree
 // (git show <branch>:.SRCINFO), so a branch carrying .SRCINFO is planned
-// with the expected branch commit while a branch without it — or with
-// only a non-dotted SRCINFO file — is skipped.
+// with the expected branch commit while a branch without it, or with
+// only a non-dotted SRCINFO file, is skipped.
 func TestPlanBranchCommitPath(t *testing.T) {
 	tests := []struct {
 		name       string

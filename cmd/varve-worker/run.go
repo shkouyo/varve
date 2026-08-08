@@ -59,15 +59,15 @@ func defaultAgentRunner(cfg *config.WorkerConfig, client *api.Client) runner {
 
 // run is the testable entry point of the worker binary.
 //
-// It loads the worker configuration — exported environment variables,
-// the optional CWD .env file and built-in defaults, in that precedence
-// — and dispatches to the host runner (default) or the agent runner by
+// It loads the worker configuration (exported environment variables,
+// the optional CWD .env file and built-in defaults, in that precedence)
+// and dispatches to the host runner (default) or the agent runner by
 // VARVE_ROLE. Required-field validation (ControllerURL always; Token
 // and Image for host; TaskID/TaskToken for one-shot agents without
 // Token; Token for pool agents) happens inside config.LoadWorker, so a
 // missing controller URL fails startup immediately. A SIGTERM/SIGINT
 // cancels the runner context: the host drains running containers and
-// deregisters, the pool agent idles out — the runners return nil on
+// deregisters, the pool agent idles out. The runners return nil on
 // that graceful path.
 //
 // args is currently unused: the worker binary takes no subcommands; the

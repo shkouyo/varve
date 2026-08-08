@@ -27,9 +27,9 @@ import (
 // request forgery: browsers attach Basic Auth credentials to every
 // request for the site automatically, so without this check any
 // cross-site form could trigger admin actions. The request must carry an
-// Origin header (or a Referer as the fallback — some clients send only
-// one) whose host matches the site host; anything else is rejected with
-// 403. Non-browser clients (curl, scripts) have no Origin and must send
+// Origin header (or a Referer as the fallback, since some clients send
+// only one) whose host matches the site host; anything else is rejected
+// with 403. Non-browser clients (curl, scripts) have no Origin and must send
 // one explicitly, e.g. -H 'Origin: http://<host>'.
 func (s *Server) requireSameOrigin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

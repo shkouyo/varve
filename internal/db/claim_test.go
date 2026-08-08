@@ -249,7 +249,7 @@ func TestClaimMirror(t *testing.T) {
 }
 
 // TestClaimConcurrent is the atomicity test: N goroutines racing for a
-// single task — exactly one succeeds.
+// single task, and exactly one succeeds.
 func TestClaimConcurrent(t *testing.T) {
 	s := newTestStore(t)
 	pkg := mustSeedPackage(t, s, "race")

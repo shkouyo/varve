@@ -54,7 +54,7 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	r.setTaskPackager(task.Packager)
 	defer r.setTaskPackager("")
 
-	// Log buffer: batched 1–2s/64KiB; one-shot segments carry a resource
+	// Log buffer: batched 1-2s/64KiB; one-shot segments carry a resource
 	// sample in their progress field.
 	var progress progressFn
 	if r.mode == modeOneShot {

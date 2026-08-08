@@ -259,7 +259,7 @@ func TestTaskCollectEmptyFails(t *testing.T) {
 // TestTaskLargeOutputDelivered drives a full task whose makepkg emits over
 // 2 MiB of stdout against a client that mirrors the production controller:
 // a 1 MiB per-segment cap and a real append round-trip latency. The whole
-// output must arrive in bounded segments and reassemble losslessly — an
+// output must arrive in bounded segments and reassemble losslessly. An
 // unbounded single batch (the buffer can grow far past the threshold while
 // the flush loop is busy) would be rejected by the cap and stall the log
 // stream mid-build.
