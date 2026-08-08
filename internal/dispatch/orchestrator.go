@@ -274,9 +274,7 @@ func (o *OrchestratorImpl) Submit(ctx context.Context, c detect.Change) error {
 	return o.Enqueue(ctx, c, false)
 }
 
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
+// Shared helpers.
 
 // uuidV4 generates a random RFC 4122 version-4 UUID without external
 // dependencies (go.mod is frozen; google/uuid remains an indirect dep).

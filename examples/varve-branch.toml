@@ -65,8 +65,9 @@ exclude = ["*-debug"]
 [aur]
 # The AUR package name the branch is published as (required for publish).
 name = "my-aur-package"
-# Push every successful build of this branch to the AUR package as its
-# master history (default false). Each successful build is force-pushed to
-# the AUR package, replacing its master history with the branch (the AUR
-# package is treated as a mirror of the branch).
+# Push successful builds that carry a new branch commit to the AUR
+# package as its master history (default false). Pure upstream updates
+# and manual rebuilds of an unchanged commit are not pushed; each pushed
+# build force-updates the AUR master history to mirror the branch (the
+# AUR package is treated as a mirror of the branch).
 submit = true

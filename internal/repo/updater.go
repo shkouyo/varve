@@ -15,6 +15,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// Package repo maintains the pacman repository on disk: it ingests
+// validated build artifacts into the flat repository root, prunes old
+// versions, writes the authoritative sidecar file, runs the
+// repo-add/repo-remove database commands, and keeps the local tree in
+// sync with the S3 backend.
 package repo
 
 import (
