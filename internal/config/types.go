@@ -41,6 +41,7 @@ type ControllerConfig struct {
 	Mail     MailConfig
 	Web      WebConfig
 	Logs     LogsConfig
+	AUR      AURConfig
 }
 
 // ServerConfig configures the controller listen addresses and the public Web
@@ -169,6 +170,17 @@ type LogsConfig struct {
 	Dir       string        // log directory, "/data/logs"
 	Retention time.Duration // retention for successful build logs, "90d"
 	MaxBuilds int           // maximum successful logs kept, 1000
+}
+
+// AURConfig configures the optional AUR publishing feature: after a
+// successful build of a branch whose dotfile opts in ([aur].submit), the
+// built branch commit is pushed to the AUR package repository. The feature
+// is enabled only when KeyFile is set; the key file must be mounted under
+// /data by the deployment.
+type AURConfig struct {
+	Server  string // AUR SSH server, "aur.archlinux.org"
+	KeyFile string // SSH private key path; empty disables AUR publishing
+	User    string // SSH user, "aur"
 }
 
 // WorkerConfig is the fully resolved worker configuration. It is built from

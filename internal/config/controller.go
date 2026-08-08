@@ -100,6 +100,7 @@ type rawConfig struct {
 	Mail     rawMail
 	Web      rawWeb
 	Logs     rawLogs
+	AUR      rawAUR
 }
 
 type rawServer struct {
@@ -210,6 +211,14 @@ type rawLogs struct {
 	MaxBuilds int          `toml:"max_builds"`
 }
 
+// rawAUR mirrors the [aur] section: the AUR SSH endpoint plus the private
+// key that enables publishing.
+type rawAUR struct {
+	Server  string `toml:"server"`
+	KeyFile string `toml:"key_file"`
+	User    string `toml:"user"`
+}
+
 // defaultRawConfig returns the raw decode struct prefilled with the
 // documented defaults.
 func defaultRawConfig() rawConfig {
@@ -260,6 +269,10 @@ func defaultRawConfig() rawConfig {
 			Dir:       "/data/logs",
 			Retention: tomlDuration(90 * 24 * time.Hour),
 			MaxBuilds: 1000,
+		},
+		AUR: rawAUR{
+			Server: "aur.archlinux.org",
+			User:   "aur",
 		},
 	}
 }
@@ -427,6 +440,11 @@ func (r *rawConfig) export() *ControllerConfig {
 			Dir:       r.Logs.Dir,
 			Retention: time.Duration(r.Logs.Retention),
 			MaxBuilds: r.Logs.MaxBuilds,
+		},
+		AUR: AURConfig{
+			Server:  r.AUR.Server,
+			KeyFile: r.AUR.KeyFile,
+			User:    r.AUR.User,
 		},
 	}
 }

@@ -77,6 +77,11 @@ password = "" # SMTP password; written directly in this file, so file permission
 from = "varve@example.org" # sender address (default "varve@example.org")
 tls = "starttls" # TLS mode (default "starttls"; "none" | "starttls" | "implicit")
 
+[aur]
+server = "aur.archlinux.org" # AUR SSH server (default "aur.archlinux.org")
+key_file = "" # SSH private key used to push branch commits to AUR package repos; mount it under /data; empty disables AUR publishing
+user = "aur" # SSH user (default "aur")
+
 [web]
 download_enabled = true # show download buttons (default true); when true, download_base_uri below is required
 download_base_uri = "https://downloads.example.org/varve" # direct-link URI prefix (e.g. a CDN or public bucket); required when download_enabled is true

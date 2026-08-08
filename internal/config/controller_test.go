@@ -119,6 +119,11 @@ password = ""
 from = "varve@example.org"
 tls = "starttls"
 
+[aur]
+server = "aur.archlinux.org"
+key_file = "/data/aur_key"
+user = "aur"
+
 [web]
 download_enabled = true
 download_base_uri = "https://dl.example.org"
@@ -223,6 +228,9 @@ func TestLoadControllerFullExample(t *testing.T) {
 		cfg.Mail.From != "varve@example.org" || cfg.Mail.TLS != "starttls" {
 		t.Errorf("Mail = %+v", cfg.Mail)
 	}
+	if cfg.AUR.Server != "aur.archlinux.org" || cfg.AUR.KeyFile != "/data/aur_key" || cfg.AUR.User != "aur" {
+		t.Errorf("AUR = %+v", cfg.AUR)
+	}
 	if !cfg.Web.DownloadEnabled || cfg.Web.DownloadBaseURI != "https://dl.example.org" ||
 		cfg.Web.RecentBuilds != 20 || len(cfg.Web.Admins) != 1 ||
 		cfg.Web.Admins[0].User != "admin" || cfg.Web.Admins[0].Password != "change-me" {
@@ -297,6 +305,39 @@ func TestLoadControllerDefaults(t *testing.T) {
 	}
 	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 {
 		t.Errorf("Logs defaults = %+v", cfg.Logs)
+	}
+	if cfg.AUR.Server != "aur.archlinux.org" || cfg.AUR.KeyFile != "" || cfg.AUR.User != "aur" {
+		t.Errorf("AUR defaults = %+v", cfg.AUR)
+	}
+}
+
+// TestLoadControllerAURValidation covers the [aur] section contract: with
+// no key file the section is inert (an empty server/user is accepted), and
+// a configured key file requires the endpoint fields.
+func TestLoadControllerAURValidation(t *testing.T) {
+	// Disabled: an explicit empty key_file is fine with empty endpoint
+	// fields.
+	content := minimalConfig + `
+[aur]
+server = ""
+user = ""
+`
+	cfg, err := LoadController(writeConfig(t, content))
+	if err != nil {
+		t.Fatalf("LoadController (disabled): %v", err)
+	}
+	if cfg.AUR.Server != "" || cfg.AUR.User != "" || cfg.AUR.KeyFile != "" {
+		t.Errorf("disabled AUR = %+v", cfg.AUR)
+	}
+
+	// Enabled with an explicit empty endpoint field must fail.
+	for _, bad := range []string{
+		minimalConfig + "\n[aur]\nkey_file = \"/data/k\"\nserver = \"\"\n",
+		minimalConfig + "\n[aur]\nkey_file = \"/data/k\"\nuser = \"\"\n",
+	} {
+		if _, err := LoadController(writeConfig(t, bad)); err == nil {
+			t.Errorf("LoadController with %q succeeded, want error", bad)
+		}
 	}
 }
 

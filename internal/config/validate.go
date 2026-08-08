@@ -96,6 +96,17 @@ func validate(c *ControllerConfig) error {
 	if c.Logs.Dir == "" {
 		return errors.New("logs.dir: must not be empty")
 	}
+	// AUR publishing is enabled by an SSH key; the endpoint fields are
+	// required then (they have defaults, so only an explicit empty value
+	// trips this). With an empty key_file the whole section is inert.
+	if c.AUR.KeyFile != "" {
+		if c.AUR.Server == "" {
+			return errors.New("aur.server: must not be empty when aur.key_file is set")
+		}
+		if c.AUR.User == "" {
+			return errors.New("aur.user: must not be empty when aur.key_file is set")
+		}
+	}
 	for _, d := range []struct {
 		name string
 		val  time.Duration
