@@ -72,12 +72,13 @@ func humanSize(n int64) string {
 	}
 }
 
-// absTime renders an optional timestamp as local wall-clock time.
+// absTime renders an optional timestamp as local wall-clock time with
+// second precision.
 func absTime(t *time.Time) string {
 	if t == nil {
 		return "never"
 	}
-	return t.Local().Format("2006-01-02 15:04")
+	return t.Local().Format("2006-01-02 15:04:05")
 }
 
 // pkgEpoch renders the package version with its epoch prefix
