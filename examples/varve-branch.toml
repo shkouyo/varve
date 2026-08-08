@@ -34,10 +34,10 @@ vcs = "auto"
 # of the branch tree. The branch only declares the package metadata; the
 # actual PKGBUILD and .SRCINFO are read from url (optional subdirectory and
 # branch). Omit the whole section to build the branch tree itself.
-# [pkgbuild_source]
-# url = "git@git.example.org:pkgs/foo.git"
-# branch = "master"
-# directory = "packages/foo"
+#[pkgbuild_source]
+#url = "git@git.example.org:pkgs/foo.git"
+#branch = "master"
+#directory = "packages/foo"
 
 # [collect]: artifact collection rules for the build result.
 [collect]
@@ -50,14 +50,14 @@ exclude = ["*-debug"]
 # run through "/bin/sh -e" in the container's PKGBUILD working directory.
 [hooks]
 # pre_build: right before makepkg starts.
-# pre_build = ["scripts/prepare.sh"]
+#pre_build = ["scripts/prepare.sh"]
 # post_build: after makepkg finishes, before artifact collection.
-# post_build = ["scripts/strip-debug.sh"]
+#post_build = ["scripts/strip-debug.sh"]
 # on_success: after a successful build (artifact checksums already done).
-# on_success = ["scripts/notify.sh"]
+#on_success = ["scripts/notify.sh"]
 # on_failure: after a failed build, in the container still holding the
 # working directory.
-# on_failure = ["scripts/collect-log.sh"]
+#on_failure = ["scripts/collect-log.sh"]
 
 # [aur]: publish the branch to the Arch User Repository. The controller
 # must enable AUR publishing globally (an [aur] key_file in the controller
