@@ -166,12 +166,12 @@ type base struct {
 	// PageActive marks a page whose log stream is still live; only the
 	// build page uses it, to gate its SSE client.
 	PageActive bool
-	// RenderMs records the time the page template took to execute, in
-	// whole milliseconds, measured by the render wrapper after the
-	// buffered execution completes. The footer reads the live value
-	// from ElapsedMs at the end of the same pass, so the number it
-	// shows is this measurement taken a moment earlier.
-	RenderMs    int
+	// RenderNs records the time the page template took to execute, in
+	// nanoseconds, measured by the render wrapper after the buffered
+	// execution completes. The footer reads the live value from
+	// RenderTime at the end of the same pass, so the number it shows is
+	// this measurement taken a moment earlier.
+	RenderNs    int64
 	renderStart time.Time
 }
 
@@ -180,14 +180,29 @@ type base struct {
 // render wrappers call it on the page data before executing.
 func (b *base) beginRender() { b.renderStart = time.Now() }
 
-// ElapsedMs returns the whole milliseconds elapsed since beginRender.
-// The footer renders last in every document, so the value it reads is
-// effectively the page's render time.
-func (b *base) ElapsedMs() int { return int(time.Since(b.renderStart).Milliseconds()) }
+// RenderTime formats the time elapsed since beginRender for the footer:
+// whole milliseconds for durations of 1ms or more ("12ms"), whole
+// microseconds below that ("250µs"). The footer renders last in every
+// document, so the value it reads is effectively the page's render time.
+// A sub-microsecond duration truncates to zero microseconds, so it is
+// reported as 1µs instead: time.Now has nanosecond resolution on every
+// supported platform, and a bare "0µs" would read as a failed timer
+// rather than a fast render.
+func (b *base) RenderTime() string {
+	d := time.Since(b.renderStart)
+	if d >= time.Millisecond {
+		return strconv.FormatInt(d.Milliseconds(), 10) + "ms"
+	}
+	us := d.Microseconds()
+	if us < 1 {
+		us = 1
+	}
+	return strconv.FormatInt(us, 10) + "µs"
+}
 
-// recordRenderMs stores the elapsed time since the render started; the
+// recordRenderNs stores the elapsed time since the render started; the
 // render wrappers call it after the buffered execution completes.
-func (b *base) recordRenderMs() { b.RenderMs = int(time.Since(b.renderStart).Milliseconds()) }
+func (b *base) recordRenderNs() { b.RenderNs = int64(time.Since(b.renderStart)) }
 
 // flash is a one-shot message carried through the redirect query string;
 // there are no cookies on the web UI.
@@ -225,8 +240,8 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if c, ok := data.(interface{ recordRenderMs() }); ok {
-		c.recordRenderMs()
+	if c, ok := data.(interface{ recordRenderNs() }); ok {
+		c.recordRenderNs()
 	}
 	w.Write(buf.Bytes())
 }
@@ -252,7 +267,7 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	ed.recordRenderMs()
+	ed.recordRenderNs()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	w.Write(buf.Bytes())

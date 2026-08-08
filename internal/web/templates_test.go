@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
@@ -225,14 +226,15 @@ func truncate(s string, n int) string {
 }
 
 // TestFooterRenderTime asserts every page footer carries the source link
-// ("Powered by Varve"), the license link, and a live render time in
-// whole milliseconds measured by the buffered render wrapper.
+// ("Powered by Varve"), the license link, and a live render time scaled
+// to its unit: whole milliseconds at 1ms or more, microseconds below,
+// measured by the buffered render wrapper.
 func TestFooterRenderTime(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
 	seedBuild(t, store, pkg, "succeeded", nil, nil)
 	s := newTestServer(t, testConfig(), &fakeOrchestrator{stats: &dispatch.Stats{}}, store, newFakeLogReader(""))
-	ms := regexp.MustCompile(`Render: \d+ms`)
+	ms := regexp.MustCompile(`Render: \d+(ms|µs)`)
 	for _, path := range []string{"/", "/packages", "/packages/demo-pkg", "/builds", "/packages/nope"} {
 		rec := get(t, s, http.MethodGet, path, nil)
 		body := rec.Body.String()
@@ -244,6 +246,30 @@ func TestFooterRenderTime(t *testing.T) {
 		)
 		if !ms.MatchString(body) {
 			t.Errorf("%s: footer render time missing (want %q in body)", path, ms)
+		}
+	}
+}
+
+// TestRenderTimeUnits pins the footer render-time scaling at the unit
+// boundary: 1ms and up render as whole milliseconds, everything below
+// as whole microseconds, and a sub-microsecond elapsed render reads as
+// 1µs rather than a bare zero.
+func TestRenderTimeUnits(t *testing.T) {
+	cases := []struct {
+		elapsed time.Duration
+		want    string
+	}{
+		{0, "1µs"},                     // sub-microsecond renders clamp to 1µs
+		{500 * time.Nanosecond, "1µs"}, // 0.5µs truncates to 0, clamped
+		{999 * time.Microsecond, "999µs"},
+		{1000 * time.Microsecond, "1ms"}, // exactly 1ms crosses to ms
+		{1500 * time.Microsecond, "1ms"}, // whole milliseconds truncate
+		{5 * time.Millisecond, "5ms"},
+	}
+	for _, tc := range cases {
+		b := base{renderStart: time.Now().Add(-tc.elapsed)}
+		if got := b.RenderTime(); got != tc.want {
+			t.Errorf("RenderTime after %v: got %q, want %q", tc.elapsed, got, tc.want)
 		}
 	}
 }
