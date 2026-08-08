@@ -80,3 +80,27 @@ func TestPkgEpoch(t *testing.T) {
 		t.Errorf("pkgEpoch(non-struct) = %q, want \"\"", got)
 	}
 }
+
+// TestRenderTimeUnits pins the footer render-time scaling at the unit
+// boundary: 1ms and up render as whole milliseconds, everything below
+// as whole microseconds, and a sub-microsecond elapsed render reads as
+// 1µs rather than a bare zero. The pure formatter is fed fixed
+// durations, so the scaling never depends on live timer noise.
+func TestRenderTimeUnits(t *testing.T) {
+	cases := []struct {
+		elapsed time.Duration
+		want    string
+	}{
+		{0, "1µs"},                     // sub-microsecond renders clamp to 1µs
+		{500 * time.Nanosecond, "1µs"}, // 0.5µs truncates to 0, clamped
+		{999 * time.Microsecond, "999µs"},
+		{1000 * time.Microsecond, "1ms"}, // exactly 1ms crosses to ms
+		{1500 * time.Microsecond, "1ms"}, // whole milliseconds truncate
+		{5 * time.Millisecond, "5ms"},
+	}
+	for _, tc := range cases {
+		if got := formatRenderTime(tc.elapsed); got != tc.want {
+			t.Errorf("formatRenderTime(%v) = %q, want %q", tc.elapsed, got, tc.want)
+		}
+	}
+}

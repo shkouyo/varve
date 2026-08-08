@@ -82,6 +82,23 @@ func absTime(t *time.Time) string {
 	return t.Local().Format("2006-01-02 15:04:05")
 }
 
+// formatRenderTime scales a render duration to its display unit: whole
+// milliseconds for durations of 1ms or more ("12ms"), whole microseconds
+// below that ("250µs"). A sub-microsecond duration truncates to zero
+// microseconds, so it is reported as 1µs instead: time.Now has
+// nanosecond resolution on every supported platform, and a bare "0µs"
+// would read as a failed timer rather than a fast render.
+func formatRenderTime(d time.Duration) string {
+	if d >= time.Millisecond {
+		return strconv.FormatInt(d.Milliseconds(), 10) + "ms"
+	}
+	us := d.Microseconds()
+	if us < 1 {
+		us = 1
+	}
+	return strconv.FormatInt(us, 10) + "µs"
+}
+
 // maxAURSummaryLen caps the rendered AUR push error so a wall of remote
 // git/ssh output cannot overflow the metadata row.
 const maxAURSummaryLen = 200

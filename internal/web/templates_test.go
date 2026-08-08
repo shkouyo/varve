@@ -23,7 +23,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
@@ -246,30 +245,6 @@ func TestFooterRenderTime(t *testing.T) {
 		)
 		if !ms.MatchString(body) {
 			t.Errorf("%s: footer render time missing (want %q in body)", path, ms)
-		}
-	}
-}
-
-// TestRenderTimeUnits pins the footer render-time scaling at the unit
-// boundary: 1ms and up render as whole milliseconds, everything below
-// as whole microseconds, and a sub-microsecond elapsed render reads as
-// 1µs rather than a bare zero.
-func TestRenderTimeUnits(t *testing.T) {
-	cases := []struct {
-		elapsed time.Duration
-		want    string
-	}{
-		{0, "1µs"},                     // sub-microsecond renders clamp to 1µs
-		{500 * time.Nanosecond, "1µs"}, // 0.5µs truncates to 0, clamped
-		{999 * time.Microsecond, "999µs"},
-		{1000 * time.Microsecond, "1ms"}, // exactly 1ms crosses to ms
-		{1500 * time.Microsecond, "1ms"}, // whole milliseconds truncate
-		{5 * time.Millisecond, "5ms"},
-	}
-	for _, tc := range cases {
-		b := base{renderStart: time.Now().Add(-tc.elapsed)}
-		if got := b.RenderTime(); got != tc.want {
-			t.Errorf("RenderTime after %v: got %q, want %q", tc.elapsed, got, tc.want)
 		}
 	}
 }

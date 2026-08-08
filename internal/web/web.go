@@ -181,23 +181,11 @@ type base struct {
 func (b *base) beginRender() { b.renderStart = time.Now() }
 
 // RenderTime formats the time elapsed since beginRender for the footer:
-// whole milliseconds for durations of 1ms or more ("12ms"), whole
-// microseconds below that ("250µs"). The footer renders last in every
-// document, so the value it reads is effectively the page's render time.
-// A sub-microsecond duration truncates to zero microseconds, so it is
-// reported as 1µs instead: time.Now has nanosecond resolution on every
-// supported platform, and a bare "0µs" would read as a failed timer
-// rather than a fast render.
+// the footer renders last in every document, so the value it reads is
+// effectively the page's render time. See formatRenderTime for the unit
+// scaling.
 func (b *base) RenderTime() string {
-	d := time.Since(b.renderStart)
-	if d >= time.Millisecond {
-		return strconv.FormatInt(d.Milliseconds(), 10) + "ms"
-	}
-	us := d.Microseconds()
-	if us < 1 {
-		us = 1
-	}
-	return strconv.FormatInt(us, 10) + "µs"
+	return formatRenderTime(time.Since(b.renderStart))
 }
 
 // recordRenderNs stores the elapsed time since the render started; the
