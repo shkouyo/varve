@@ -17,73 +17,90 @@
         <nav class="mb-1 text-sm text-slate-600 dark:text-neutral-300" aria-label="Breadcrumb">
           <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/">Home</a>
           <span aria-hidden="true"> / </span>
-          <span class="text-slate-700 dark:text-neutral-200" aria-current="page">Build <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
+          <span class="text-slate-700 dark:text-neutral-200" aria-current="page">Build
+            <span class="font-mono" title="{{.Build.ID}}">{{slice .Build.ID 0 7}}</span></span>
         </nav>
-        <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Build <span class="font-mono" title="{{.Build.ID}}">{{.Build.ID}}</span></h1>
+        <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Build
+          <span class="font-mono" title="{{.Build.ID}}">{{.Build.ID}}</span></h1>
       </div>
       {{if .Admin}}
       <div class="flex flex-wrap items-center gap-2">
         {{if .CancelURL}}
         <form method="post" action="{{.CancelURL}}">
-          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Cancel build</button>
+          <button type="submit"
+                  class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Cancel build</button>
         </form>
         {{end}}
         {{if .Pkgbase}}
         <form method="post" action="/admin/packages/{{.Pkgbase}}/rebuild">
-          <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Rebuild</button>
+          <button type="submit"
+                  class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Rebuild</button>
         </form>
         {{end}}
       </div>
       {{end}}
     </div>
 
-    <section aria-labelledby="summary-heading" class="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-neutral-900">
+    <section aria-labelledby="summary-heading"
+             class="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-neutral-900">
       <h2 id="summary-heading" class="mb-3 text-xl font-semibold">Summary</h2>
       <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Status</dt>
         <dd>{{template "statusBadge" .Build.Status}}</dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Package</dt>
-        <dd>{{if .Pkgbase}}<a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+        <dd>
+          {{if .Pkgbase}}
+          <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+          {{else}}
+          <span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>
+          {{end}}
+        </dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Machine</dt>
-        <dd class="text-slate-900 dark:text-neutral-100">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}</dd>
+        <dd class="text-slate-900 dark:text-neutral-100">
+          {{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}
+        </dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Branch</dt>
         <dd class="text-slate-900 dark:text-neutral-100">{{.Build.Branch}}</dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Commit</dt>
         <dd class="break-all font-mono text-xs text-slate-700 dark:text-neutral-300">{{.Build.Commit}}</dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Upstream ref</dt>
-        <dd class="text-slate-900 dark:text-neutral-100">{{if .Build.UpstreamRef}}{{.Build.UpstreamRef}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+        <dd class="text-slate-900 dark:text-neutral-100">
+          {{if .Build.UpstreamRef}}{{.Build.UpstreamRef}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+        </dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Started</dt>
-        <dd class="text-slate-900 dark:text-neutral-100">{{absTime .Build.StartedAt}}</dd>
+        <dd class="text-slate-900 dark:text-neutral-100">
+          {{if .Build.StartedAt}}{{absTime .Build.StartedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+        </dd>
         <dt class="font-medium text-slate-500 dark:text-neutral-400">Finished</dt>
-        <dd class="text-slate-900 dark:text-neutral-100">{{absTime .Build.FinishedAt}}</dd>
+        <dd class="text-slate-900 dark:text-neutral-100">
+          {{if .Build.FinishedAt}}{{absTime .Build.FinishedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+        </dd>
       </dl>
     </section>
 
     <section aria-labelledby="log" class="mb-8">
       <h2 id="log" class="mb-3 scroll-mt-6 text-xl font-semibold">Command log</h2>
-      <div id="log-pane" role="log" aria-label="Build log" tabindex="0" class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100">
+      <div id="log-pane" role="log" aria-label="Build log" tabindex="0"
+           class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100">
 {{- if .HasLog}}<div id="log-lines">
-{{- if .Lines -}}
 {{- range .Lines}}{{.}}
 {{end -}}
-{{- else -}}
-{{- .Log -}}
-{{- end -}}
 </div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-neutral-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
-<div id="log-increments" aria-live="polite"></div>
+<div id="log-increments"></div>
       </div>
       {{if .Truncated}}
       <p class="mt-2 text-sm text-slate-600 dark:text-neutral-300">{{.TruncatedNote}}</p>
       {{end}}
-      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-neutral-300" role="status">{{if .Note}}{{else if .Wait}}Waiting for log output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
+      <p id="log-status" class="mt-3 text-sm text-slate-600 dark:text-neutral-300" role="status">{{if .Note}}{{else if .Wait}}Waiting for log
+        output…{{else if .PageActive}}Connected. Live updates follow below.{{else}}Log complete.{{end}}</p>
     </section>
 
     <section aria-labelledby="usage-heading">
       <h2 id="usage-heading" class="mb-3 text-xl font-semibold">Resource usage</h2>
       {{if .Samples}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900" tabindex="0" aria-label="Resource usage samples">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900"
+           tabindex="0" aria-label="Resource usage samples">
         <table class="w-full text-left text-sm">
-          <caption class="sr-only">Resource samples with time, CPU utilization, memory and disk usage, newest first</caption>
           <thead>
             <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-neutral-400">
               <th scope="col" class="px-4 py-3 font-semibold">Time</th>
@@ -95,17 +112,23 @@
           <tbody>
             {{range .Samples}}
             <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
-              <th scope="row" class="px-4 py-3 text-left font-normal tabular-nums text-slate-600 dark:text-neutral-300">{{.At}}</th>
+              <th scope="row" class="px-4 py-3 text-left font-normal tabular-nums text-slate-600 dark:text-neutral-300">
+                {{.At}}
+              </th>
               <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">{{if .CPU}}{{.CPU}}{{else}}{{.CPUTotal}} total{{end}}</td>
               <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">{{.Mem}} / peak {{.MemPeak}}</td>
-              <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">{{if .HasDisk}}{{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}}){{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</td>
+              <td class="px-4 py-3 text-slate-900 dark:text-neutral-100">
+                {{if .HasDisk}}{{.DiskUsed}} used of {{.DiskTotal}} ({{.DiskPct}}){{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              </td>
             </tr>
             {{end}}
           </tbody>
         </table>
       </div>
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">No resource samples recorded.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">
+        No resource samples recorded.
+      </p>
       {{end}}
     </section>
   </main>
@@ -118,9 +141,10 @@
       // Resumable SSE log stream. The page renders the log tail
       // server-side and the stream resumes at its end (?after=), so the
       // initial content is never re-sent; new lines are appended to the
-      // aria-live region only (decision: increments announce, the initial
-      // log never does). The container follows the bottom while the
-      // reader stays pinned there; scrolling up pauses the follow.
+      // log pane, whose role="log" region announces the increments only
+      // (decision: increments announce, the initial log never does). The
+      // container follows the bottom while the reader stays pinned
+      // there; scrolling up pauses the follow.
       var pane = document.getElementById("log-pane");
       if (!pane) {
         return;
@@ -166,4 +190,3 @@
   </script>{{end}}
 </body>
 </html>
-{{define "statusBadge"}}{{if eq . "queued"}}<span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>queued</span>{{else if eq . "running"}}<span class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>running</span>{{else}}{{buildBadge .}}{{end}}{{end}}

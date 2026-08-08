@@ -37,11 +37,15 @@
  * Dark mode follows the system preference (prefers-color-scheme), the
  * Tailwind v4 default for the `dark:` variant. Two things cannot use
  * template classes and are themed here: the focus ring (blue-600 is
- * too dim against dark surfaces) and the status pills emitted by the
- * buildBadge helper in Go (dark surfaces use the 900-level pill tints).
- * The neutral pill rule is the dark variant for the default and
- * cancelled statuses, which buildBadge renders as bg-neutral-200
- * text-neutral-800 in the light theme.
+ * too dim against dark surfaces) and the status pills (dark surfaces
+ * use the 900-level pill tints). The pills come from three sources:
+ * the buildBadge helper in Go (succeeded/failed/assigned plus the
+ * neutral default and cancelled statuses), the statusBadge define in
+ * layout.html (queued and running) and the worker online/offline pills
+ * in dashboard.html. The neutral and slate rules are the dark variants
+ * for the default/cancelled and offline statuses, which render as
+ * bg-neutral-200 text-neutral-800 and bg-slate-200 text-slate-700 in
+ * the light theme.
  */
 @media (prefers-color-scheme: dark) {
   :focus-visible {
@@ -71,6 +75,10 @@
   .bg-neutral-200.text-neutral-800 {
     background-color: #262626;
     color: #e5e5e5;
+  }
+  .bg-slate-200.text-slate-700 {
+    background-color: #262626;
+    color: #d4d4d4;
   }
 }
 

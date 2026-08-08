@@ -17,20 +17,21 @@
       <span aria-hidden="true"> / </span>
       <span class="text-slate-700 dark:text-neutral-200" aria-current="page">Failed builds</span>
     </nav>
-    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Failed builds</h1>
-    </div>
+    <h1 class="mb-6 text-2xl font-bold tracking-tight sm:text-3xl">Failed builds</h1>
 
     {{if .Flash}}
-    <div role="alert" class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .Flash.Kind "error"}}border-red-300 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200{{else}}border-green-300 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200{{end}}">
+    <div role="alert"
+         class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .Flash.Kind "error"}}border-red-300 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200{{else}}border-green-300 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200{{end}}">
       {{.Flash.Message}}
     </div>
     {{end}}
 
+    <section aria-labelledby="failed-list-heading">
+      <h2 id="failed-list-heading" class="sr-only">Failed build list</h2>
     {{if .Builds}}
-    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900" tabindex="0" aria-label="Failed builds">
+    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900"
+         tabindex="0" aria-label="Failed builds">
       <table class="w-full text-left text-sm">
-        <caption class="sr-only">Failed builds with package, error summary and links to details and log</caption>
         <thead>
           <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-neutral-400">
             <th scope="col" class="px-4 py-3 font-semibold">Build</th>
@@ -44,13 +45,20 @@
           {{range .Builds}}
           <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
             <th scope="row" class="px-4 py-3 text-left font-normal">
-              <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.BuildURL}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
+              <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300"
+                 href="{{.BuildURL}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
             </th>
             <td class="px-4 py-3">
-              {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-neutral-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              {{if .Pkgbase}}
+              <a class="text-slate-800 underline underline-offset-2 dark:text-neutral-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+              {{else}}
+              <span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>
+              {{end}}
             </td>
             <td class="px-4 py-3 text-slate-700 dark:text-neutral-300">{{.Error}}</td>
-            <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.StartedAt}}</td>
+            <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+              {{if .StartedAt}}{{absTime .StartedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+            </td>
             <td class="px-4 py-3">
               <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.LogURL}}">Log</a>
             </td>
@@ -61,23 +69,24 @@
     </div>
 
     {{if gt .Pages 1}}
-    <nav class="mt-6 flex flex-wrap items-center justify-between gap-3" aria-label="Failed build pages">
+    <nav class="mt-6 flex flex-wrap items-center gap-3" aria-label="Failed build pages">
       {{if gt .Page 1}}
-      <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700" href="/admin/builds?failed=1&amp;page={{sub .Page 1}}">Previous</a>
-      {{else}}
-      <span></span>
+      <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+         href="/admin/builds?failed=1&amp;page={{sub .Page 1}}">Previous</a>
       {{end}}
-      <p class="text-sm text-slate-600 dark:text-neutral-300" role="status">Page {{.Page}} of {{.Pages}}, {{.Total}} failed builds</p>
+      <p class="mx-auto text-sm text-slate-600 dark:text-neutral-300" role="status">Page {{.Page}} of {{.Pages}}, {{.Total}} failed builds</p>
       {{if lt .Page .Pages}}
-      <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700" href="/admin/builds?failed=1&amp;page={{add .Page 1}}">Next</a>
-      {{else}}
-      <span></span>
+      <a class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+         href="/admin/builds?failed=1&amp;page={{add .Page 1}}">Next</a>
       {{end}}
     </nav>
     {{end}}
     {{else}}
-    <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">No failed builds recorded.</p>
+    <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">
+      No failed builds recorded.
+    </p>
     {{end}}
+    </section>
   </main>
 
   {{template "footer" .}}

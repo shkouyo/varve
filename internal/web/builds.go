@@ -22,17 +22,16 @@ import (
 )
 
 // buildsData feeds builds.html: the public, paginated build history with
-// status, package, machine and timestamps, newest first. Empty flags the
-// missing-list state so the template can render its empty message. Admin
-// marks an authenticated request so the template renders the per-row
-// rebuild action.
+// status, package, machine and timestamps, newest first. The template
+// renders its empty message when Builds carries no rows. Admin marks an
+// authenticated request so the template renders the per-row rebuild
+// action.
 type buildsData struct {
 	base
 	Page   int
 	Pages  int
 	Total  int
 	Builds []recentBuildView
-	Empty  bool
 	Admin  bool
 }
 
@@ -68,7 +67,6 @@ func (s *Server) handleBuilds(w http.ResponseWriter, r *http.Request) {
 		Pages:  p,
 		Total:  total,
 		Builds: s.recentBuildViews(ctx, builds, workers),
-		Empty:  total == 0,
 		Admin:  s.authorized(r),
 	}
 	data.Nav = "builds"

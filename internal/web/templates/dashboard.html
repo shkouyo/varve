@@ -14,12 +14,11 @@
   <main id="main" class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
     <h1 class="mb-6 text-2xl font-bold tracking-tight sm:text-3xl">Overview</h1>
 
-    {{if .Admin}}
     {{if .Flash}}
-    <div role="alert" class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .Flash.Kind "error"}}border-red-300 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200{{else}}border-green-300 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200{{end}}">
+    <div role="alert"
+         class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .Flash.Kind "error"}}border-red-300 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200{{else}}border-green-300 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200{{end}}">
       {{.Flash.Message}}
     </div>
-    {{end}}
     {{end}}
 
     <section aria-labelledby="stats-heading" class="mb-8">
@@ -39,12 +38,13 @@
     </section>
 
     {{if .Admin}}
-    <section aria-labelledby="queue-heading" class="mb-8">
+    <section aria-labelledby="queue-heading"
+             class="mb-8">
       <h2 id="queue-heading" class="mb-3 text-xl font-semibold">Task queue</h2>
       {{if .Tasks}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900" tabindex="0" aria-label="Active tasks">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900"
+           tabindex="0" aria-label="Active tasks">
         <table class="w-full text-left text-sm">
-          <caption class="sr-only">Active tasks with package, state, machine and cancel action</caption>
           <thead>
             <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-neutral-400">
               <th scope="col" class="px-4 py-3 font-semibold">Task</th>
@@ -62,14 +62,23 @@
                 <span class="font-mono text-xs text-slate-700 dark:text-neutral-300">{{shortID .ID}}</span>
               </th>
               <td class="px-4 py-3">
-                {{if .Pkgbase}}<a class="font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+                {{if .Pkgbase}}
+                <a class="font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+                {{else}}
+                <span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>
+                {{end}}
               </td>
               <td class="px-4 py-3">{{template "statusBadge" .State}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{if .Worker}}{{.Worker}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.CreatedAt}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .Worker}}{{.Worker}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}
+              </td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .CreatedAt}}{{absTime .CreatedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              </td>
               <td class="px-4 py-3">
                 <form method="post" action="{{.CancelURL}}">
-                  <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Cancel</button>
+                  <button type="submit"
+                          class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Cancel</button>
                 </form>
               </td>
             </tr>
@@ -78,7 +87,9 @@
         </table>
       </div>
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">No active tasks.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">
+        No active tasks.
+      </p>
       {{end}}
     </section>
     {{end}}
@@ -87,13 +98,14 @@
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 id="recent-heading" class="text-xl font-semibold">Recent builds</h2>
         {{if .Admin}}
-        <a class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700" href="/admin/builds?failed=1">Failed builds</a>
+        <a class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+           href="/admin/builds?failed=1">Failed builds</a>
         {{end}}
       </div>
       {{if .Recent}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900" tabindex="0" aria-label="Recent builds">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900"
+           tabindex="0" aria-label="Recent builds">
         <table class="w-full text-left text-sm">
-          <caption class="sr-only">Recent builds with status, package, executing machine and timestamps</caption>
           <thead>
             <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-neutral-400">
               <th scope="col" class="px-4 py-3 font-semibold">Build</th>
@@ -109,20 +121,32 @@
             {{range .Recent}}
             <tr class="border-b border-slate-100 last:border-0 dark:border-white/10">
               <th scope="row" class="px-4 py-3 text-left font-normal">
-                <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
+                <a class="font-mono font-medium text-blue-800 underline underline-offset-2 dark:text-blue-300"
+                   href="/builds/{{.ID}}" title="{{.ID}}">{{slice .ID 0 7}}</a>
               </th>
               <td class="px-4 py-3">
-                {{if .Pkgbase}}<a class="text-slate-800 underline underline-offset-2 dark:text-neutral-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+                {{if .Pkgbase}}
+                <a class="text-slate-800 underline underline-offset-2 dark:text-neutral-200" href="/packages/{{.Pkgbase}}">{{.Pkgbase}}</a>
+                {{else}}
+                <span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>
+                {{end}}
               </td>
               <td class="px-4 py-3">{{template "statusBadge" .Status}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.StartedAt}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.FinishedAt}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .WorkerName}}{{.WorkerName}}{{else}}<span class="text-slate-500 dark:text-neutral-400">not assigned</span>{{end}}
+              </td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .StartedAt}}{{absTime .StartedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              </td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .FinishedAt}}{{absTime .FinishedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              </td>
               {{if $.Admin}}
               <td class="px-4 py-3">
                 {{if .Pkgbase}}
                 <form method="post" action="/admin/packages/{{.Pkgbase}}/rebuild">
-                  <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Rebuild</button>
+                  <button type="submit"
+                          class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Rebuild</button>
                 </form>
                 {{end}}
               </td>
@@ -133,16 +157,18 @@
         </table>
       </div>
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">No builds recorded yet.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">
+        No builds recorded yet.
+      </p>
       {{end}}
     </section>
 
     <section aria-labelledby="workers-heading">
       <h2 id="workers-heading" class="mb-3 text-xl font-semibold">Workers</h2>
       {{if .Workers}}
-      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900" tabindex="0" aria-label="Workers">
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900"
+           tabindex="0" aria-label="Workers">
         <table class="w-full text-left text-sm">
-          <caption class="sr-only">Worker nodes with online status, role, architecture, capacity and heartbeat</caption>
           <thead>
             <tr class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-neutral-400">
               <th scope="col" class="px-4 py-3 font-semibold">Name</th>
@@ -163,12 +189,22 @@
               <td class="px-4 py-3">
                 {{if .Online}}
                 <span class="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-900">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><path d="M8 12l2.5 2.5L16 9"></path></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"
+                       aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M8 12l2.5 2.5L16 9"></path>
+                  </svg>
                   {{.Status}}
                 </span>
                 {{else}}
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-neutral-800 dark:text-neutral-300">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"
+                       aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="8" y1="12" x2="16" y2="12"></line>
+                  </svg>
                   {{.Status}}
                 </span>
                 {{end}}
@@ -178,21 +214,26 @@
               <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.Arch}}</td>
               <td class="px-4 py-3 tabular-nums text-slate-600 dark:text-neutral-300">{{.Capacity}}</td>
               <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.Version}}</td>
-              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">{{.LastHeartbeat}}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .LastHeartbeat}}{{absTime .LastHeartbeat}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              </td>
               {{if $.Admin}}
               <td class="px-4 py-3">
                 <div class="flex flex-wrap items-center gap-2">
                   {{if eq .Status "disabled"}}
                   <form method="post" action="/admin/workers/{{.Name}}/enable">
-                    <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Enable</button>
+                    <button type="submit"
+                            class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Enable</button>
                   </form>
                   {{else}}
                   <form method="post" action="/admin/workers/{{.Name}}/disable">
-                    <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Disable</button>
+                    <button type="submit"
+                            class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">Disable</button>
                   </form>
                   {{end}}
                   <form method="post" action="/admin/workers/{{.Name}}/remove">
-                    <button type="submit" class="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-semibold text-red-800 hover:bg-red-50 dark:border-red-900 dark:bg-neutral-800 dark:text-red-300 dark:hover:bg-red-950">Remove</button>
+                    <button type="submit"
+                            class="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-semibold text-red-800 hover:bg-red-50 dark:border-red-900 dark:bg-neutral-800 dark:text-red-300 dark:hover:bg-red-950">Remove</button>
                   </form>
                 </div>
               </td>
@@ -203,7 +244,9 @@
         </table>
       </div>
       {{else}}
-      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">No workers registered yet.</p>
+      <p class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-slate-500 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-400">
+        No workers registered yet.
+      </p>
       {{end}}
     </section>
   </main>
@@ -211,4 +254,3 @@
   {{template "footer" .}}
 </body>
 </html>
-{{define "statusBadge"}}{{if eq . "queued"}}<span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>queued</span>{{else if eq . "running"}}<span class="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>running</span>{{else}}{{buildBadge .}}{{end}}{{end}}

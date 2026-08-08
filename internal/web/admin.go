@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 )
@@ -32,7 +33,7 @@ type taskView struct {
 	Pkgbase   string
 	State     string
 	Worker    string
-	CreatedAt string
+	CreatedAt *time.Time
 	CancelURL string
 }
 
@@ -54,7 +55,7 @@ type failedBuildView struct {
 	Error     string
 	BuildURL  string
 	LogURL    string
-	StartedAt string
+	StartedAt *time.Time
 }
 
 // handleAdmin redirects to the merged dashboard page; the admin content
@@ -99,7 +100,7 @@ func (s *Server) taskViews(ctx context.Context, tasks []db.Task, workers []db.Wo
 			Pkgbase:   name,
 			State:     t.State,
 			Worker:    workerNames[t.WorkerID],
-			CreatedAt: absTime(&t.CreatedAt),
+			CreatedAt: &t.CreatedAt,
 			CancelURL: "/admin/tasks/" + t.ID + "/cancel",
 		})
 	}
@@ -217,7 +218,7 @@ func (s *Server) handleAdminBuilds(w http.ResponseWriter, r *http.Request) {
 			Error:     b.Error,
 			BuildURL:  "/builds/" + id,
 			LogURL:    "/builds/" + id + "#log",
-			StartedAt: absTime(b.StartedAt),
+			StartedAt: b.StartedAt,
 		})
 	}
 	s.render(w, "admin_builds.html", &data)

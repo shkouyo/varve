@@ -21,6 +21,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 )
@@ -74,8 +75,8 @@ type recentBuildView struct {
 	Pkgbase    string
 	Status     string
 	WorkerName string
-	StartedAt  string
-	FinishedAt string
+	StartedAt  *time.Time
+	FinishedAt *time.Time
 }
 
 // workerNameOf resolves the display name of the machine behind a build:
@@ -101,7 +102,7 @@ type workerView struct {
 	Arch          string
 	Capacity      int
 	Version       string
-	LastHeartbeat string
+	LastHeartbeat *time.Time
 }
 
 // handleDashboard renders GET /.
@@ -156,8 +157,8 @@ func (s *Server) dashboardData(r *http.Request) (dashboardData, error) {
 
 // recentBuildViews resolves recent build rows into the template view: the
 // executing node name (builds.worker_id joins workers.name) and the
-// pkgbase of the package row. Timestamps render as local wall-clock
-// time (absTime), the site-wide format.
+// pkgbase of the package row. Timestamps pass through raw; the template
+// renders them via absTime with a placeholder for missing values.
 func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, workers []db.Worker) []recentBuildView {
 	workerNames := make(map[int64]string, len(workers))
 	for _, w := range workers {
@@ -170,8 +171,8 @@ func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, worker
 			ID:         b.ID,
 			Status:     b.Status,
 			WorkerName: workerNameOf(b, workerNames),
-			StartedAt:  absTime(b.StartedAt),
-			FinishedAt: absTime(b.FinishedAt),
+			StartedAt:  b.StartedAt,
+			FinishedAt: b.FinishedAt,
 		}
 		if name, ok := pkgNames[b.PackageID]; ok {
 			view.Pkgbase = name
@@ -185,8 +186,9 @@ func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, worker
 }
 
 // workerViews converts worker rows into the template view, marking a node
-// online when its recorded status is online. The heartbeat renders as
-// local wall-clock time (absTime).
+// online when its recorded status is online. The heartbeat passes through
+// raw; the template renders it via absTime with a placeholder for missing
+// values.
 func workerViews(workers []db.Worker) []workerView {
 	out := make([]workerView, 0, len(workers))
 	for _, w := range workers {
@@ -199,7 +201,7 @@ func workerViews(workers []db.Worker) []workerView {
 			Arch:          w.Arch,
 			Capacity:      w.Capacity,
 			Version:       w.Version,
-			LastHeartbeat: absTime(w.LastHeartbeat),
+			LastHeartbeat: w.LastHeartbeat,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
