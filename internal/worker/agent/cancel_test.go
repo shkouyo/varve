@@ -29,10 +29,12 @@ import (
 )
 
 // trapScript builds a makepkg stand-in that records SIGTERM and keeps
-// running until SIGKILL, making the SIGTERM→SIGKILL escalation observable.
+// running until SIGKILL, making the SIGTERM→SIGKILL escalation observable:
+// a RUNNING marker is appended on every loop iteration, so the record shows
+// whether the process was still alive after TERM was handled.
 func trapScript(t *testing.T, record string) string {
 	t.Helper()
-	return writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\necho started\nwhile :; do sleep 0.5; echo tick; done", record))
+	return writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\necho started\nwhile :; do echo RUNNING >> %s; sleep 0.01; done", record, record))
 }
 
 // TestCancelViaLogAck asserts channel 2: a Cancelled=true log ack stops
@@ -50,9 +52,7 @@ func TestCancelViaLogAck(t *testing.T) {
 	r.logInterval = time.Hour
 	r.killGrace = 200 * time.Millisecond
 
-	start := time.Now()
 	r.executeTask(context.Background(), taskFor("t-1"), "tok")
-	elapsed := time.Since(start)
 
 	res := f.lastResult()
 	if res == nil || res.Status != statusCancelled {
@@ -66,10 +66,16 @@ func TestCancelViaLogAck(t *testing.T) {
 	if !strings.Contains(string(data), "TERM") {
 		t.Errorf("makepkg never received SIGTERM (record=%q)", data)
 	}
-	// The process ignored SIGTERM, so the kill had to escalate to SIGKILL
-	// after killGrace; the run cannot have finished faster.
-	if elapsed < r.killGrace*8/10 {
-		t.Errorf("cancel finished after %v, want the SIGTERM→SIGKILL grace to elapse", elapsed)
+	// Signal order, not wall clock: the trap recorded TERM and the loop
+	// kept appending RUNNING markers afterwards, so SIGTERM alone did not
+	// stop the process — only the SIGKILL escalation after killGrace could
+	// have ended the run.
+	recorded := string(data)
+	termIdx := strings.Index(recorded, "TERM")
+	if termIdx < 0 {
+		t.Errorf("makepkg never received SIGTERM (record=%q)", recorded)
+	} else if !strings.Contains(recorded[termIdx:], "RUNNING") {
+		t.Errorf("makepkg died on SIGTERM before the SIGKILL escalation (record=%q)", recorded)
 	}
 }
 

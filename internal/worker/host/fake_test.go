@@ -264,6 +264,25 @@ func (c *fakeClient) result(i int) resultCall {
 	return c.results[i]
 }
 
+// stablePollCount returns the poll count once it has stayed unchanged across
+// two reads a poll interval apart, or fails the test when the count keeps
+// growing (polling did not stop). It replaces fixed wall-clock snapshot
+// windows with a synchronization wait.
+func stablePollCount(t *testing.T, c *fakeClient, pollInterval time.Duration) int {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		n := c.pollCount()
+		time.Sleep(2 * pollInterval)
+		if c.pollCount() == n {
+			return n
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("poll count kept growing (%d, want it to stop)", c.pollCount())
+		}
+	}
+}
+
 // testTask builds a minimal TaskDetail for tests. The Build block is left
 // zero (no per-task timeout) unless a test assigns it directly; its type is
 // dispatch-internal and not re-exported by api.

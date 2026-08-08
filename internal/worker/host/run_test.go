@@ -88,21 +88,26 @@ func TestRunShutdownDrainsAndDeregisters(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 
-	// A container starts and the poller parks behind the capacity slot.
-	waitFor(t, 3*time.Second, func() bool { return rt.runCount() >= 1 })
-	time.Sleep(200 * time.Millisecond)
+	// The container starts and the monitor enters its wait, which parks
+	// the single poll worker behind the capacity slot: it can no longer
+	// claim tasks.
+	waitFor(t, 3*time.Second, func() bool {
+		return rt.runCount() >= 1 && rt.waitCount() >= 1
+	})
 	pollsAtCancel := c.pollCount()
 
 	cancel()
-	time.Sleep(300 * time.Millisecond)
-	snap1 := c.pollCount()
-	time.Sleep(300 * time.Millisecond)
-	snap2 := c.pollCount()
-	if snap2 != snap1 {
-		t.Errorf("polling continued after shutdown: %d then %d", snap1, snap2)
-	}
+
+	// The poll worker must stop claiming new tasks. It may complete one
+	// poll that was in flight when the cancel landed, so wait for the
+	// count to stabilize instead of assuming a fixed wall-clock window.
+	snap1 := stablePollCount(t, c, r.pollInterval)
 	if snap1 > pollsAtCancel+1 {
 		t.Errorf("poll count grew after cancel (%d → %d), want at most +1 in flight", pollsAtCancel, snap1)
+	}
+	snap2 := stablePollCount(t, c, r.pollInterval)
+	if snap2 != snap1 {
+		t.Errorf("polling continued after shutdown: %d then %d", snap1, snap2)
 	}
 
 	// Releasing the container lets the monitor finish the drain.
