@@ -20,6 +20,7 @@ package detect
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -52,22 +53,25 @@ esac
 func TestRunPollsAndStops(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "calls")
 	counter := filepath.Join(t.TempDir(), "count")
+	if err := os.WriteFile(record, nil, 0o644); err != nil {
+		t.Fatalf("create record: %v", err)
+	}
 	store, _ := openStore(t)
 	d := newTestDetector(t, "git@git.example.org:pkgbuilds.git", store, &fakeSink{})
 	d.cfg.PollInterval = 10 * time.Millisecond
 	d.execCommand = fakeExecScript(t, runScript(record, counter))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		cancel()
-	}()
-	start := time.Now()
-	if err := d.Run(ctx); err != nil {
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	// Wait until several poll rounds have run (each round starts with a
+	// clone), then cancel: the invocation record makes the round count
+	// observable, so no wall-clock window is needed.
+	waitFor(t, 3*time.Second, func() bool { return countLines(t, record, "clone") >= 3 })
+	cancel()
+	if err := <-done; err != nil {
 		t.Fatalf("Run: %v", err)
-	}
-	if elapsed := time.Since(start); elapsed < 50*time.Millisecond {
-		t.Errorf("Run returned too early (%v)", elapsed)
 	}
 
 	clones := countLines(t, record, "clone")
@@ -82,6 +86,9 @@ func TestRunPollsAndStops(t *testing.T) {
 func TestRunContinuesAfterRoundFailure(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "calls")
 	counter := filepath.Join(t.TempDir(), "count")
+	if err := os.WriteFile(record, nil, 0o644); err != nil {
+		t.Fatalf("create record: %v", err)
+	}
 	store, _ := openStore(t)
 	sink := &fakeSink{}
 	d := newTestDetector(t, "git@git.example.org:pkgbuilds.git", store, sink)
@@ -89,11 +96,15 @@ func TestRunContinuesAfterRoundFailure(t *testing.T) {
 	d.execCommand = fakeExecScript(t, runScript(record, counter))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(80 * time.Millisecond)
-		cancel()
-	}()
-	if err := d.Run(ctx); err != nil {
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	// The first round fails; wait until a later round has submitted the
+	// package (proving the loop kept polling after the failure), then
+	// cancel.
+	waitFor(t, 3*time.Second, func() bool { return len(sink.snapshot()) >= 1 })
+	cancel()
+	if err := <-done; err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 

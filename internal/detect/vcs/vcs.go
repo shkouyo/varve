@@ -19,7 +19,8 @@
 // (following yay) and queries the upstream reference of a VCS source: the
 // HEAD commit for git and the last-changed revision for svn. Every
 // external command goes through the package variable execCommand so
-// same-package tests can substitute a recorder.
+// same-package tests can substitute a recorder. Tests in this package
+// replace execCommand and must not run t.Parallel.
 package vcs
 
 import (

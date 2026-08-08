@@ -22,6 +22,9 @@
 // packages.last_commit / last_upstream_ref records are only updated
 // after a successful build, which is what makes failed builds naturally
 // re-queue on the next round (throttled by the failed-rebuild cooldown).
+//
+// Tests in this package swap package-level stubs (mirrorTimeout) and must
+// not run t.Parallel.
 package detect
 
 import (

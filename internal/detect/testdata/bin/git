@@ -7,7 +7,8 @@
 # real git binary. Behavior is driven by environment variables:
 #
 #   VARVE_TEST_GIT_HEAD  canned HEAD hash for ls-remote (empty = no HEAD)
-#   VARVE_TEST_GIT_SLEEP seconds to sleep inside ls-remote (concurrency tests)
+#   VARVE_TEST_GIT_BARRIER path of a barrier file: ls-remote parks until the
+#                         test creates the file (concurrency tests)
 #   VARVE_TEST_GIT_TRACE file to append start/end markers (concurrency tests)
 #   VARVE_REAL_GIT       path of the real git binary (default /usr/bin/git)
 
@@ -17,8 +18,13 @@ if [ "$1" = "ls-remote" ]; then
     if [ -n "$VARVE_TEST_GIT_TRACE" ]; then
         echo "start" >> "$VARVE_TEST_GIT_TRACE"
     fi
-    if [ -n "$VARVE_TEST_GIT_SLEEP" ]; then
-        sleep "$VARVE_TEST_GIT_SLEEP"
+    if [ -n "$VARVE_TEST_GIT_BARRIER" ]; then
+        # Park until the test creates the barrier file: with the upstream-
+        # query semaphore full, every active query blocks here, making
+        # concurrency observable instead of a timing artifact.
+        while [ ! -e "$VARVE_TEST_GIT_BARRIER" ]; do
+            sleep 0.01
+        done
     fi
     if [ -n "$VARVE_TEST_GIT_HEAD" ]; then
         printf '%s\tHEAD\n' "$VARVE_TEST_GIT_HEAD"

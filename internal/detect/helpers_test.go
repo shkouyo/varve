@@ -156,6 +156,22 @@ func withShimPath(t *testing.T) {
 	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// waitFor polls cond until it holds or the timeout elapses (fatal). It is
+// the synchronization primitive for tests whose goroutines finish on their
+// own schedule (poll loops, uploads): the condition is observable state, so
+// no fixed wall-clock window is needed.
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("condition not met within %v", timeout)
+}
+
 // --- git helpers (tests use real git against local file:// repos only) ---
 
 func writeFile(t *testing.T, path, content string) {

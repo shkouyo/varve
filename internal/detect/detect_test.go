@@ -21,9 +21,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
@@ -361,8 +363,10 @@ func TestPollOnceUpstreamQueryFailureSkips(t *testing.T) {
 }
 
 // TestPollOnceUpstreamConcurrencyBounded drives eight VCS branches whose
-// ls-remote calls are traced by the git PATH shim: the queries must
-// overlap but never exceed vcsQueryConcurrency.
+// ls-remote calls are traced by the git PATH shim. The shim parks every
+// query behind a barrier file, so the test first observes all
+// vcsQueryConcurrency slots occupied (deterministic overlap) and only then
+// releases them; the trace must never exceed the cap.
 func TestPollOnceUpstreamConcurrencyBounded(t *testing.T) {
 	withShimPath(t)
 	branches := make([]branchSpec, 0, 8)
@@ -375,22 +379,47 @@ func TestPollOnceUpstreamConcurrencyBounded(t *testing.T) {
 	src := newMultiBranchRepo(t, branches)
 
 	trace := filepath.Join(t.TempDir(), "trace")
+	barrier := filepath.Join(t.TempDir(), "release")
+	if err := os.WriteFile(trace, nil, 0o644); err != nil {
+		t.Fatalf("create trace: %v", err)
+	}
 	t.Setenv("VARVE_TEST_GIT_HEAD", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	t.Setenv("VARVE_TEST_GIT_SLEEP", "0.2")
+	t.Setenv("VARVE_TEST_GIT_BARRIER", barrier)
 	t.Setenv("VARVE_TEST_GIT_TRACE", trace)
 
 	store, _ := openStore(t)
 	sink := &fakeSink{}
 	d := newTestDetector(t, "file://"+src, store, sink)
 
-	if err := d.PollOnce(context.Background()); err != nil {
+	// Release the barrier on any exit path so a failed waitFor does not
+	// leave the parked ls-remote shims blocking forever.
+	var released bool
+	defer func() {
+		if !released {
+			_ = os.WriteFile(barrier, nil, 0o644)
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() { done <- d.PollOnce(context.Background()) }()
+
+	// Wait until every upstream-query slot is occupied: the parked
+	// ls-remote calls prove the queries overlap by construction.
+	waitFor(t, 3*time.Second, func() bool {
+		return countLines(t, trace, "start") >= vcsQueryConcurrency
+	})
+	if err := os.WriteFile(barrier, nil, 0o644); err != nil {
+		t.Fatalf("write barrier: %v", err)
+	}
+	released = true
+	if err := <-done; err != nil {
 		t.Fatalf("PollOnce: %v", err)
 	}
 	assertChangeCount(t, sink, 8)
 
 	max := maxConcurrent(t, trace)
-	if max < 2 {
-		t.Errorf("upstream queries did not overlap (max active = %d)", max)
+	if max != vcsQueryConcurrency {
+		t.Errorf("upstream queries: max active = %d, want exactly %d (barrier-synchronized)", max, vcsQueryConcurrency)
 	}
 	if max > vcsQueryConcurrency {
 		t.Errorf("upstream queries exceeded the cap: max active = %d, want <= %d", max, vcsQueryConcurrency)
