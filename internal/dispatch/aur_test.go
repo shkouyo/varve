@@ -54,8 +54,9 @@ func aurExecScript(t *testing.T, log *opLog, body string) func(ctx context.Conte
 }
 
 // TestAURPusherPush asserts the push command construction: the remote
-// URL <user>@<server>:<name>.git, the <branch>:master refspec, the mirror
-// working directory and the GIT_SSH_COMMAND identity injection.
+// URL <user>@<server>:<name>.git, the --force flag, the <branch>:master
+// refspec, the mirror working directory and the GIT_SSH_COMMAND identity
+// injection.
 func TestAURPusherPush(t *testing.T) {
 	log := newOpLog(t)
 	pusher := &AURPusher{
@@ -67,7 +68,7 @@ func TestAURPusherPush(t *testing.T) {
 		t.Fatalf("Push: %v", err)
 	}
 	want := []string{
-		"git -C /data/source/pkgbuilds.git push aur@aur.archlinux.org:foo.git foo-branch:master",
+		"git -C /data/source/pkgbuilds.git push --force aur@aur.archlinux.org:foo.git foo-branch:master",
 		`GIT_SSH_COMMAND=ssh -i "/data/aur_key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,
 	}
 	got := log.read()
@@ -113,26 +114,24 @@ func TestAURPusherDisabled(t *testing.T) {
 	}
 }
 
-// TestAURPusherNonFastForward asserts a git rejection (the AUR master has
-// commits the branch does not contain) surfaces as ErrAURNonFastForward
-// with the remote output attached, and is never forced.
-func TestAURPusherNonFastForward(t *testing.T) {
+// TestAURPusherForceSync asserts a push whose AUR master has diverged
+// from the branch still succeeds: --force overwrites the AUR side, so a
+// stale or rewritten master can never block a release. The git output
+// models a forced update (the "+ ... (forced update)" marker).
+func TestAURPusherForceSync(t *testing.T) {
 	log := newOpLog(t)
 	pusher := &AURPusher{
-		cfg: &config.AURConfig{Server: "aur.archlinux.org", KeyFile: "/data/k", User: "aur"},
-		execCommand: aurExecScript(t, log, `printf '%s' ' ! [rejected]        foo-branch -> master (non-fast-forward)' >&2
-exit 1`),
+		cfg:         &config.AURConfig{Server: "aur.archlinux.org", KeyFile: "/data/k", User: "aur"},
+		execCommand: aurExecScript(t, log, `printf '%s' ' + aaaa...bbbb foo-branch -> master (forced update)' >&2`),
 	}
 	err := pusher.Push(context.Background(), "/data/source/x.git", "foo-branch", "foo")
-	if !errors.Is(err, ErrAURNonFastForward) {
-		t.Errorf("Push = %v, want ErrAURNonFastForward", err)
-	}
-	if err == nil || !strings.Contains(err.Error(), "non-fast-forward") {
-		t.Errorf("Push error = %v, want remote output attached", err)
+	if err != nil {
+		t.Fatalf("Push: %v", err)
 	}
 	got := log.read()
-	if len(got) == 0 || strings.Contains(strings.Join(got, " "), "--force") {
-		t.Errorf("push must never be forced, got %v", got)
+	want := "git -C /data/source/x.git push --force aur@aur.archlinux.org:foo.git foo-branch:master"
+	if len(got) == 0 || got[0] != want {
+		t.Errorf("exec log = %v, want %q", got, want)
 	}
 }
 
@@ -146,7 +145,7 @@ func TestAURPusherGenericError(t *testing.T) {
 exit 1`),
 	}
 	err := pusher.Push(context.Background(), "/data/source/x.git", "main", "foo")
-	if err == nil || errors.Is(err, ErrAURNonFastForward) || errors.Is(err, ErrAURDisabled) {
+	if err == nil || errors.Is(err, ErrAURDisabled) {
 		t.Errorf("Push = %v, want a generic push error", err)
 	}
 }
@@ -308,12 +307,12 @@ func TestPublishAURUnchangedCommit(t *testing.T) {
 	}
 }
 
-// TestPublishAURFailure asserts a rejected push is recorded with the error
+// TestPublishAURFailure asserts a failed push is recorded with the error
 // text and the maintainers are notified with the AUR push details.
 func TestPublishAURFailure(t *testing.T) {
 	env := newTestEnv(t)
 	env.cfg.AUR.KeyFile = "/data/aur_key"
-	pusher := &fakeAURPusher{pushErr: ErrAURNonFastForward}
+	pusher := &fakeAURPusher{pushErr: errors.New("rejected")}
 	env.o.aurPusher = pusher
 
 	c := detectChange("aurpkg", "main", "a@example.org")

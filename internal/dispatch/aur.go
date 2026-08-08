@@ -38,10 +38,11 @@ var execCommand = exec.CommandContext
 // submit flag, commit-bearing change) and calls Push after a successful
 // ingest; the interface is injectable so tests substitute a recorder.
 type AURPublisher interface {
-	// Push publishes the branch ref of the mirror at mirrorDir as the
-	// master branch of the AUR package repository <user>@<server>:<name>.git.
-	// The push is fast-forward only: git rejects a non-fast-forward update
-	// without --force, which surfaces as ErrAURNonFastForward.
+	// Push force-synchronizes the branch ref of the mirror at mirrorDir
+	// onto the master branch of the AUR package repository
+	// <user>@<server>:<name>.git. The forced update overwrites any
+	// AUR-side divergence or leftover history, so the branch history
+	// always becomes the master history.
 	Push(ctx context.Context, mirrorDir, branch, aurName string) error
 }
 
@@ -51,10 +52,6 @@ type AURPublisher interface {
 var (
 	// ErrAURDisabled reports a push attempt with no SSH key configured.
 	ErrAURDisabled = errors.New("dispatch: AUR publishing disabled")
-	// ErrAURNonFastForward reports a rejected update: the AUR master has
-	// commits the source branch does not contain. The push is never
-	// forced; the maintainers are notified instead.
-	ErrAURNonFastForward = errors.New("dispatch: AUR push rejected: non-fast-forward")
 )
 
 // AURPusher is the git-based AURPublisher. It pushes from the controller's
@@ -76,10 +73,12 @@ func NewAURPusher(cfg *config.AURConfig) *AURPusher {
 	return &AURPusher{cfg: cfg, execCommand: execCommand}
 }
 
-// Push runs "git push <user>@<server>:<name>.git <branch>:master" inside
-// the mirror directory. No --force is passed, so git itself refuses any
-// update that is not a fast-forward; such rejections surface as
-// ErrAURNonFastForward with the remote output attached.
+// Push runs "git push --force <user>@<server>:<name>.git <branch>:master"
+// inside the mirror directory. The force flag makes the update a forced
+// sync: commits on the AUR master that the branch does not contain are
+// overwritten, so a diverged or stale AUR package can never block a
+// release. Any remaining failure is reported as a plain error with the
+// remote output attached.
 func (p *AURPusher) Push(ctx context.Context, mirrorDir, branch, aurName string) error {
 	if p.cfg == nil || p.cfg.KeyFile == "" {
 		return ErrAURDisabled
@@ -89,14 +88,11 @@ func (p *AURPusher) Push(ctx context.Context, mirrorDir, branch, aurName string)
 	// accept-new tolerates an unknown host without an interactive prompt.
 	sshCmd := "ssh -i " + strconv.Quote(p.cfg.KeyFile) +
 		" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-	cmd := p.execCommand(ctx, "git", "-C", mirrorDir, "push", remote, branch+":master")
+	cmd := p.execCommand(ctx, "git", "-C", mirrorDir, "push", "--force", remote, branch+":master")
 	cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
 	out, err := cmd.CombinedOutput()
 	msg := strings.TrimSpace(string(out))
 	if err != nil {
-		if strings.Contains(msg, "non-fast-forward") || strings.Contains(msg, "[rejected]") {
-			return fmt.Errorf("%w: %s", ErrAURNonFastForward, msg)
-		}
 		return fmt.Errorf("git push %s: %w: %s", aurName, err, msg)
 	}
 	return nil
