@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // displayArch renders the stored architecture set ("x86_64",
@@ -79,6 +80,32 @@ func absTime(t *time.Time) string {
 		return "never"
 	}
 	return t.Local().Format("2006-01-02 15:04:05")
+}
+
+// maxAURSummaryLen caps the rendered AUR push error so a wall of remote
+// git/ssh output cannot overflow the metadata row.
+const maxAURSummaryLen = 200
+
+// aurErrorSummary condenses a recorded AUR push error into a safe,
+// single-line display string for the package page. Push errors carry
+// arbitrary remote output, so every control character is dropped, runs
+// of whitespace collapse into one space and the result is capped (by
+// runes) at maxAURSummaryLen with an ellipsis. html/template escapes the
+// text for the page; the collapse keeps it a tidy one-liner whatever the
+// remote side printed. The empty input renders empty, so the template
+// gate stays the source of truth for whether the failure line appears.
+func aurErrorSummary(err string) string {
+	if err == "" {
+		return ""
+	}
+	fields := strings.FieldsFunc(err, func(r rune) bool {
+		return r < 0x20 || r == 0x7f || unicode.IsSpace(r)
+	})
+	s := strings.Join(fields, " ")
+	if r := []rune(s); len(r) > maxAURSummaryLen {
+		return string(r[:maxAURSummaryLen]) + "…"
+	}
+	return s
 }
 
 // pkgEpoch renders the package version with its epoch prefix

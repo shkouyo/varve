@@ -64,10 +64,18 @@
           <dt class="font-medium text-slate-500 dark:text-neutral-400">Architecture</dt>
           <dd class="text-slate-900 dark:text-neutral-100">{{displayArch .Pkg.Arch}}</dd>
           <dt class="font-medium text-slate-500 dark:text-neutral-400">Maintainers</dt>
-          <dd class="text-slate-900 dark:text-neutral-100">{{range $i, $m := .Pkg.Maintainers}}{{if $i}}, {{end}}{{$m}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
+          <dd class="text-slate-900 dark:text-neutral-100">{{range $i, $m := .Pkg.Maintainers}}{{if $i}}, {{end}}{{if $m.Name}}{{$m.Name}}{{else}}{{$m.Email}}{{end}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}</dd>
           {{if .Pkg.URL}}
           <dt class="font-medium text-slate-500 dark:text-neutral-400">Upstream</dt>
           <dd><a class="break-all text-blue-800 underline underline-offset-2 dark:text-blue-300" href="{{.Pkg.URL}}" target="_blank" rel="noopener noreferrer">{{.Pkg.URL}}</a></dd>
+          {{end}}
+          {{if .Pkg.AURName}}
+          <dt class="font-medium text-slate-500 dark:text-neutral-400">AUR</dt>
+          <dd class="text-slate-900 dark:text-neutral-100">
+            <a class="break-all text-blue-800 underline underline-offset-2 dark:text-blue-300" href="https://aur.archlinux.org/packages/{{.Pkg.AURName}}" target="_blank" rel="noopener noreferrer">{{.Pkg.AURName}}</a>
+            {{if .Pkg.LastAURPushAt}}<span class="text-slate-600 dark:text-neutral-300"> · last push {{absTime .Pkg.LastAURPushAt}}{{if .Pkg.LastAURCommit}} ({{shortID .Pkg.LastAURCommit}}){{end}}</span>{{end}}
+            {{if .Pkg.LastAURError}}<p class="mt-1 break-all text-red-800 dark:text-red-300">{{aurError .Pkg.LastAURError}}</p>{{end}}
+          </dd>
           {{end}}
           {{if .Pkg.Licenses}}
           <dt class="font-medium text-slate-500 dark:text-neutral-400">Licenses</dt>

@@ -18,6 +18,7 @@
 package web
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,6 +35,26 @@ func TestAbsTime(t *testing.T) {
 	want := when.Local().Format("2006-01-02 15:04:05")
 	if got != want {
 		t.Errorf("absTime(%v) = %q, want %q (second precision)", when, got, want)
+	}
+}
+
+// TestAURErrorSummary pins the web-safe rendering of a recorded AUR push
+// error: control characters and whitespace collapse to single spaces (the
+// summary stays one line), the text is trimmed, and over-long output is
+// capped at maxAURSummaryLen runes with an ellipsis. The empty input
+// renders empty, so the template gate decides visibility.
+func TestAURErrorSummary(t *testing.T) {
+	if got := aurErrorSummary(""); got != "" {
+		t.Errorf("aurErrorSummary(\"\") = %q, want empty", got)
+	}
+	in := "git push demo: exit status 1:\r\n\tfatal: unable to access 'ssh://aur@aur.archlinux.org/demo.git/':\r\n\tPermission denied (publickey)"
+	want := "git push demo: exit status 1: fatal: unable to access 'ssh://aur@aur.archlinux.org/demo.git/': Permission denied (publickey)"
+	if got := aurErrorSummary(in); got != want {
+		t.Errorf("aurErrorSummary collapse = %q, want %q", got, want)
+	}
+	long := strings.Repeat("x", 250)
+	if got := aurErrorSummary(long); len([]rune(got)) != maxAURSummaryLen+1 || !strings.HasSuffix(got, "…") {
+		t.Errorf("aurErrorSummary cap = %d runes, want %d plus ellipsis", len([]rune(got)), maxAURSummaryLen)
 	}
 }
 

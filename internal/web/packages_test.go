@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 )
@@ -194,6 +195,108 @@ func TestPackageNotFound(t *testing.T) {
 		t.Fatalf("GET /packages/nope = %d, want 404", rec.Code)
 	}
 	mustContain(t, rec.Body.String(), "Not Found", "Package not found")
+}
+
+// TestPackageAURRow drives the AUR metadata row of the package page: a
+// branch published to AUR ([aur] name set) renders the AUR package link
+// plus the recorded push state (attempt time, short commit, sanitized
+// failure summary when the last push failed), while a branch without an
+// AUR name renders no AUR row at all — most packages are not published,
+// so a quiet page is the default and no "not enabled" placeholder is
+// printed.
+func TestPackageAURRow(t *testing.T) {
+	store := newTestDB(t)
+	publish := func(pkgbase string) db.Package {
+		p := db.Package{
+			Pkgbase:     pkgbase,
+			Branch:      "main",
+			VCSKind:     "git",
+			Arch:        "x86_64",
+			Pkgdesc:     "A demo package",
+			Maintainers: []db.Maintainer{{Name: "Alice Example", Email: "alice@example.org"}},
+			AURName:     "aur-" + pkgbase,
+			AURSubmit:   true,
+		}
+		if err := store.UpsertPackage(testCtx, &p); err != nil {
+			t.Fatalf("upsert package %q: %v", pkgbase, err)
+		}
+		return p
+	}
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+
+	// Not published to AUR: no AUR row, no AUR URL anywhere on the page.
+	seedPackage(t, store, "plain-pkg", "A demo package")
+	body := get(t, s, http.MethodGet, "/packages/plain-pkg", nil).Body.String()
+	if strings.Contains(body, "aur.archlinux.org") {
+		t.Error("unpublished package must not render an AUR row")
+	}
+
+	// Published, no push recorded yet: the link row renders alone.
+	publish("demo-pkg")
+	body = get(t, s, http.MethodGet, "/packages/demo-pkg", nil).Body.String()
+	mustContain(t, body,
+		"AUR",
+		`href="https://aur.archlinux.org/packages/aur-demo-pkg"`,
+		`target="_blank"`, `rel="noopener noreferrer"`,
+	)
+	if strings.Contains(body, "last push") {
+		t.Error("AUR row must not show a push before any push was attempted")
+	}
+
+	// Successful push: the row gains the attempt time and short commit.
+	when := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	commit := "cafebabecafebabecafebabecafebabecafebabe"
+	if err := store.RecordAURPush(testCtx, "demo-pkg", commit, when, ""); err != nil {
+		t.Fatalf("record AUR push: %v", err)
+	}
+	body = get(t, s, http.MethodGet, "/packages/demo-pkg", nil).Body.String()
+	mustContain(t, body, "last push "+absTime(&when), "("+shortID(commit)+")")
+	if strings.Contains(body, `class="mt-1 break-all text-red-800 dark:text-red-300"`) {
+		t.Error("successful push must not render the failure summary")
+	}
+
+	// Failed push: the sanitized one-line summary joins the row.
+	errMsg := "git push aur-demo-pkg: exit status 1:\r\n\tfatal: unable to access:\r\n\tPermission denied (publickey)"
+	if err := store.RecordAURPush(testCtx, "demo-pkg", commit, when, errMsg); err != nil {
+		t.Fatalf("record failed AUR push: %v", err)
+	}
+	body = get(t, s, http.MethodGet, "/packages/demo-pkg", nil).Body.String()
+	mustContain(t, body,
+		"last push "+absTime(&when),
+		aurErrorSummary(errMsg), // control characters stripped
+		"text-red-800",
+	)
+}
+
+// TestPackageMaintainerNames asserts the maintainers row renders display
+// names only — the email of a named entry never appears and no mailto
+// link is emitted — while legacy email-only entries fall back to the
+// address so the row still shows something.
+func TestPackageMaintainerNames(t *testing.T) {
+	store := newTestDB(t)
+	p := db.Package{
+		Pkgbase: "named-pkg",
+		Branch:  "main",
+		VCSKind: "git",
+		Arch:    "x86_64",
+		Pkgdesc: "A demo package",
+		Maintainers: []db.Maintainer{
+			{Name: "Alice Example", Email: "alice@example.org"},
+			{Email: "legacy@example.org"},
+		},
+	}
+	if err := store.UpsertPackage(testCtx, &p); err != nil {
+		t.Fatalf("upsert package: %v", err)
+	}
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	body := get(t, s, http.MethodGet, "/packages/named-pkg", nil).Body.String()
+	mustContain(t, body, "Alice Example", "legacy@example.org")
+	if strings.Contains(body, "alice@example.org") {
+		t.Error("email of a named maintainer must not render")
+	}
+	if strings.Contains(body, "mailto:") {
+		t.Error("maintainers row must not render mailto links")
+	}
 }
 
 // TestDownloadFor pins the hero-link rules: one package artifact links,
