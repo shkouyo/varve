@@ -338,13 +338,33 @@ func (o *OrchestratorImpl) clearToken(taskID string) {
 	o.tokenMu.Unlock()
 }
 
+// settleTimeout bounds a terminal-state write performed after a client
+// disconnect. The request context may already be canceled by then (the
+// worker's result POST timed out and Caddy gave up on the upstream), so the
+// write must not inherit that cancellation: a received result must always
+// land the task in a terminal state, or the task would stay "running"
+// forever with no path to recovery. It is a variable so tests can shorten
+// it.
+var settleTimeout = 30 * time.Second
+
+// settleCtx returns a context for terminal-state writes that keeps the
+// request's values but is detached from its cancellation, bounded by
+// settleTimeout so a wedged store can never block finalization forever.
+func settleCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
+}
+
 // finalizeTask writes a terminal state through the store transaction
-// helper. ErrConflict (already terminal: a concurrent agent report, cancel
-// or scheduler scan won the race) and ErrNotFound propagate unwrapped so
-// callers can classify them.
+// helper. The write uses a settled context so it completes even when the
+// reporting client already disconnected (a lost finalize is what leaves a
+// task stuck "running" with cancellation ineffective). ErrConflict (already
+// terminal: a concurrent agent report, cancel or scheduler scan won the
+// race) and ErrNotFound propagate unwrapped so callers can classify them.
 func (o *OrchestratorImpl) finalizeTask(ctx context.Context, taskID, state, errMsg string, artifacts []db.Artifact, samples []db.Sample) error {
-	return o.store.WithTx(ctx, func(tx *db.Tx) error {
-		return tx.FinalizeTask(ctx, taskID, state, errMsg, o.now().UTC(), artifacts, samples)
+	stx, cancel := settleCtx(ctx)
+	defer cancel()
+	return o.store.WithTx(stx, func(tx *db.Tx) error {
+		return tx.FinalizeTask(stx, taskID, state, errMsg, o.now().UTC(), artifacts, samples)
 	})
 }
 
@@ -353,8 +373,10 @@ func (o *OrchestratorImpl) finalizeTask(ctx context.Context, taskID, state, errM
 // marker), notifies the maintainers and clears the signer. ErrConflict and
 // ErrNotFound propagate so callers classify a lost race as today.
 func (o *OrchestratorImpl) finalizeFailure(ctx context.Context, task *db.Task, stage, summary string, artifacts []db.Artifact, samples []db.Sample) error {
-	err := o.store.WithTx(ctx, func(tx *db.Tx) error {
-		return tx.FinalizeFailed(ctx, task.ID, stage+": "+summary, o.now().UTC(), artifacts, samples)
+	stx, cancel := settleCtx(ctx)
+	defer cancel()
+	err := o.store.WithTx(stx, func(tx *db.Tx) error {
+		return tx.FinalizeFailed(stx, task.ID, stage+": "+summary, o.now().UTC(), artifacts, samples)
 	})
 	if err != nil {
 		return err

@@ -121,15 +121,21 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	}
 
 	// 3. One SQLite transaction: finalize succeeded + update the package
-	// record (after repo-add, before staging cleanup).
-	samples := o.finalSamples(ctx, task.BuildID, res.ResourceUsage)
-	currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch := o.packageUpdateFields(ctx, task.ID, res.Artifacts)
-	err = o.store.WithTx(ctx, func(tx *db.Tx) error {
-		if err := tx.FinalizeTask(ctx, task.ID, "succeeded", "", o.now().UTC(),
+	// record (after repo-add, before staging cleanup). The tail of a
+	// successful report must complete even when the client already
+	// disconnected (the worker's result POST can time out while the ingest
+	// finishes), so it runs on a settled context: a finalize that is lost
+	// with the canceled request would leave the task stuck "running".
+	stx, scancel := settleCtx(ctx)
+	defer scancel()
+	samples := o.finalSamples(stx, task.BuildID, res.ResourceUsage)
+	currentVersion, pkgdesc, srcinfoHash, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch := o.packageUpdateFields(stx, task.ID, res.Artifacts)
+	err = o.store.WithTx(stx, func(tx *db.Tx) error {
+		if err := tx.FinalizeTask(stx, task.ID, "succeeded", "", o.now().UTC(),
 			toDBArtifacts(res.Artifacts), samples); err != nil {
 			return err
 		}
-		return tx.UpdatePackageAfterBuild(ctx, pkg.Pkgbase, db.PackageUpdate{
+		return tx.UpdatePackageAfterBuild(stx, pkg.Pkgbase, db.PackageUpdate{
 			CurrentVersion: currentVersion,
 			Pkgdesc:        pkgdesc,
 			SrcinfoHash:    srcinfoHash,
@@ -156,19 +162,19 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 		// The ingest itself already moved artifacts; a failed transaction
 		// leaves them in the repository but the task is recorded failed and
 		// retried from the preserved staging area on the next report.
-		o.failTask(ctx, task, "ingest", err.Error())
+		o.failTask(stx, task, "ingest", err.Error())
 		return nil
 	}
 
 	// 4. Staging cleanup.
-	o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
+	o.cleanupStaging(stx, task.ID, o.stagedFiles(res.Artifacts))
 	o.clearSigner(task.ID)
 
 	// 5. AUR publishing: when the branch opted in and this change carried
 	// a branch commit, mirror it into the AUR package repository. The
 	// ingest already succeeded; a push failure is recorded and notified
 	// but never fails the build.
-	o.publishAUR(ctx, pkg, build)
+	o.publishAUR(stx, pkg, build)
 	return nil
 }
 
@@ -278,7 +284,9 @@ func (o *OrchestratorImpl) handleFailed(ctx context.Context, task *db.Task, res 
 // cooldown marker and notification.
 func (o *OrchestratorImpl) failOrRetry(ctx context.Context, task *db.Task, stage, summary string, res ResultReq) error {
 	if task.FailCount < o.cfg.Worker.RetryMax {
-		if err := o.store.RequeueFailedTask(ctx, task.ID); err != nil {
+		stx, cancel := settleCtx(ctx)
+		defer cancel()
+		if err := o.store.RequeueFailedTask(stx, task.ID); err != nil {
 			return err
 		}
 		o.clearToken(task.ID)

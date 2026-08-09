@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/repo"
 	"git.0x0f.dev/varve/internal/storage"
@@ -334,4 +335,68 @@ func TestReportCancellationPriority(t *testing.T) {
 	if task.State != "cancelled" {
 		t.Errorf("state = %q, want cancelled", task.State)
 	}
+}
+
+// TestReportFinalizesAfterClientDisconnect is the regression test for the
+// orphaned-task failure mode behind the 502 incident: the worker's result
+// POST times out and the client disconnects while the ingest is still in
+// flight. The terminal write must survive the canceled request context, or
+// the task would stay "running" forever with cancellation and stall
+// recovery both ineffective.
+func TestReportFinalizesAfterClientDisconnect(t *testing.T) {
+	run := func(t *testing.T, ingestErr error, wantState string) {
+		t.Helper()
+		env := newTestEnv(t)
+		artifacts := testArtifacts("foo", "1.0-1")
+		taskID := env.enqueue(t, "foo", "foo")
+		for _, a := range artifacts {
+			env.stage(t, taskID, a.File)
+		}
+		env.registerWorker(t, "w1", "host", "host", 1)
+		claimed, token := env.claim(t, "w1")
+
+		env.up.entered = make(chan struct{})
+		env.up.block = make(chan struct{})
+		env.up.ingestErr = ingestErr
+
+		ctx, cancel := context.WithCancel(context.Background())
+		reportDone := make(chan struct{})
+		var reportErr error
+		go func() {
+			reportErr = env.o.ReportResult(ctx, claimed, token,
+				ResultReq{Status: "succeeded", Artifacts: artifacts})
+			close(reportDone)
+		}()
+
+		select {
+		case <-env.up.entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("ingest never started")
+		}
+		cancel() // the worker's result POST timed out and disconnected
+
+		close(env.up.block)
+		select {
+		case <-reportDone:
+		case <-time.After(5 * time.Second):
+			t.Fatal("report did not finish")
+		}
+		if reportErr != nil {
+			t.Fatalf("report: %v", reportErr)
+		}
+		task, err := env.store.GetTask(context.Background(), claimed)
+		if err != nil {
+			t.Fatalf("GetTask: %v", err)
+		}
+		if task.State != wantState {
+			t.Fatalf("state = %q, want %q (finalize must not be lost with the canceled request)", task.State, wantState)
+		}
+	}
+
+	t.Run("ingest failure finalizes failed", func(t *testing.T) {
+		run(t, errors.New("ingest failed mid-flight"), "failed")
+	})
+	t.Run("ingest success finalizes succeeded", func(t *testing.T) {
+		run(t, nil, "succeeded")
+	})
 }
