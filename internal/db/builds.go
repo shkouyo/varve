@@ -24,7 +24,7 @@ import (
 	"fmt"
 )
 
-const buildColumns = `id, package_id, branch, "commit", upstream_ref, srcinfo_hash, status, COALESCE(worker_id, 0), worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage`
+const buildColumns = `id, package_id, branch, "commit", upstream_ref, pkgbuild_ref, srcinfo_hash, status, COALESCE(worker_id, 0), worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage`
 
 // GetBuild returns one build by id with artifacts and resource usage
 // decoded. ErrNotFound when the build does not exist.
@@ -134,7 +134,7 @@ func scanBuild(rs rowScanner) (*Build, error) {
 	var b Build
 	var commit, artifacts, resourceUsage string
 	var startedAtNS, finishedAtNS sql.NullString
-	if err := rs.Scan(&b.ID, &b.PackageID, &b.Branch, &commit, &b.UpstreamRef, &b.SrcinfoHash,
+	if err := rs.Scan(&b.ID, &b.PackageID, &b.Branch, &commit, &b.UpstreamRef, &b.PkgbuildRef, &b.SrcinfoHash,
 		&b.Status, &b.WorkerID, &b.WorkerName, &b.LogPath, &startedAtNS, &finishedAtNS, &b.Error, &artifacts, &resourceUsage); err != nil {
 		return nil, err
 	}

@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch, last_commit, last_srcinfo_hash, last_upstream_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers, aur_name, aur_submit, last_aur_push_at, last_aur_commit, last_aur_error`
+const packageColumns = `id, pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides, pkgname, source, pkgver, pkgrel, epoch, last_commit, last_srcinfo_hash, last_upstream_ref, pkgbuild_ref, last_failed_at, COALESCE(last_build_id, ''), maintainers, aur_name, aur_submit, last_aur_push_at, last_aur_commit, last_aur_error`
 
 // GetPackageByBase returns one package by its pkgbase with maintainers
 // decoded. ErrNotFound when the package does not exist.
@@ -197,11 +197,11 @@ func (t *Tx) UpdatePackageAfterBuild(ctx context.Context, pkgbase string, u Pack
 	res, err := t.tx.ExecContext(ctx, `UPDATE packages SET
 		current_version = ?, pkgdesc = ?, url = ?, licenses = ?, conflicts = ?, provides = ?,
 		pkgname = ?, source = ?, pkgver = ?, pkgrel = ?, epoch = ?,
-		last_commit = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, last_build_id = ?, last_failed_at = NULL
+		last_commit = ?, last_srcinfo_hash = ?, last_upstream_ref = ?, pkgbuild_ref = ?, last_build_id = ?, last_failed_at = NULL
 		WHERE pkgbase = ?`,
 		u.CurrentVersion, u.Pkgdesc, u.URL, licenses, conflicts, provides,
 		pkgname, source, u.Pkgver, u.Pkgrel, u.Epoch,
-		u.Commit, u.SrcinfoHash, u.UpstreamRef, u.BuildID, pkgbase)
+		u.Commit, u.SrcinfoHash, u.UpstreamRef, u.PkgbuildRef, u.BuildID, pkgbase)
 	if err != nil {
 		return fmt.Errorf("db: update package %q after build: %w", pkgbase, err)
 	}
@@ -233,7 +233,7 @@ func scanPackage(rs rowScanner) (*Package, error) {
 	if err := rs.Scan(&p.ID, &p.Pkgbase, &p.Branch, &p.VCSKind, &p.Arch,
 		&p.CurrentVersion, &p.Pkgdesc, &p.URL, &licenses, &conflicts, &provides,
 		&pkgname, &source, &p.Pkgver, &p.Pkgrel, &p.Epoch,
-		&p.LastCommit, &p.LastSrcinfoHash, &p.LastUpstreamRef, &lastFailedAt, &p.LastBuildID,
+		&p.LastCommit, &p.LastSrcinfoHash, &p.LastUpstreamRef, &p.PkgbuildRef, &lastFailedAt, &p.LastBuildID,
 		&maintainers, &p.AURName, &aurSubmit, &lastAURPushAt, &p.LastAURCommit, &p.LastAURError); err != nil {
 		return nil, err
 	}

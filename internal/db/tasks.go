@@ -59,9 +59,9 @@ func (s *Store) CreateTask(ctx context.Context, t *Task, b *Build) error {
 		}
 		b.ID = id
 		if _, err := tx.ExecContext(ctx, `INSERT INTO builds
-			(id, seq, package_id, branch, "commit", upstream_ref, srcinfo_hash, status, worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage)
-			VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM builds), ?, ?, ?, ?, ?, ?, NULL, '', '', NULL, NULL, '', '[]', '[]')`,
-			b.ID, b.PackageID, b.Branch, b.Commit, b.UpstreamRef, b.SrcinfoHash, b.Status); err != nil {
+			(id, seq, package_id, branch, "commit", upstream_ref, pkgbuild_ref, srcinfo_hash, status, worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage)
+			VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM builds), ?, ?, ?, ?, ?, ?, ?, NULL, '', '', NULL, NULL, '', '[]', '[]')`,
+			b.ID, b.PackageID, b.Branch, b.Commit, b.UpstreamRef, b.PkgbuildRef, b.SrcinfoHash, b.Status); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks

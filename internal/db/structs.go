@@ -85,6 +85,7 @@ type Package struct {
 	LastCommit      string   // branch tip commit of the last successful build
 	LastSrcinfoHash string
 	LastUpstreamRef string
+	PkgbuildRef     string     // external pkgbuild_source repo head of the last successful build
 	LastFailedAt    *time.Time // when the package's build last failed (rebuild cooldown marker)
 	LastBuildID     string     // 16-hex hash of the latest build row
 	Maintainers     []Maintainer
@@ -108,6 +109,7 @@ type PackageUpdate struct {
 	Pkgdesc        string
 	SrcinfoHash    string
 	UpstreamRef    string
+	PkgbuildRef    string
 	BuildID        string
 	URL            string
 	Licenses       []string
@@ -131,6 +133,7 @@ type Build struct {
 	Branch        string
 	Commit        string
 	UpstreamRef   string
+	PkgbuildRef   string
 	SrcinfoHash   string
 	Status        string
 	WorkerID      int64
