@@ -304,3 +304,33 @@ func TestClientAPIErrorMessages(t *testing.T) {
 		t.Errorf("message = %q, want it to mention conflict", apiErr.Message)
 	}
 }
+
+// TestClientReportResultRetry verifies the result report is retried on a
+// transient 500: a lost report would otherwise leave the task "running"
+// forever with no way to finalize it.
+func TestClientReportResultRetry(t *testing.T) {
+	orig := retryInterval
+	retryInterval = time.Millisecond
+	defer func() { retryInterval = orig }()
+
+	f := newFake()
+	f.hookReportResult = func(taskID, token string, res dispatch.ResultReq) error {
+		if f.calls["result"] <= 1 {
+			return errors.New("transient failure")
+		}
+		return nil
+	}
+	srv := newTestServer(t, f)
+	client := newTestClient(srv.URL)
+
+	err := client.ReportResult(context.Background(), "t1", "tok", dispatch.ResultReq{Status: "succeeded"})
+	if err != nil {
+		t.Fatalf("report result after retry: %v", err)
+	}
+	if f.calls["result"] != 2 {
+		t.Errorf("result calls = %d, want 2", f.calls["result"])
+	}
+	if f.lastResult.Status != "succeeded" {
+		t.Errorf("last result status = %q, want succeeded", f.lastResult.Status)
+	}
+}

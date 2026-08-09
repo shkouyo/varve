@@ -33,8 +33,12 @@ import (
 // Request policy: ordinary requests time out after 30s;
 // uploads and downloads carry no per-request timeout and stream for as long
 // as the caller's context allows. Retries apply to idempotent requests only
-// (heartbeat / log append / upload): up to 3 retries with a fixed 1s
-// interval, on network errors and 5xx responses.
+// (heartbeat / log append / upload / result report): up to 3 retries with
+// a fixed 1s interval, on network errors and 5xx responses. The result
+// report is retried so a transient 502 from the proxy (Caddy gave up on a
+// slow or hung upstream) cannot permanently orphan the task: the
+// controller tolerates duplicate reports (409 when already terminal), and
+// the ingest orchestration is serialized and idempotent.
 const (
 	requestTimeout = 30 * time.Second
 	maxRetries     = 3
@@ -137,10 +141,15 @@ func (c *Client) AppendLog(ctx context.Context, taskID, token string, seg LogSeg
 }
 
 // ReportResult reports the final build outcome (POST
-// /api/v1/tasks/{id}/result).
+// /api/v1/tasks/{id}/result). The report is retried on transient failures
+// (network errors and 5xx) because a lost report is unrecoverable: the
+// controller never learns the outcome, the task stays "running" and
+// cancellation (which needs the worker's acknowledgement) is ineffective.
+// Duplicate reports are safe: the controller returns 409 once the task is
+// terminal, and concurrent ingests serialize on the ingest mutex.
 func (c *Client) ReportResult(ctx context.Context, taskID, token string, res ResultReq) error {
 	return c.taskRequest(ctx, http.MethodPost, "/api/v1/tasks/"+url.PathEscape(taskID)+"/result",
-		token, res, nil, requestTimeout, false)
+		token, res, nil, requestTimeout, true)
 }
 
 // GetSigningKey claims the one-shot signing key material of a task (POST
