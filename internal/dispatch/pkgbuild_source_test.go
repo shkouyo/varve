@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.0x0f.dev/varve/internal/detect"
@@ -112,6 +113,60 @@ func TestEnqueuePkgbuildSource(t *testing.T) {
 	}
 	if build.SrcinfoHash != srcinfo.Hash(extData) {
 		t.Errorf("srcinfo_hash = %q, want the external .SRCINFO hash %q", build.SrcinfoHash, srcinfo.Hash(extData))
+	}
+}
+
+// TestEnqueuePkgbuildSourceWithoutBranchSrcinfo asserts a pkgbuild_source
+// change enqueues even when the branch tree has no .SRCINFO: the
+// dispatch-time hash comes from the external repository alone, so the
+// branch hash lookup must not run at all (it would fail on the missing
+// file).
+func TestEnqueuePkgbuildSourceWithoutBranchSrcinfo(t *testing.T) {
+	ext := makeGitRepo(t, map[string]string{".SRCINFO": srcinfoBody})
+	env := newTestEnv(t)
+	// Any branch git show would fail here: the branch tree carries no
+	// .SRCINFO, exactly the layout of a pkgbuild_source branch.
+	state := &gitState{Commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", Fail: "show"}
+	routeCloneExec(env, fakeGitFor(t, env.log, state))
+
+	c := pkgbuildChange("extpkg", "extpkg", "file://"+ext)
+	if err := env.o.Enqueue(context.Background(), c, false); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	taskID := env.activeTaskFor(t, "extpkg")
+	task, err := env.store.GetTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	build, err := env.store.GetBuild(context.Background(), task.BuildID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	extData, err := os.ReadFile(filepath.Join(ext, ".SRCINFO"))
+	if err != nil {
+		t.Fatalf("read external .SRCINFO: %v", err)
+	}
+	if build.SrcinfoHash != srcinfo.Hash(extData) {
+		t.Errorf("srcinfo_hash = %q, want the external .SRCINFO hash %q", build.SrcinfoHash, srcinfo.Hash(extData))
+	}
+}
+
+// TestEnqueuePkgbuildSourceMissingExternalSrcinfo covers the failure side:
+// a pkgbuild_source change whose external repository has no .SRCINFO is
+// rejected at enqueue time (the original error semantics).
+func TestEnqueuePkgbuildSourceMissingExternalSrcinfo(t *testing.T) {
+	ext := makeGitRepo(t, map[string]string{"PKGBUILD": "pkgbase=extpkg\n"})
+	env := newTestEnv(t)
+	state := &gitState{Commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", Fail: "show"}
+	routeCloneExec(env, fakeGitFor(t, env.log, state))
+
+	c := pkgbuildChange("extpkg", "extpkg", "file://"+ext)
+	err := env.o.Enqueue(context.Background(), c, false)
+	if err == nil {
+		t.Fatalf("Enqueue with no external .SRCINFO = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "read .SRCINFO of pkgbuild source") {
+		t.Errorf("error = %q, want the external .SRCINFO read failure", err)
 	}
 }
 
