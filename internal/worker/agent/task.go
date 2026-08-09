@@ -313,9 +313,13 @@ func (r *Runner) generateSrcinfo(ctx context.Context, taskDir string) error {
 
 // prepareExternal checks out a pkgbuild_source task: the branch tree only
 // carries the dotfile, so the PKGBUILD comes from the external repository
-// named by the task. The branch is shallow-cloned into the work dir and
-// the optional directory subpath is moved up to the checkout root so the
-// rest of the flow (makepkg, hooks, collection) runs unchanged. The
+// named by the task. The repository is shallow-cloned into a sibling
+// directory and the optional directory subpath is moved to the checkout
+// root, so the rest of the flow (makepkg, hooks, collection) runs
+// unchanged. Cloning straight into the checkout root would leave every
+// unrelated entry of the external repository in the build tree and
+// collide whenever the root and the subpath share a name (a common
+// LICENSE in a monorepo), so the clone never touches the build root. The
 // reported commit is the external repository head actually built; the
 // controller routes it onto the build's pkgbuild_ref record.
 func (r *Runner) prepareExternal(ctx context.Context, task *api.TaskDetail, taskDir string, w io.Writer) (string, error) {
@@ -324,32 +328,44 @@ func (r *Runner) prepareExternal(ctx context.Context, task *api.TaskDetail, task
 	if branch == "" {
 		branch = defaultPkgbuildBranch
 	}
-	args := []string{"clone", "--depth", "1", "--branch", branch, src.URL, taskDir}
-	exit, err := runCmd(ctx, r.command, taskDir, w, nil, "git", args...)
+	extDir := taskDir + ".ext"
+	if err := os.RemoveAll(extDir); err != nil {
+		return "", fmt.Errorf("clean pkgbuild source dir: %w", err)
+	}
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		return "", fmt.Errorf("create pkgbuild source dir: %w", err)
+	}
+	defer os.RemoveAll(extDir)
+	args := []string{"clone", "--depth", "1", "--branch", branch, src.URL, extDir}
+	exit, err := runCmd(ctx, r.command, extDir, w, nil, "git", args...)
 	if err != nil || exit != 0 {
 		return "", fmt.Errorf("clone pkgbuild source: exit %d: %w", exit, err)
 	}
+	buildRoot := extDir
 	if src.Directory != "" {
-		sub := filepath.Join(taskDir, filepath.FromSlash(src.Directory))
+		sub := filepath.Join(extDir, filepath.FromSlash(src.Directory))
 		if _, err := os.Stat(sub); err != nil {
 			return "", fmt.Errorf("pkgbuild source has no directory %q: %w", src.Directory, err)
 		}
-		if err := moveTreeUp(sub, taskDir); err != nil {
-			return "", err
-		}
+		buildRoot = sub
+	}
+	// Capture the external head before the clone metadata is discarded
+	// with the sibling directory: an empty commit makes the controller
+	// fall back to the dispatched source commit.
+	out, err := captureCmd(ctx, r.command, extDir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return "", nil
+	}
+	commit := strings.TrimSpace(out)
+	if err := moveTreeUp(buildRoot, taskDir); err != nil {
+		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(taskDir, ".SRCINFO")); err != nil {
 		if err := r.generateSrcinfo(ctx, taskDir); err != nil {
 			return "", err
 		}
 	}
-	out, err := captureCmd(ctx, r.command, taskDir, "git", "rev-parse", "HEAD")
-	if err != nil {
-		// No git metadata: the commit stays empty and the controller
-		// falls back to the dispatched source commit.
-		return "", nil
-	}
-	return strings.TrimSpace(out), nil
+	return commit, nil
 }
 
 // moveTreeUp moves every entry of sub into root, erroring when a name
