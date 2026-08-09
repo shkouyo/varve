@@ -1,0 +1,18 @@
+-- Migration 010: persist the one-shot dispatch binding.
+--
+-- A dispatched but unclaimed task (worker.actions one-shot runner) was
+-- tracked only in the scheduler's in-memory dispatch map, so a controller
+-- restart dropped the binding. The next scan re-dispatched the task with a
+-- rotated token and the in-flight runner failed its GetTask with 403,
+-- orphaning the run. tasks.dispatched_at records when a queued task was
+-- handed to a one-shot runner; together with tasks.claim_token (persisted
+-- since migration 001) it makes the whole dispatch binding
+-- restart-recoverable. The claim-timeout scan releases a binding after
+-- the window and rotates the token, and a restarted controller rebuilds
+-- its in-memory dispatch map from these rows instead of double-dispatching
+-- a run that is still within its claim window.
+--
+-- The column is additive and nullable (NULL means never dispatched), so
+-- a plain ALTER TABLE migrates existing rows in place.
+--
+ALTER TABLE tasks ADD COLUMN dispatched_at TEXT;

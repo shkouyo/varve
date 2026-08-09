@@ -151,8 +151,9 @@ func (s *Store) ClaimTaskToken(ctx context.Context, id, token string, at time.Ti
 }
 
 // RequeueTask returns a stalled assigned/running task to the queue head:
-// state=queued, the worker and claim token are released, attempts is
-// incremented and created_at is preserved so the task keeps its FIFO
+// state=queued, the worker, claim token and dispatch binding are released
+// and attempts is incremented and created_at is preserved so the task
+// keeps its FIFO
 // position. The mirrored build row is set back to queued with started_at
 // cleared. ErrConflict when the task is not in assigned/running (it may
 // have just been finalized), ErrNotFound when it does not exist. The stall
@@ -160,7 +161,7 @@ func (s *Store) ClaimTaskToken(ctx context.Context, id, token string, at time.Ti
 func (s *Store) RequeueTask(ctx context.Context, id string) error {
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `UPDATE tasks SET
-			state = 'queued', worker_id = NULL, assigned_at = NULL, claim_token = '', attempts = attempts + 1
+			state = 'queued', worker_id = NULL, assigned_at = NULL, claim_token = '', dispatched_at = NULL, attempts = attempts + 1
 			WHERE id = ? AND state IN ('assigned', 'running')`, id)
 		if err != nil {
 			return err
@@ -195,9 +196,10 @@ func (s *Store) RequeueTask(ctx context.Context, id string) error {
 }
 
 // RequeueFailedTask returns a failed task to the queue for another
-// attempt: state=queued, fail_count+1, the worker and claim token are
-// released and attempts is incremented; the mirrored build row returns to
-// queued with worker fields and started_at cleared. The state guard makes
+// attempt: state=queued, fail_count+1, the worker, claim token and
+// dispatch binding are released and attempts is incremented; the
+// mirrored build row returns to queued with worker fields and started_at
+// cleared. The state guard makes
 // the retry decision atomic: only one caller wins when several finalize
 // paths race. ErrConflict when the task is not in assigned/running
 // (already terminal or re-queued), ErrNotFound when it does not exist.
@@ -206,7 +208,7 @@ func (s *Store) RequeueTask(ctx context.Context, id string) error {
 func (s *Store) RequeueFailedTask(ctx context.Context, id string) error {
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `UPDATE tasks SET
-			state = 'queued', fail_count = fail_count + 1, worker_id = NULL, assigned_at = NULL, claim_token = '', attempts = attempts + 1
+			state = 'queued', fail_count = fail_count + 1, worker_id = NULL, assigned_at = NULL, claim_token = '', dispatched_at = NULL, attempts = attempts + 1
 			WHERE id = ? AND state IN ('assigned', 'running')`, id)
 		if err != nil {
 			return err
