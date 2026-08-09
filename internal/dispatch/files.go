@@ -32,7 +32,7 @@ import (
 // otherwise, for resumable uploads). Claim-token protected. Concurrently
 // safe.
 func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name string, r io.Reader, size, offset int64) (*FileMeta, error) {
-	if err := o.checkToken(taskID, token); err != nil {
+	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
 	if _, err := o.store.GetTask(ctx, taskID); err != nil {
@@ -63,7 +63,7 @@ func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name s
 // fallback and artifact verification downloads). ErrNotFound when the
 // file does not exist. Claim-token protected. Concurrently safe.
 func (o *OrchestratorImpl) DownloadFile(ctx context.Context, taskID, token, name string) (io.ReadCloser, error) {
-	if err := o.checkToken(taskID, token); err != nil {
+	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
 	if _, err := o.store.GetTask(ctx, taskID); err != nil {

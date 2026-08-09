@@ -37,7 +37,7 @@ import (
 // runner: transient runners never register a node). Terminal tasks
 // conflict. Claim-token protected. Concurrently safe.
 func (o *OrchestratorImpl) GetTask(ctx context.Context, taskID, token string) (*TaskDetail, error) {
-	if err := o.checkToken(taskID, token); err != nil {
+	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
 	task, err := o.store.GetTask(ctx, taskID)
@@ -82,7 +82,7 @@ func (o *OrchestratorImpl) GetTask(ctx context.Context, taskID, token string) (*
 // flag, read from the database. Claim-token protected. Concurrently
 // safe.
 func (o *OrchestratorImpl) AppendLog(ctx context.Context, taskID, token string, seg LogSegment) (*LogAck, error) {
-	if err := o.checkToken(taskID, token); err != nil {
+	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
 	task, err := o.store.GetTask(ctx, taskID)

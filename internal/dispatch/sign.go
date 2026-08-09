@@ -30,7 +30,7 @@ import (
 // sign.ErrAlreadyExported, which the API maps to 409. Claim-token
 // protected. Concurrently safe.
 func (o *OrchestratorImpl) IssueSigningKey(ctx context.Context, taskID, token string) (*sign.KeyMaterial, error) {
-	if err := o.checkToken(taskID, token); err != nil {
+	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
 	if _, err := o.store.GetTask(ctx, taskID); err != nil {

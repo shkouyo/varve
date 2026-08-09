@@ -74,7 +74,7 @@ func TestPollClaimsFIFOAndHeartbeat(t *testing.T) {
 		if len(token) != 64 {
 			t.Errorf("claim token length = %d, want 64", len(token))
 		}
-		if err := env.o.checkToken(got, token); err != nil {
+		if err := env.o.checkToken(ctx(), got, token); err != nil {
 			t.Errorf("cached token rejected: %v", err)
 		}
 	}

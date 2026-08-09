@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -128,15 +129,19 @@ func newActionsDispatcher(ac *config.WorkerActions) workflowDispatcher {
 // to the max_concurrency gap left by in-flight runs. The scan is
 // best-effort: every failure is logged and never aborts the scheduler.
 //
-// Run accounting is the in-memory dispatch map (dispatched → claimed →
-// done): an entry is created when a run is dispatched, kept while the
-// task is claimed or running, and pruned when the task becomes terminal.
-// A dispatched run must claim its task within the claim timeout or its
-// entry and token are released so the task can be dispatched again. A
-// rejected dispatch attempt is only retried after the same timeout, so a
-// broken endpoint cannot be hammered by the 30s scan. Requeued tasks
-// (stall recovery, retry) release their binding eagerly through
-// releaseDispatch so the next attempt is dispatched immediately.
+// Run accounting is the in-memory dispatch map (dispatched -> claimed ->
+// done), backed by the persisted dispatch bindings (tasks.dispatched_at
+// and claim_token, migration 010): an entry is created when a run is
+// dispatched, kept while the task is claimed or running, and pruned when
+// the task becomes terminal. Each pass rebuilds the map from the database
+// first, so a controller restart recovers in-flight bindings instead of
+// double-dispatching them. A dispatched run must claim its task within
+// the claim timeout or its entry and token are released so the task can
+// be dispatched again. A rejected dispatch attempt is only retried after
+// the same timeout, so a broken endpoint cannot be hammered by the 30s
+// scan. Requeued tasks (stall recovery, retry) release their binding
+// eagerly through releaseDispatch so the next attempt is dispatched
+// immediately.
 func (o *OrchestratorImpl) autoscaleWorkers(ctx context.Context) {
 	ac := o.cfg.Worker.Actions
 	if !ac.Enabled {
@@ -167,6 +172,25 @@ func (o *OrchestratorImpl) autoscaleWorkers(ctx context.Context) {
 		}
 	}
 
+	// Rebuild the in-memory dispatch map from the persisted bindings so a
+	// controller restart cannot double-dispatch runs that are still within
+	// their claim window: a queued task with a binding dispatched before
+	// the restart is treated exactly like a freshly dispatched one, and
+	// its original token stays valid until the claim timeout elapses.
+	o.dispatchMu.Lock()
+	bindings, err := o.store.ListDispatchBindings(ctx)
+	if err != nil {
+		o.dispatchMu.Unlock()
+		log.Printf("dispatch: actions dispatch: skipped: list bindings: %v", err)
+		return
+	}
+	for _, b := range bindings {
+		if _, ok := o.dispatchMap[b.TaskID]; !ok {
+			o.dispatchMap[b.TaskID] = dispatchEntry{token: b.Token, dispatchedAt: b.DispatchedAt}
+		}
+	}
+	o.dispatchMu.Unlock()
+
 	// Prune finished runs, release expired unclaimed ones and count the
 	// in-flight runs in one locked pass. The claim timeout is measured
 	// from the dispatch time, so a run that spun up slowly but claimed
@@ -193,7 +217,7 @@ func (o *OrchestratorImpl) autoscaleWorkers(ctx context.Context) {
 	}
 	o.dispatchMu.Unlock()
 	for _, id := range expired {
-		o.clearToken(id)
+		o.clearToken(ctx, id)
 		log.Printf("dispatch: actions: task %s not claimed in %s, released for re-dispatch", id, ac.ClaimTimeout)
 	}
 
@@ -214,21 +238,31 @@ func (o *OrchestratorImpl) autoscaleWorkers(ctx context.Context) {
 }
 
 // dispatchTask binds one queued task to a new workflow run: a fresh
-// one-shot token is cached for the task and the workflow is triggered
+// one-shot token is persisted for the task and the workflow is triggered
 // with the task id and token as dispatch inputs. The binding is recorded
 // before the API call so a concurrent scan cannot dispatch the same task
-// twice; a rejected attempt is marked failed and only retried after the
-// claim timeout.
+// twice and a controller restart recovers the binding; a rejected attempt
+// is marked failed and only retried after the claim timeout.
 func (o *OrchestratorImpl) dispatchTask(ctx context.Context, task db.Task, ac config.WorkerActions) {
 	token, err := randomToken()
 	if err != nil {
 		log.Printf("dispatch: actions dispatch %s: %v", task.ID, err)
 		return
 	}
+	now := o.now().UTC()
+	// Persist the binding first: a task that was concurrently claimed is
+	// skipped (the claimant owns it and wrote its own token), and the
+	// persisted record doubles as the cross-restart double-dispatch guard.
+	if err := o.store.SetDispatchBinding(ctx, task.ID, token, now); err != nil {
+		if !errors.Is(err, db.ErrConflict) {
+			log.Printf("dispatch: actions dispatch %s: %v", task.ID, err)
+		}
+		return
+	}
+	o.cacheToken(task.ID, token)
 	o.dispatchMu.Lock()
-	o.dispatchMap[task.ID] = dispatchEntry{token: token, dispatchedAt: o.now().UTC()}
+	o.dispatchMap[task.ID] = dispatchEntry{token: token, dispatchedAt: now}
 	o.dispatchMu.Unlock()
-	o.setToken(task.ID, token)
 	if err := o.actions.Dispatch(ctx, ac.Ref, task.ID, token); err != nil {
 		o.dispatchMu.Lock()
 		if e, ok := o.dispatchMap[task.ID]; ok {
@@ -244,14 +278,13 @@ func (o *OrchestratorImpl) dispatchTask(ctx context.Context, task db.Task, ac co
 
 // releaseDispatch unbinds a task from its run (requeue paths): the
 // binding and the one-shot token die so the task is dispatched again by
-// the next scan with a fresh token. No-op for tasks that were never
-// dispatched.
-func (o *OrchestratorImpl) releaseDispatch(taskID string) {
+// the next scan with a fresh token. The binding is cleared even when the
+// in-memory map has no entry (a binding dispatched before a controller
+// restart), so a requeued task is never held by a stale binding. No-op
+// for tasks that were never dispatched.
+func (o *OrchestratorImpl) releaseDispatch(ctx context.Context, taskID string) {
 	o.dispatchMu.Lock()
-	_, bound := o.dispatchMap[taskID]
 	delete(o.dispatchMap, taskID)
 	o.dispatchMu.Unlock()
-	if bound {
-		o.clearToken(taskID)
-	}
+	o.clearToken(ctx, taskID)
 }

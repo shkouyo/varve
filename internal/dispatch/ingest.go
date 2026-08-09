@@ -42,7 +42,7 @@ import (
 // cancelled report is accepted (cancellation wins). Claim-token
 // protected. Concurrently safe.
 func (o *OrchestratorImpl) ReportResult(ctx context.Context, taskID, token string, res ResultReq) error {
-	if err := o.checkToken(taskID, token); err != nil {
+	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return err
 	}
 	task, err := o.store.GetTask(ctx, taskID)
@@ -289,8 +289,8 @@ func (o *OrchestratorImpl) failOrRetry(ctx context.Context, task *db.Task, stage
 		if err := o.store.RequeueFailedTask(stx, task.ID); err != nil {
 			return err
 		}
-		o.clearToken(task.ID)
-		o.releaseDispatch(task.ID)
+		o.clearToken(stx, task.ID)
+		o.releaseDispatch(stx, task.ID)
 		log.Printf("dispatch: task %s failed (%s), retry %d/%d", task.ID, stage, task.FailCount+1, o.cfg.Worker.RetryMax)
 		return nil
 	}

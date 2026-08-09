@@ -152,10 +152,12 @@ type Orchestrator interface {
 //     exactly like detect derives its own;
 //   - ingestMu serializes the whole ingest orchestration (single-repo
 //     mutex);
-//   - tokenCache holds taskID → claim token in memory; a controller restart
-//     clears it, orphaning running agents until stall recovery re-claims.
-//     Pre-issued dispatch tokens (actions one-shot runners) live here too
-//     and die with the restart, orphaning their runs the same way;
+//   - tokenCache mirrors the persisted claim tokens (tasks.claim_token)
+//     as a read fast path only; the database is authoritative, so a
+//     controller restart cannot orphan active tasks. Tokens are written
+//     by the claim transaction and the dispatch binding (migration 010),
+//     dropped on requeue and re-dispatch, and re-read from the database
+//     on a cache miss (and re-cached);
 //   - roundSet tracks the pkgbases enqueued in the current detection round
 //     for the name-conflict check, pruned after cfg.Source.PollInterval.
 //
@@ -307,35 +309,58 @@ func isTerminal(state string) bool {
 	return false
 }
 
-// checkToken validates a claim token against the in-memory cache with a
-// constant-time comparison. Unknown tasks and tasks claimed before a
-// controller restart have no cached token and are forbidden.
-func (o *OrchestratorImpl) checkToken(taskID, token string) error {
+// checkToken validates a claim token against the persisted tasks row with
+// a constant-time comparison. The in-memory cache is a fast path only;
+// the database is authoritative, so a controller restart cannot orphan
+// active tasks: claimed and dispatched tokens survive in tasks.claim_token
+// and a cache miss falls back to the database and re-caches the token.
+// Unknown tasks and tasks without a persisted token are forbidden.
+func (o *OrchestratorImpl) checkToken(ctx context.Context, taskID, token string) error {
 	o.tokenMu.Lock()
 	got := o.tokenCache[taskID]
 	o.tokenMu.Unlock()
+	if got == "" {
+		persisted, err := o.store.TaskClaimToken(ctx, taskID)
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			return err
+		}
+		got = persisted
+		if got != "" {
+			o.tokenMu.Lock()
+			o.tokenCache[taskID] = got
+			o.tokenMu.Unlock()
+		}
+	}
 	if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 		return ErrForbidden
 	}
 	return nil
 }
 
-// setToken caches a freshly issued claim token.
-func (o *OrchestratorImpl) setToken(taskID, token string) {
+// cacheToken caches a claim token for the fast path. The token was
+// already persisted by the claim transaction or the dispatch binding, so
+// this only mirrors the database in memory.
+func (o *OrchestratorImpl) cacheToken(taskID, token string) {
 	o.tokenMu.Lock()
 	o.tokenCache[taskID] = token
 	o.tokenMu.Unlock()
 }
 
-// clearToken drops a claim token. Tokens of terminal tasks are
-// deliberately kept so a late report is classified as a state conflict
-// (409) instead of a forbidden token (403); the token is dropped on
-// requeue so a re-claimed task can never be driven by the stale
-// container's token, and stale entries are replaced by the next claim.
-func (o *OrchestratorImpl) clearToken(taskID string) {
+// clearToken drops a claim token from the cache and the database. Tokens
+// of terminal tasks are deliberately kept so a late report is classified
+// as a state conflict (409) instead of a forbidden token (403); the token
+// is dropped on requeue and dispatch release so a re-claimed or
+// re-dispatched task can never be driven by a stale container's token,
+// and stale entries are replaced by the next claim.
+func (o *OrchestratorImpl) clearToken(ctx context.Context, taskID string) {
 	o.tokenMu.Lock()
 	delete(o.tokenCache, taskID)
 	o.tokenMu.Unlock()
+	// Drop the persisted dispatch binding too (idempotent): a requeued or
+	// released task must carry a fresh token after its next dispatch.
+	if err := o.store.ClearDispatchBinding(ctx, taskID); err != nil {
+		log.Printf("dispatch: clear token %s: %v", taskID, err)
+	}
 }
 
 // settleTimeout bounds a terminal-state write performed after a client

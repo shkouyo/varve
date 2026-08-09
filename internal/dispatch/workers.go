@@ -84,9 +84,9 @@ func (o *OrchestratorImpl) Heartbeat(ctx context.Context, hb HeartbeatReq) (*Hea
 
 // Poll doubles as a heartbeat and atomically claims the FIFO head task
 // for the node within its free capacity. The claimed task is returned
-// together with a fresh 32-byte hex claim token (cached in memory) and
-// the cancellation signals. No claimable task yields task=null, not an
-// error. Workers that are not online (disabled/offline) are never
+// together with a fresh 32-byte hex claim token (persisted by the claim
+// transaction and mirrored in memory) and the cancellation signals. No
+// claimable task yields task=null, not an error. Workers that are not online (disabled/offline) are never
 // assigned new work; a disabled worker's heartbeat is not refreshed
 // either, so the admin's disable state survives its polls (db.Heartbeat
 // would reset status to online). Concurrently safe.
@@ -114,7 +114,7 @@ func (o *OrchestratorImpl) Poll(ctx context.Context, poll PollReq) (*PollResp, e
 			return nil, err
 		}
 		if claimed != nil {
-			o.setToken(claimed.ID, token)
+			o.cacheToken(claimed.ID, token)
 		} else {
 			token = ""
 		}
