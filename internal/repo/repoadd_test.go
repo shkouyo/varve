@@ -19,8 +19,12 @@ package repo
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
+
+	"git.0x0f.dev/varve/internal/config"
 )
 
 // TestRepoCommandMatrix asserts the --sign switch and the GNUPGHOME
@@ -163,5 +167,31 @@ func TestRepoRemoveNonZeroExit(t *testing.T) {
 	execs := e.execLines()
 	if len(execs) != 1 {
 		t.Errorf("exec lines = %d, want only the failed repo-remove: %v", len(execs), execs)
+	}
+}
+
+// TestRunRepoCmdTimeout asserts that a hung repo-add/repo-remove subprocess
+// is bounded by repoCmdTimeout: the exec context alone inherits the
+// caller's request context, which carries no deadline, so without the bound
+// a stuck repo-add would hold the ingest mutex and the HTTP handler open
+// until the client gives up.
+func TestRunRepoCmdTimeout(t *testing.T) {
+	orig := repoCmdTimeout
+	repoCmdTimeout = 200 * time.Millisecond
+	defer func() { repoCmdTimeout = orig }()
+
+	u := &updater{
+		cfg: &config.ControllerConfig{},
+		execCommand: func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+			return exec.CommandContext(ctx, "sleep", "60")
+		},
+	}
+	start := time.Now()
+	err := u.runRepoCmd(context.Background(), "repo-add", t.TempDir(), "x.db.tar.gz", "pkg.pkg.tar.zst")
+	if err == nil {
+		t.Fatal("runRepoCmd(hung): want error, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("runRepoCmd(hung) took %v, want the repoCmdTimeout bound", elapsed)
 	}
 }

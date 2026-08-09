@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 )
 
 // repoDBName returns the pacman database file name of the configured
@@ -63,17 +64,27 @@ func (u *updater) runRepoRemove(ctx context.Context, dir, pkgname string) error 
 	return u.runRepoCmd(ctx, "repo-remove", dir, u.repoDBName(), pkgname)
 }
 
+// repoCmdTimeout bounds one repo-add/repo-remove subprocess. The exec
+// already inherits the caller's context, but that context carries no
+// deadline (the API server sets none): a hung repo-add would otherwise
+// hold the ingest mutex (and the HTTP handler behind Caddy) open until the
+// client gives up. It is a variable so tests can shorten it.
+var repoCmdTimeout = 5 * time.Minute
+
 // runRepoCmd runs one external pacman database command. With
 // repo.sign == "packages+db" the command receives --sign and the signer's
 // GNUPGHOME environment fragment. A non-zero exit is reported as an error
-// whose summary carries the last 200 characters of stderr.
+// whose summary carries the last 200 characters of stderr. The subprocess
+// is bounded by repoCmdTimeout on top of ctx.
 func (u *updater) runRepoCmd(ctx context.Context, name, dir string, args ...string) error {
 	full := []string{name}
 	if u.signDB() {
 		full = append(full, "--sign")
 	}
 	full = append(full, args...)
-	cmd := u.execCommand(ctx, full[0], full[1:]...)
+	cmdCtx, cancel := context.WithTimeout(ctx, repoCmdTimeout)
+	defer cancel()
+	cmd := u.execCommand(cmdCtx, full[0], full[1:]...)
 	cmd.Dir = dir
 	if u.signDB() && u.signer != nil {
 		env := cmd.Env
