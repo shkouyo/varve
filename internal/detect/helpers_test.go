@@ -130,6 +130,30 @@ func seedPackageRow(t *testing.T, dbPath, pkgbase, lastCommit, upstreamRef strin
 	}
 }
 
+// seedPackageRowPkgbuild inserts one packages row with the given last
+// successful build records (branch commit + upstream ref + external
+// pkgbuild_source head), the way a successful build of a pkgbuild_source
+// branch would have updated it.
+func seedPackageRowPkgbuild(t *testing.T, dbPath, pkgbase, lastCommit, upstreamRef, pkgbuildRef string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`INSERT INTO packages
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
+		 last_commit, last_upstream_ref, pkgbuild_ref, maintainers)
+		VALUES (?, '', '', 'x86_64', '', '', ?, ?, ?, '[]')
+		ON CONFLICT(pkgbase) DO UPDATE SET
+			last_commit = excluded.last_commit,
+			last_upstream_ref = excluded.last_upstream_ref,
+			pkgbuild_ref = excluded.pkgbuild_ref`,
+		pkgbase, lastCommit, upstreamRef, pkgbuildRef); err != nil {
+		t.Fatalf("seed package %s: %v", pkgbase, err)
+	}
+}
+
 // newTestDetector builds a Detector for one test with a temp mirror root,
 // a quiet logger and the default (real) execCommand. Callers override
 // execCommand, sink or cfg as needed.

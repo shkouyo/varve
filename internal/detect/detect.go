@@ -58,11 +58,13 @@ const vcsQueryConcurrency = 4
 // Change reasons. ReasonManual is used by the admin rebuild
 // path in dispatch, not by detect itself. ReasonSrcinfo is retained
 // for callers that classify legacy .SRCINFO-driven changes; detect now
-// triggers on branch commits.
+// triggers on branch commits and, for pkgbuild_source branches, on the
+// external repository head (ReasonPkgbuild).
 const (
 	ReasonCommit   = "commit"
 	ReasonSrcinfo  = "srcinfo"
 	ReasonUpstream = "upstream"
+	ReasonPkgbuild = "pkgbuild"
 	ReasonBoth     = "commit+upstream"
 	ReasonManual   = "manual"
 )
@@ -83,24 +85,28 @@ type Package struct {
 // carries the upstream reference queried at detection time for VCS
 // packages and is empty for plain packages; URL/Licenses/Conflicts/
 // Provides/Pkgname/Source/Pkgver/Epoch/Pkgrel carry the .SRCINFO
-// metadata recorded on the package row.
+// metadata recorded on the package row. For a pkgbuild_source branch
+// PkgbuildSource points at the external repository and PkgbuildRef
+// carries its head at detection time.
 type Change struct {
-	Package     Package
-	Maintainers []db.Maintainer
-	URL         string
-	Licenses    []string
-	Conflicts   []string
-	Provides    []string
-	Pkgname     []string
-	Source      []string
-	Pkgver      string
-	Pkgrel      string
-	Epoch       int
-	Hooks       Hooks
-	Collect     Collect
-	AUR         AURConfig
-	UpstreamRef string
-	Reason      string
+	Package        Package
+	Maintainers    []db.Maintainer
+	URL            string
+	Licenses       []string
+	Conflicts      []string
+	Provides       []string
+	Pkgname        []string
+	Source         []string
+	Pkgver         string
+	Pkgrel         string
+	Epoch          int
+	Hooks          Hooks
+	Collect        Collect
+	AUR            AURConfig
+	UpstreamRef    string
+	PkgbuildSource *PkgbuildSource // external PKGBUILD repo of a pkgbuild_source branch
+	PkgbuildRef    string          // external repo head at detection time
+	Reason         string
 }
 
 // Sink consumes detected changes; the dispatch module implements it.
@@ -265,27 +271,53 @@ type branchPlan struct {
 	upstreamURL string
 	upstreamRef string
 	upstreamErr error
+	pkgbuildRef string
 }
 
-// planBranch runs steps 1-3 of the per-branch pipeline: read .SRCINFO,
-// snapshot the branch commit, parse the dotfile (with extras) and detect
-// the VCS kind. It returns nil when the branch must be skipped with a
-// warning.
+// planBranch runs steps 1-3 of the per-branch pipeline: parse the dotfile
+// (with extras) first, then read .SRCINFO either from the branch tree or,
+// for a pkgbuild_source branch, from the external repository, snapshot the
+// branch commit, resolve the external head and detect the VCS kind. It
+// returns nil when the branch must be skipped with a warning.
 func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
-	data, err := d.showFile(ctx, branch, ".SRCINFO")
-	if err != nil {
-		d.logger.Warn("detect: branch has no .SRCINFO, skipping", "branch", branch, "error", err)
-		return nil
-	}
-	info, err := srcinfo.Parse(data)
-	if err != nil {
-		d.logger.Warn("detect: invalid .SRCINFO, skipping", "branch", branch, "error", err)
-		return nil
-	}
+	// The dotfile comes first: a pkgbuild_source branch replaces the
+	// branch tree as the PKGBUILD source, so its .SRCINFO is read from
+	// the external repository instead.
 	dotfile, err := d.parseDotfile(ctx, branch)
 	if err != nil {
 		d.logger.Warn("detect: invalid dotfile, skipping", "branch", branch, "error", err)
 		return nil
+	}
+	var info *srcinfo.Info
+	pkgbuildRef := ""
+	if dotfile.PkgbuildSource != nil {
+		data, err := d.pkgbuildFile(ctx, dotfile.PkgbuildSource, ".SRCINFO")
+		if err != nil {
+			d.logger.Warn("detect: cannot read external .SRCINFO, skipping", "branch", branch, "error", err)
+			return nil
+		}
+		info, err = srcinfo.Parse(data)
+		if err != nil {
+			d.logger.Warn("detect: invalid external .SRCINFO, skipping", "branch", branch, "error", err)
+			return nil
+		}
+		ref, err := d.pkgbuildHead(ctx, dotfile.PkgbuildSource)
+		if err != nil {
+			d.logger.Warn("detect: cannot resolve external head, skipping", "branch", branch, "error", err)
+			return nil
+		}
+		pkgbuildRef = ref
+	} else {
+		data, err := d.showFile(ctx, branch, ".SRCINFO")
+		if err != nil {
+			d.logger.Warn("detect: branch has no .SRCINFO, skipping", "branch", branch, "error", err)
+			return nil
+		}
+		info, err = srcinfo.Parse(data)
+		if err != nil {
+			d.logger.Warn("detect: invalid .SRCINFO, skipping", "branch", branch, "error", err)
+			return nil
+		}
 	}
 	commit, err := d.BranchSnapshot(ctx, branch)
 	if err != nil {
@@ -294,11 +326,12 @@ func (d *Detector) planBranch(ctx context.Context, branch string) *branchPlan {
 	}
 	kind := vcs.DetectKind(info.Pkgbase, info.Pkgname, dotfile.VCS)
 	p := &branchPlan{
-		branch:  branch,
-		info:    info,
-		commit:  commit,
-		dotfile: dotfile,
-		kind:    kind,
+		branch:      branch,
+		info:        info,
+		commit:      commit,
+		dotfile:     dotfile,
+		kind:        kind,
+		pkgbuildRef: pkgbuildRef,
 	}
 	if kind != vcs.None {
 		urls := vcs.UpstreamURLs(info.Source)
@@ -350,10 +383,10 @@ func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 }
 
 // submitChange runs steps 5-6 of the pipeline: compare the current branch
-// commit and the upstream ref against the last successful-build records
-// and submit a Change when either differs. A package whose last build
-// failed is additionally gated by the rebuild cooldown (see
-// withinCooldown).
+// commit, the upstream ref and (for pkgbuild_source branches) the external
+// repository head against the last successful-build records and submit a
+// Change when any of them differs. A package whose last build failed is
+// additionally gated by the rebuild cooldown (see withinCooldown).
 func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 	if p.upstreamErr != nil {
 		d.logger.Warn("detect: upstream query failed, skipping", "branch", p.branch,
@@ -379,12 +412,10 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 		reason = ReasonCommit
 	}
 	if p.upstreamRef != prev.LastUpstreamRef {
-		switch reason {
-		case ReasonCommit:
-			reason = ReasonBoth
-		default:
-			reason = ReasonUpstream
-		}
+		reason = mergeReason(reason, ReasonUpstream)
+	}
+	if p.pkgbuildRef != prev.PkgbuildRef {
+		reason = mergeReason(reason, ReasonPkgbuild)
 	}
 	if reason == "" {
 		return
@@ -402,21 +433,23 @@ func (d *Detector) submitChange(ctx context.Context, p *branchPlan) {
 			VCSKind: vcsKindName(p.kind),
 			Arch:    archSet(p.info.Arch),
 		},
-		Maintainers: p.dotfile.Maintainers,
-		URL:         p.info.URL,
-		Licenses:    p.info.Licenses,
-		Conflicts:   p.info.Conflicts,
-		Provides:    p.info.Provides,
-		Pkgname:     p.info.Pkgname,
-		Source:      p.info.Source,
-		Pkgver:      p.info.Pkgver,
-		Pkgrel:      p.info.Pkgrel,
-		Epoch:       p.info.Epoch,
-		Hooks:       p.dotfile.Hooks,
-		Collect:     p.dotfile.Collect,
-		AUR:         p.dotfile.AUR,
-		UpstreamRef: p.upstreamRef,
-		Reason:      reason,
+		Maintainers:    p.dotfile.Maintainers,
+		URL:            p.info.URL,
+		Licenses:       p.info.Licenses,
+		Conflicts:      p.info.Conflicts,
+		Provides:       p.info.Provides,
+		Pkgname:        p.info.Pkgname,
+		Source:         p.info.Source,
+		Pkgver:         p.info.Pkgver,
+		Pkgrel:         p.info.Pkgrel,
+		Epoch:          p.info.Epoch,
+		Hooks:          p.dotfile.Hooks,
+		Collect:        p.dotfile.Collect,
+		AUR:            p.dotfile.AUR,
+		UpstreamRef:    p.upstreamRef,
+		PkgbuildSource: p.dotfile.PkgbuildSource,
+		PkgbuildRef:    p.pkgbuildRef,
+		Reason:         reason,
 	}
 	if err := d.sink.Submit(ctx, c); err != nil {
 		d.logger.Warn("detect: sink rejected change, skipping", "branch", p.branch,
@@ -450,7 +483,21 @@ func (d *Detector) withinCooldown(ctx context.Context, prev *db.Package, p *bran
 			"pkgbase", prev.Pkgbase, "error", err)
 		return true // be conservative: hold until the cooldown ends
 	}
-	return p.commit == latest.Commit && p.upstreamRef == latest.UpstreamRef
+	return p.commit == latest.Commit && p.upstreamRef == latest.UpstreamRef && p.pkgbuildRef == latest.PkgbuildRef
+}
+
+// mergeReason combines two change reasons into the canonical "+"-joined
+// form ("commit+upstream", "commit+pkgbuild"), keeping the empty string
+// when neither fired.
+func mergeReason(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	default:
+		return a + "+" + b
+	}
 }
 
 // showFile reads one file from the branch tree via "git show".
