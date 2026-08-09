@@ -220,13 +220,17 @@ func taskContext(parent context.Context, task *api.TaskDetail) (context.Context,
 
 // prepare checks out the task source: single-branch shallow clone for
 // mode=clone, download+extract of the controller-staged tar.zst snapshot
-// for mode=archive. A checkout without .SRCINFO has it rendered from the
-// PKGBUILD via "makepkg --printsrcinfo" (the file is a generated
-// artifact); a generation failure fails the step. It records the actually
+// for mode=archive, or the external pkgbuild_source repository when the
+// task carries one (see prepareExternal). A checkout without .SRCINFO has
+// it rendered from the PKGBUILD via "makepkg --printsrcinfo" (the file is
+// a generated artifact); a generation failure fails the step. It records the actually
 // checked-out commit; an unknown commit (archive snapshots carry no git
 // metadata) stays empty and the controller falls back to the dispatched
 // source commit.
 func (r *Runner) prepare(ctx context.Context, task *api.TaskDetail, token, taskDir string, w io.Writer) (string, error) {
+	if task.PkgbuildSource != nil {
+		return r.prepareExternal(ctx, task, taskDir, w)
+	}
 	switch task.Source.Mode {
 	case "archive":
 		if task.Source.Archive == "" {
@@ -305,6 +309,68 @@ func (r *Runner) generateSrcinfo(ctx context.Context, taskDir string) error {
 		return errors.New("makepkg --printsrcinfo produced no output")
 	}
 	return os.WriteFile(filepath.Join(taskDir, ".SRCINFO"), out.Bytes(), 0o644)
+}
+
+// prepareExternal checks out a pkgbuild_source task: the branch tree only
+// carries the dotfile, so the PKGBUILD comes from the external repository
+// named by the task. The branch is shallow-cloned into the work dir and
+// the optional directory subpath is moved up to the checkout root so the
+// rest of the flow (makepkg, hooks, collection) runs unchanged. The
+// reported commit is the external repository head actually built; the
+// controller routes it onto the build's pkgbuild_ref record.
+func (r *Runner) prepareExternal(ctx context.Context, task *api.TaskDetail, taskDir string, w io.Writer) (string, error) {
+	src := task.PkgbuildSource
+	branch := src.Branch
+	if branch == "" {
+		branch = defaultPkgbuildBranch
+	}
+	args := []string{"clone", "--depth", "1", "--branch", branch, src.URL, taskDir}
+	exit, err := runCmd(ctx, r.command, taskDir, w, nil, "git", args...)
+	if err != nil || exit != 0 {
+		return "", fmt.Errorf("clone pkgbuild source: exit %d: %w", exit, err)
+	}
+	if src.Directory != "" {
+		sub := filepath.Join(taskDir, filepath.FromSlash(src.Directory))
+		if _, err := os.Stat(sub); err != nil {
+			return "", fmt.Errorf("pkgbuild source has no directory %q: %w", src.Directory, err)
+		}
+		if err := moveTreeUp(sub, taskDir); err != nil {
+			return "", err
+		}
+	}
+	if _, err := os.Stat(filepath.Join(taskDir, ".SRCINFO")); err != nil {
+		if err := r.generateSrcinfo(ctx, taskDir); err != nil {
+			return "", err
+		}
+	}
+	out, err := captureCmd(ctx, r.command, taskDir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		// No git metadata: the commit stays empty and the controller
+		// falls back to the dispatched source commit.
+		return "", nil
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// moveTreeUp moves every entry of sub into root, erroring when a name
+// already exists at root, then removes the emptied subdirectory. It is how
+// a pkgbuild_source directory subpath becomes the build root while keeping
+// the rest of the flow rooted at the work dir.
+func moveTreeUp(sub, root string) error {
+	entries, err := os.ReadDir(sub)
+	if err != nil {
+		return fmt.Errorf("read pkgbuild source directory %s: %w", sub, err)
+	}
+	for _, e := range entries {
+		dst := filepath.Join(root, e.Name())
+		if _, err := os.Lstat(dst); err == nil {
+			return fmt.Errorf("pkgbuild source entry %q collides with the checkout root", e.Name())
+		}
+		if err := os.Rename(filepath.Join(sub, e.Name()), dst); err != nil {
+			return fmt.Errorf("move pkgbuild source entry %q: %w", e.Name(), err)
+		}
+	}
+	return os.RemoveAll(sub)
 }
 
 // runHooks executes shell hooks with cwd = the checkout dir. Any hook

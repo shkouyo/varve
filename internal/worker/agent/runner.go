@@ -41,6 +41,10 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 )
 
+// defaultPkgbuildBranch is the branch assumed when a pkgbuild_source
+// task omits the branch key (it mirrors the detect-side default).
+const defaultPkgbuildBranch = "master"
+
 // Stage enumeration used in failure reports, build logs and progress
 // payloads.
 const (

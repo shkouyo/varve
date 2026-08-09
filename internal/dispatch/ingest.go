@@ -99,8 +99,16 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 		return err
 	}
 	// The actual checked-out commit, falling back to the dispatched one.
+	// For a pkgbuild_source task the reported commit is the external
+	// repository head that was built; it rides build.PkgbuildRef so the
+	// branch commit (the build.Commit record) keeps tracking the branch
+	// trigger for last_commit.
 	if res.Commit != "" {
-		build.Commit = res.Commit
+		if o.pkgbuildTask(ctx, pkg) {
+			build.PkgbuildRef = res.Commit
+		} else {
+			build.Commit = res.Commit
+		}
 	}
 
 	// 2. Ingest into the repository (move, old-version cleanup, side file,
@@ -126,6 +134,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 			Pkgdesc:        pkgdesc,
 			SrcinfoHash:    srcinfoHash,
 			UpstreamRef:    build.UpstreamRef,
+			PkgbuildRef:    build.PkgbuildRef,
 			BuildID:        task.BuildID,
 			URL:            url,
 			Licenses:       licenses,

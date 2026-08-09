@@ -205,6 +205,19 @@ func (o *OrchestratorImpl) loadDotfile(ctx context.Context, branch string) (*det
 	}, data)
 }
 
+// pkgbuildTask reports whether a package's branch builds from an external
+// pkgbuild_source repository (re-parsed from the branch dotfile, the same
+// source taskDetail uses). The ingest path calls it to route the reported
+// checkout commit onto the build's external-head record.
+func (o *OrchestratorImpl) pkgbuildTask(ctx context.Context, pkg *db.Package) bool {
+	dot, err := o.loadDotfile(ctx, pkg.Branch)
+	if err != nil {
+		log.Printf("dispatch: task dotfile warning: %v", err)
+		return false
+	}
+	return dot.PkgbuildSource != nil
+}
+
 // gitShow reads one file from the branch tree via "git show".
 func (o *OrchestratorImpl) gitShow(ctx context.Context, branch, path string) ([]byte, error) {
 	cmd := o.execCommand(ctx, "git", "-C", o.mirrorDir, "show", branch+":"+path)

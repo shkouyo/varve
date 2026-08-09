@@ -73,6 +73,15 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 	if err != nil {
 		return fmt.Errorf("dispatch: enqueue %s: %w", c.Package.Pkgbase, err)
 	}
+	if c.PkgbuildSource != nil {
+		// A pkgbuild_source branch keeps no .SRCINFO in the branch tree;
+		// the dispatch-time hash comes from the external repository.
+		data, err := detect.PkgbuildFile(ctx, o.execCommand, o.cfg.Source.FetchKey, *c.PkgbuildSource, ".SRCINFO")
+		if err != nil {
+			return fmt.Errorf("dispatch: enqueue %s: %w", c.Package.Pkgbase, err)
+		}
+		srcinfoHash = srcinfo.Hash(data)
+	}
 	now := o.now().UTC()
 	taskID := uuidV4()
 
@@ -101,6 +110,7 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 		Branch:      c.Package.Branch,
 		Commit:      commit,
 		UpstreamRef: c.UpstreamRef,
+		PkgbuildRef: c.PkgbuildRef,
 		SrcinfoHash: srcinfoHash,
 	}
 	if err := o.store.CreateTask(ctx, t, b); err != nil {

@@ -57,7 +57,14 @@ func (o *OrchestratorImpl) RebuildPackage(ctx context.Context, pkgbase string) e
 		Conflicts:   pkg.Conflicts,
 		Provides:    pkg.Provides,
 		UpstreamRef: pkg.LastUpstreamRef,
+		PkgbuildRef: pkg.PkgbuildRef,
 		Reason:      detect.ReasonManual,
+	}
+	// A pkgbuild_source package is force-rebuilt from its external
+	// repository: the enqueue path needs the source pointer to read the
+	// dispatch-time .SRCINFO hash from there.
+	if dot, err := o.loadDotfile(ctx, pkg.Branch); err == nil && dot.PkgbuildSource != nil {
+		c.PkgbuildSource = dot.PkgbuildSource
 	}
 	if err := o.Enqueue(ctx, c, true); err != nil {
 		if errors.Is(err, ErrConflict) {
