@@ -33,14 +33,17 @@ var ErrAlreadyExported = errors.New("sign: key already exported for task")
 // private key is exported from the managed keyring with
 // gpg --export-secret-keys --armor, and Passphrase is the configured key
 // passphrase. Repeated calls for the same task return ErrAlreadyExported.
-// Concurrently safe.
-func (s *Signer) ExportForTask(taskID string) (*KeyMaterial, error) {
+// The subprocess is bounded by gpgCmdTimeout on top of ctx, so a hung gpg
+// can never block the caller forever. Concurrently safe.
+func (s *Signer) ExportForTask(ctx context.Context, taskID string) (*KeyMaterial, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.cache[taskID]; ok {
 		return nil, ErrAlreadyExported
 	}
-	cmd := s.execCommand(context.Background(), "gpg", "--homedir", s.gnupgHome, "--batch",
+	cmdCtx, cancel := context.WithTimeout(ctx, gpgCmdTimeout)
+	defer cancel()
+	cmd := s.execCommand(cmdCtx, "gpg", "--homedir", s.gnupgHome, "--batch",
 		"--pinentry-mode", "loopback", "--passphrase", s.cfg.Passphrase,
 		"--export-secret-keys", "--armor", s.keyID)
 	out, err := cmd.CombinedOutput()

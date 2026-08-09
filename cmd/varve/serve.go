@@ -73,8 +73,8 @@ type httpServer interface {
 // an interface would be a non-nil interface wrapping a nil pointer, which
 // defeats dispatch's nil checks and crashes task finalization.
 type signerSurface interface {
-	VerifyDetached(sigPath, pkgPath string) error
-	ExportForTask(taskID string) (*sign.KeyMaterial, error)
+	VerifyDetached(ctx context.Context, sigPath, pkgPath string) error
+	ExportForTask(ctx context.Context, taskID string) (*sign.KeyMaterial, error)
 	ClearTask(taskID string)
 	GnuPGEnv() []string
 }

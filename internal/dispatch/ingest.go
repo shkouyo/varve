@@ -370,7 +370,7 @@ func (o *OrchestratorImpl) verifySignature(ctx context.Context, taskID string, p
 	if err := o.writeStaged(ctx, taskID, pkg.File, pkgPath); err != nil {
 		return fmt.Errorf("verify %q: %w", pkg.File, err)
 	}
-	if err := o.signer.VerifyDetached(sigPath, pkgPath); err != nil {
+	if err := o.signer.VerifyDetached(ctx, sigPath, pkgPath); err != nil {
 		return fmt.Errorf("signature verification failed for %q: %w", pkg.File, err)
 	}
 	return nil

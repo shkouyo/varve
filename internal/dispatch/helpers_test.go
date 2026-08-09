@@ -249,12 +249,12 @@ func newFakeSigner(t *testing.T) *fakeSigner {
 	return &fakeSigner{log: newOpLog(t), exported: make(map[string]bool)}
 }
 
-func (f *fakeSigner) VerifyDetached(sigPath, pkgPath string) error {
+func (f *fakeSigner) VerifyDetached(ctx context.Context, sigPath, pkgPath string) error {
 	f.log.add("verify " + filepath.Base(sigPath) + " " + filepath.Base(pkgPath))
 	return f.verifyErr
 }
 
-func (f *fakeSigner) ExportForTask(taskID string) (*sign.KeyMaterial, error) {
+func (f *fakeSigner) ExportForTask(ctx context.Context, taskID string) (*sign.KeyMaterial, error) {
 	if f.exported[taskID] {
 		return nil, sign.ErrAlreadyExported
 	}

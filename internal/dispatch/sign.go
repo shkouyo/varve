@@ -42,5 +42,5 @@ func (o *OrchestratorImpl) IssueSigningKey(ctx context.Context, taskID, token st
 	if o.signer == nil {
 		return nil, ErrConflict // signing is disabled (cfg.Repo.Sign == "off")
 	}
-	return o.signer.ExportForTask(taskID)
+	return o.signer.ExportForTask(ctx, taskID)
 }

@@ -18,9 +18,12 @@
 package sign
 
 import (
+	"context"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/config"
 )
@@ -39,7 +42,7 @@ func TestExportForTaskMaterial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newSigner: %v", err)
 	}
-	km, err := s.ExportForTask("task-material")
+	km, err := s.ExportForTask(context.Background(), "task-material")
 	if err != nil {
 		t.Fatalf("ExportForTask: %v", err)
 	}
@@ -69,10 +72,10 @@ func TestExportForTaskOnceOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newSigner: %v", err)
 	}
-	if _, err := s.ExportForTask("task-once"); err != nil {
+	if _, err := s.ExportForTask(context.Background(), "task-once"); err != nil {
 		t.Fatalf("first export: %v", err)
 	}
-	if _, err := s.ExportForTask("task-once"); err != ErrAlreadyExported {
+	if _, err := s.ExportForTask(context.Background(), "task-once"); err != ErrAlreadyExported {
 		t.Fatalf("second export error = %v, want ErrAlreadyExported", err)
 	}
 }
@@ -90,15 +93,15 @@ func TestExportForTaskIndependentTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newSigner: %v", err)
 	}
-	if _, err := s.ExportForTask("task-a"); err != nil {
+	if _, err := s.ExportForTask(context.Background(), "task-a"); err != nil {
 		t.Fatalf("export task-a: %v", err)
 	}
 	s.ClearTask("task-a")
 	// task-b was never exported: still claimable after clearing task-a.
-	if _, err := s.ExportForTask("task-b"); err != nil {
+	if _, err := s.ExportForTask(context.Background(), "task-b"); err != nil {
 		t.Fatalf("export task-b: %v", err)
 	}
-	if _, err := s.ExportForTask("task-b"); err != ErrAlreadyExported {
+	if _, err := s.ExportForTask(context.Background(), "task-b"); err != ErrAlreadyExported {
 		t.Fatalf("re-export task-b: got %v, want ErrAlreadyExported", err)
 	}
 }
@@ -115,11 +118,11 @@ func TestClearTaskReexport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newSigner: %v", err)
 	}
-	if _, err := s.ExportForTask("task-clear"); err != nil {
+	if _, err := s.ExportForTask(context.Background(), "task-clear"); err != nil {
 		t.Fatalf("first export: %v", err)
 	}
 	s.ClearTask("task-clear")
-	if _, err := s.ExportForTask("task-clear"); err != nil {
+	if _, err := s.ExportForTask(context.Background(), "task-clear"); err != nil {
 		t.Fatalf("export after ClearTask: %v", err)
 	}
 }
@@ -158,7 +161,7 @@ func TestExportForTaskConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := s.ExportForTask("task-concurrent")
+			_, err := s.ExportForTask(context.Background(), "task-concurrent")
 			results <- err
 		}()
 	}
@@ -180,5 +183,29 @@ func TestExportForTaskConcurrent(t *testing.T) {
 	}
 	if dup != n-1 {
 		t.Errorf("ErrAlreadyExported count = %d, want %d", dup, n-1)
+	}
+}
+
+// TestExportForTaskTimeout asserts that a hung gpg export subprocess is
+// bounded by gpgCmdTimeout instead of blocking the caller forever.
+func TestExportForTaskTimeout(t *testing.T) {
+	orig := gpgCmdTimeout
+	gpgCmdTimeout = 200 * time.Millisecond
+	defer func() { gpgCmdTimeout = orig }()
+
+	s := &Signer{
+		cfg:   &config.GPGConfig{Passphrase: "test-pass"},
+		keyID: "DEADBEEF",
+		cache: make(map[string]*KeyMaterial),
+		execCommand: func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+			return exec.CommandContext(ctx, "sleep", "60")
+		},
+	}
+	start := time.Now()
+	if _, err := s.ExportForTask(context.Background(), "task-hung"); err == nil {
+		t.Fatal("ExportForTask(hung gpg): want error, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("ExportForTask(hung gpg) took %v, want the gpgCmdTimeout bound", elapsed)
 	}
 }

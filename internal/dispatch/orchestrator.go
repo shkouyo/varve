@@ -94,8 +94,8 @@ const sourceMirrorRoot = "/data/source"
 // (interfaces are defined by the consumer). The *sign.Signer satisfies
 // it.
 type signVerifier interface {
-	VerifyDetached(sigPath, pkgPath string) error
-	ExportForTask(taskID string) (*sign.KeyMaterial, error)
+	VerifyDetached(ctx context.Context, sigPath, pkgPath string) error
+	ExportForTask(ctx context.Context, taskID string) (*sign.KeyMaterial, error)
 	ClearTask(taskID string)
 }
 

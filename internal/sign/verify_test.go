@@ -18,11 +18,13 @@
 package sign
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/config"
 )
@@ -67,7 +69,7 @@ func newSignedSigner(t *testing.T) (*Signer, string, string) {
 func TestVerifyDetachedValid(t *testing.T) {
 	requireGPG(t)
 	s, sig, pkg := newSignedSigner(t)
-	if err := s.VerifyDetached(sig, pkg); err != nil {
+	if err := s.VerifyDetached(context.Background(), sig, pkg); err != nil {
 		t.Fatalf("VerifyDetached(valid): %v", err)
 	}
 }
@@ -86,7 +88,7 @@ func TestVerifyDetachedTampered(t *testing.T) {
 	}
 	f.Close()
 
-	if err := s.VerifyDetached(sig, pkg); err == nil {
+	if err := s.VerifyDetached(context.Background(), sig, pkg); err == nil {
 		t.Fatal("VerifyDetached(tampered): want error, got nil")
 	}
 }
@@ -114,7 +116,7 @@ func TestVerifyDetachedWrongKey(t *testing.T) {
 	sig := pkg + ".sig"
 	signDetached(t, foreign, foreignID, "", pkg, sig)
 
-	if err := s.VerifyDetached(sig, pkg); err == nil {
+	if err := s.VerifyDetached(context.Background(), sig, pkg); err == nil {
 		t.Fatal("VerifyDetached(wrong key): want error, got nil")
 	}
 }
@@ -131,7 +133,7 @@ func TestVerifyDetachedMissingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newSigner: %v", err)
 	}
-	if err := s.VerifyDetached("/nonexistent.sig", "/nonexistent.pkg"); err == nil {
+	if err := s.VerifyDetached(context.Background(), "/nonexistent.sig", "/nonexistent.pkg"); err == nil {
 		t.Fatal("VerifyDetached(missing files): want error, got nil")
 	} else if !strings.Contains(err.Error(), "verify /nonexistent.sig") {
 		t.Errorf("VerifyDetached error = %v, want the missing signature path", err)
@@ -156,5 +158,30 @@ func TestGnuPGEnv(t *testing.T) {
 	}
 	if want := "GNUPGHOME=" + home; env[0] != want {
 		t.Errorf("GnuPGEnv()[0] = %q, want %q", env[0], want)
+	}
+}
+
+// TestVerifyDetachedTimeout asserts that a hung gpg subprocess is bounded
+// by gpgCmdTimeout instead of blocking the caller forever: without the
+// bound, a stuck gpg inside dispatch's ingest orchestration would hold the
+// ingest mutex (and the HTTP handler behind Caddy) open indefinitely.
+func TestVerifyDetachedTimeout(t *testing.T) {
+	orig := gpgCmdTimeout
+	gpgCmdTimeout = 200 * time.Millisecond
+	defer func() { gpgCmdTimeout = orig }()
+
+	s := &Signer{
+		gnupgHome: t.TempDir(),
+		execCommand: func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+			return exec.CommandContext(ctx, "sleep", "60")
+		},
+	}
+	start := time.Now()
+	err := s.VerifyDetached(context.Background(), "/x.sig", "/x.pkg")
+	if err == nil {
+		t.Fatal("VerifyDetached(hung gpg): want error, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("VerifyDetached(hung gpg) took %v, want the gpgCmdTimeout bound", elapsed)
 	}
 }
