@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -120,8 +119,10 @@ func (f *fakeObjectAPI) DeleteObject(ctx context.Context, bucket, key string) er
 	return nil
 }
 
-// ListObjects returns one page of at most pageSize objects whose keys start
-// with prefix. The continuation token is the sorted index of the next page.
+// ListObjects returns one page of at most pageSize objects whose keys
+// start with prefix. The continuation token is the last key of the
+// previous page (the same opaque, lexically-resumed contract the real
+// adapter implements): the first call passes an empty token.
 func (f *fakeObjectAPI) ListObjects(ctx context.Context, bucket, prefix, token string) (objectListPage, error) {
 	f.record(fakeCall{method: "ListObjects", bucket: bucket, prefix: prefix, token: token})
 	keys := make([]string, 0, len(f.objects))
@@ -133,11 +134,11 @@ func (f *fakeObjectAPI) ListObjects(ctx context.Context, bucket, prefix, token s
 	sort.Strings(keys)
 	from := 0
 	if token != "" {
-		idx, err := strconv.Atoi(token)
-		if err != nil {
+		idx := sort.SearchStrings(keys, token)
+		if idx == len(keys) || keys[idx] != token {
 			return objectListPage{}, fmt.Errorf("fake: bad continuation token %q", token)
 		}
-		from = idx
+		from = idx + 1
 	}
 	end := len(keys)
 	if f.pageSize > 0 && from+f.pageSize < end {
@@ -148,8 +149,11 @@ func (f *fakeObjectAPI) ListObjects(ctx context.Context, bucket, prefix, token s
 		o := f.objects[k]
 		page.objects = append(page.objects, objectInfo{key: k, size: int64(len(o.data)), modTime: o.modTime})
 	}
-	if end < len(keys) {
-		page.nextToken = strconv.Itoa(end)
+	// A full page always carries a continuation token, exactly like the
+	// real adapter (which cannot know whether more keys exist); the
+	// follow-up request then returns an empty page.
+	if f.pageSize > 0 && len(page.objects) == f.pageSize {
+		page.nextToken = keys[end-1]
 	}
 	return page, nil
 }
@@ -352,16 +356,72 @@ func TestS3ListPagination(t *testing.T) {
 		}
 	}
 
+	// Six keys under the prefix (the five flat files plus the staging
+	// key, which is enumerated and filtered out client-side): three full
+	// pages of two, then one empty page.
 	lists := f.callsOf("ListObjects")
-	if len(lists) != 3 {
-		t.Fatalf("ListObjects calls = %d, want 3 (two pages + final)", len(lists))
+	if len(lists) != 4 {
+		t.Fatalf("ListObjects calls = %d, want 4 (three pages + final)", len(lists))
 	}
-	wantTokens := []string{"", "2", "4"}
+	wantTokens := []string{"", "p1.pkg.tar.zst", "p3.pkg.tar.zst", "staging/task-3/s.pkg.tar.zst"}
 	for i, l := range lists {
 		if l.prefix != "" || l.token != wantTokens[i] {
 			t.Errorf("ListObjects[%d] prefix=%q token=%q, want prefix %q token %q",
 				i, l.prefix, l.token, "", wantTokens[i])
 		}
+	}
+}
+
+// TestS3ListPaginationExactPages asserts the page boundary when the key
+// count is an exact multiple of the page size: every full page carries a
+// continuation token and the listing ends with one empty page, so no key
+// is skipped or repeated.
+func TestS3ListPaginationExactPages(t *testing.T) {
+	b, f := mustFakeBackend(t)
+	f.pageSize = 2
+	ctx := context.Background()
+
+	keys := []string{"k0.pkg", "k1.pkg", "k2.pkg", "k3.pkg"}
+	for _, k := range keys {
+		if err := b.Put(ctx, k, strings.NewReader(k), int64(len(k))); err != nil {
+			t.Fatalf("Put(%q): %v", k, err)
+		}
+	}
+	got, err := b.List(ctx, "*.pkg")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("List = %v, want all 4 keys", got)
+	}
+	lists := f.callsOf("ListObjects")
+	if len(lists) != 3 {
+		t.Fatalf("ListObjects calls = %d, want 3 (two full pages + one empty)", len(lists))
+	}
+	wantTokens := []string{"", "k1.pkg", "k3.pkg"}
+	for i, l := range lists {
+		if l.token != wantTokens[i] {
+			t.Errorf("ListObjects[%d] token = %q, want %q", i, l.token, wantTokens[i])
+		}
+	}
+}
+
+// TestS3ListPaginationEmpty asserts an empty bucket lists in one call
+// with no continuation token.
+func TestS3ListPaginationEmpty(t *testing.T) {
+	b, f := mustFakeBackend(t)
+	f.pageSize = 2
+
+	got, err := b.List(context.Background(), "*")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List = %v, want nothing", got)
+	}
+	lists := f.callsOf("ListObjects")
+	if len(lists) != 1 || lists[0].token != "" {
+		t.Errorf("ListObjects calls = %+v, want a single first-page call", lists)
 	}
 }
 

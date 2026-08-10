@@ -53,8 +53,9 @@ type objectListPage struct {
 //
 // ListObjects deliberately deviates from minio.Client's channel API: it
 // returns one explicit page plus a continuation token so that pagination is
-// driven and testable in this package. The real adapter drains
-// minio-go's internally-paged ListObjectsV2 stream into one page.
+// driven and testable in this package. The token is opaque: the caller
+// passes the previous page's token back unchanged (the real adapter
+// resumes after the previous page's last key; the fake mirrors that).
 type objectAPI interface {
 	// PutObject stores an object. size < 0 means the length is unknown and
 	// the reader is streamed until EOF; contentType is stored as the
@@ -93,16 +94,24 @@ func (s *s3Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	return s.c.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
 }
 
+// s3ListPageSize bounds one ListObjects page. The total listing still
+// enumerates every object under the prefix (glob filtering must see all
+// of them), but memory stays at one page of metadata.
+const s3ListPageSize = 1000
+
 func (s *s3Client) ListObjects(ctx context.Context, bucket, prefix, token string) (objectListPage, error) {
-	// minio-go pages internally via ListObjectsV2 + continuation tokens;
-	// drain the whole stream into a single page.
-	ch := s.c.ListObjects(ctx, bucket, minio.ListObjectsOptions{
+	// ListObjectsIter yields synchronously (no goroutine to leak) and
+	// pages internally via ListObjectsV2 continuation tokens. The
+	// iterator does not expose the token, so the next page resumes with
+	// StartAfter = the last key of this page (V2 start-after semantics;
+	// keys sort stably). MaxKeys bounds each request.
+	page := objectListPage{}
+	for obj := range s.c.ListObjectsIter(ctx, bucket, minio.ListObjectsOptions{
 		Prefix:     prefix,
 		Recursive:  true,
+		MaxKeys:    s3ListPageSize,
 		StartAfter: token,
-	})
-	page := objectListPage{}
-	for obj := range ch {
+	}) {
 		if obj.Err != nil {
 			return objectListPage{}, obj.Err
 		}
@@ -111,6 +120,14 @@ func (s *s3Client) ListObjects(ctx context.Context, bucket, prefix, token string
 			size:    obj.Size,
 			modTime: obj.LastModified,
 		})
+		if len(page.objects) == s3ListPageSize {
+			break
+		}
+	}
+	if n := len(page.objects); n == s3ListPageSize {
+		// A full page may continue after its last key; the follow-up
+		// request returns an empty page when the listing is exhausted.
+		page.nextToken = page.objects[n-1].key
 	}
 	return page, nil
 }
