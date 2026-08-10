@@ -48,7 +48,7 @@ type FileInfo struct {
 // Backend is the object-level file interface shared by both storage
 // implementations. Names are virtual paths relative to the backend root:
 // the root is flat for repository files ("<name>") and staging files live
-// under "staging/<taskID>/<name>" (see StagingPath).
+// under "<stagingPrefix>/<taskID>/<name>" (see StagingPath).
 //
 // All methods are safe for concurrent use. Writes to the same name must be
 // serialized by the caller (dispatch's single-writer mutex); the backend
@@ -67,6 +67,15 @@ type Backend interface {
 	List(ctx context.Context, prefix string) ([]string, error)
 	// Stat returns the metadata of name, or ErrNotFound when missing.
 	Stat(ctx context.Context, name string) (FileInfo, error)
+	// StagingPath returns the virtual path of one task artifact in the
+	// staging upload area: "<prefix>/<taskID>/<fileName>". The prefix and
+	// the physical staging location are fixed per backend instance.
+	StagingPath(taskID, fileName string) string
+	// StagingDir returns the physical staging directory of the backend:
+	// the local backend reports its configured directory (which may lie
+	// outside the repository root), the s3 backend reports "" because an
+	// object store has no physical staging tree.
+	StagingDir() string
 }
 
 // Mover is an optional Backend capability for moving an object without a

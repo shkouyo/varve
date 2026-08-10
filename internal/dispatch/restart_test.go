@@ -27,7 +27,6 @@ import (
 
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
-	"git.0x0f.dev/varve/internal/storage"
 )
 
 // restartEnv is a test harness that can simulate a controller restart:
@@ -178,7 +177,7 @@ func (e *restartEnv) claim(t *testing.T, worker string) (string, string) {
 // stage uploads deterministic content for a task artifact.
 func (e *restartEnv) stage(t *testing.T, taskID, file string) {
 	t.Helper()
-	if err := e.fs.Put(context.Background(), storage.StagingPath(taskID, file),
+	if err := e.fs.Put(context.Background(), e.fs.StagingPath(taskID, file),
 		strings.NewReader(stagedContent(file)), -1); err != nil {
 		t.Fatalf("stage %s: %v", file, err)
 	}

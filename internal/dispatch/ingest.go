@@ -317,7 +317,7 @@ func (o *OrchestratorImpl) verifyManifest(ctx context.Context, taskID string, ma
 	}
 	signing := o.cfg.Repo.Sign != "off"
 	for _, a := range manifest {
-		name := storage.StagingPath(taskID, a.File)
+		name := o.storage.StagingPath(taskID, a.File)
 		if _, err := o.storage.Stat(ctx, name); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return fmt.Errorf("missing artifact %q", a.File)
@@ -390,7 +390,7 @@ func (o *OrchestratorImpl) writeStaged(ctx context.Context, taskID, name, dst st
 	if err != nil {
 		return err
 	}
-	err = o.storage.Get(ctx, storage.StagingPath(taskID, name), f)
+	err = o.storage.Get(ctx, o.storage.StagingPath(taskID, name), f)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -431,7 +431,7 @@ func (o *OrchestratorImpl) packageUpdateFields(ctx context.Context, taskID strin
 	}
 	if src != nil {
 		var buf strings.Builder
-		if err := o.storage.Get(ctx, storage.StagingPath(taskID, src.File), &buf); err == nil {
+		if err := o.storage.Get(ctx, o.storage.StagingPath(taskID, src.File), &buf); err == nil {
 			if info, perr := srcinfo.Parse([]byte(buf.String())); perr == nil {
 				pkgdesc = info.Pkgdesc
 				url = info.URL

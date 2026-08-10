@@ -157,10 +157,10 @@ func TestEnqueueArchive(t *testing.T) {
 	env.o.execCommand = fakeGitFor(t, env.log, state)
 	taskID := env.enqueue(t, "foo", "foo")
 
-	if _, err := env.fs.Stat(context.Background(), storage.StagingPath(taskID, sourceArchiveName)); err != nil {
+	if _, err := env.fs.Stat(context.Background(), env.fs.StagingPath(taskID, sourceArchiveName)); err != nil {
 		t.Fatalf("source archive not staged: %v", err)
 	}
-	got, err := env.fs.GetBytes(context.Background(), storage.StagingPath(taskID, sourceArchiveName))
+	got, err := env.fs.GetBytes(context.Background(), env.fs.StagingPath(taskID, sourceArchiveName))
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestEnqueueNoArchive(t *testing.T) {
 			t.Errorf("unexpected archive invocation: %q", l)
 		}
 	}
-	if _, err := env.fs.Stat(context.Background(), storage.StagingPath(taskID, sourceArchiveName)); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := env.fs.Stat(context.Background(), env.fs.StagingPath(taskID, sourceArchiveName)); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("source archive staged in clone mode: %v", err)
 	}
 }

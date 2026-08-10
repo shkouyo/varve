@@ -22,13 +22,6 @@ import (
 	"strings"
 )
 
-// StagingPath returns the staging area path of a task artifact:
-// "staging/<taskID>/<fileName>". The staging tree is created implicitly on
-// first upload and must be cleaned up after result handling.
-func StagingPath(taskID, fileName string) string {
-	return "staging/" + taskID + "/" + fileName
-}
-
 // validName reports whether name is a safe, normalized virtual path usable
 // by both backends:
 //

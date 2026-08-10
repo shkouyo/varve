@@ -156,6 +156,14 @@ func (f *fakeStorage) Stat(ctx context.Context, name string) (storage.FileInfo, 
 	return storage.FileInfo{Size: int64(len(data))}, nil
 }
 
+// StagingPath returns the default virtual staging path of a task artifact.
+func (f *fakeStorage) StagingPath(taskID, fileName string) string {
+	return "staging/" + taskID + "/" + fileName
+}
+
+// StagingDir returns "" because the fake has no physical staging tree.
+func (f *fakeStorage) StagingDir() string { return "" }
+
 func (f *fakeStorage) Move(ctx context.Context, src, dst string) error {
 	f.mu.Lock()
 	data, ok := f.files[src]
@@ -591,7 +599,7 @@ func testArtifacts(pkgname, version string) []repo.Artifact {
 // stage uploads deterministic content for a task artifact.
 func (e *testEnv) stage(t *testing.T, taskID, file string) {
 	t.Helper()
-	if err := e.fs.Put(context.Background(), storage.StagingPath(taskID, file),
+	if err := e.fs.Put(context.Background(), e.fs.StagingPath(taskID, file),
 		strings.NewReader(stagedContent(file)), -1); err != nil {
 		t.Fatalf("stage %s: %v", file, err)
 	}

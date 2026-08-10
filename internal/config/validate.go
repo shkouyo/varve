@@ -20,13 +20,25 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
 // validate checks a resolved ControllerConfig against the validation rules.
-// The first failing rule is reported with the concrete field name.
+// The first failing rule is reported with the concrete field name. The
+// staging settings are normalized in place: the local staging directory is
+// resolved to a clean absolute path and the S3 staging prefix is validated
+// as a safe object-key prefix.
 func validate(c *ControllerConfig) error {
+	c.Storage.Local.StagingDir = resolveLocalStagingDir(c.Storage.Local.Root, c.Storage.Local.StagingDir)
+	if c.Storage.S3.StagingPrefix == "" {
+		c.Storage.S3.StagingPrefix = "staging"
+	}
+	if err := validStagingPrefix(c.Storage.S3.StagingPrefix); err != nil {
+		return fmt.Errorf("storage.s3.staging_prefix: %w", err)
+	}
 	switch c.Storage.Backend {
 	case "local", "s3":
 	default:
@@ -124,6 +136,71 @@ func validate(c *ControllerConfig) error {
 		}
 	}
 	return nil
+}
+
+// resolveLocalStagingDir resolves the local staging upload directory: an
+// empty value keeps the default <root>/staging, an absolute value is used
+// as-is, and a relative value is joined onto the repository root. The
+// result is cleaned and absolutized, so redundant "." segments, parent
+// traversal and relative escapes are removed and the staging tree is
+// confined to one deterministic location.
+func resolveLocalStagingDir(root, dir string) string {
+	if dir == "" {
+		dir = filepath.Join(root, "staging")
+	} else if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	dir = filepath.Clean(dir)
+	if !filepath.IsAbs(dir) {
+		if abs, err := filepath.Abs(dir); err == nil {
+			return abs
+		}
+	}
+	return dir
+}
+
+// validStagingPrefix checks that prefix is a usable staging object-key
+// prefix: a normalized virtual path whose segments consist of whitelisted
+// characters. Every staged name is built as "<prefix>/<taskID>/<file>", so
+// the prefix must keep the composed name safe for both backends (no
+// leading or trailing slash, no "." or ".." segments, no characters
+// outside [A-Za-z0-9._+-]).
+func validStagingPrefix(prefix string) error {
+	if prefix == "" {
+		return errors.New("must not be empty")
+	}
+	if strings.HasPrefix(prefix, "/") {
+		return fmt.Errorf("%q must not start with a slash", prefix)
+	}
+	if strings.HasSuffix(prefix, "/") {
+		return fmt.Errorf("%q must not end with a slash", prefix)
+	}
+	if path.Clean(prefix) != prefix {
+		return fmt.Errorf("%q must be a clean path", prefix)
+	}
+	for _, seg := range strings.Split(prefix, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return fmt.Errorf("%q must not contain a %q segment", prefix, seg)
+		}
+		if !validPrefixSegment(seg) {
+			return fmt.Errorf("%q: segment %q contains characters outside [A-Za-z0-9._+-]", prefix, seg)
+		}
+	}
+	return nil
+}
+
+// validPrefixSegment reports whether a single prefix segment contains only
+// whitelisted characters.
+func validPrefixSegment(seg string) bool {
+	for _, r := range seg {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.', r == '_', r == '+', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // validatePackager checks the worker.packager identity: empty is valid

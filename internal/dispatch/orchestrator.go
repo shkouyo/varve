@@ -83,7 +83,7 @@ func (e *OffsetError) Error() string {
 func (e *OffsetError) Unwrap() error { return ErrConflict }
 
 // sourceArchiveName is the staged source snapshot produced by Enqueue in
-// archive mode ("staging/<task-id>/source.tar.zst").
+// archive mode; it is stored under the backend staging path.
 const sourceArchiveName = "source.tar.zst"
 
 // sourceMirrorRoot is the controller-side mirror directory; it must
@@ -450,12 +450,12 @@ func (o *OrchestratorImpl) notifyFailure(ctx context.Context, task *db.Task, bui
 // hourly stale-staging pass.
 func (o *OrchestratorImpl) cleanupStaging(ctx context.Context, taskID string, files []string) {
 	for _, f := range files {
-		if err := o.storage.Delete(ctx, storage.StagingPath(taskID, f)); err != nil {
+		if err := o.storage.Delete(ctx, o.storage.StagingPath(taskID, f)); err != nil {
 			log.Printf("dispatch: cleanup staging %s/%s: %v", taskID, f, err)
 		}
 	}
 	if o.cfg.Storage.Backend == "local" {
-		dir := filepath.Join(o.cfg.Storage.Local.Root, "staging", taskID)
+		dir := filepath.Join(o.storage.StagingDir(), taskID)
 		if err := os.Remove(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			log.Printf("dispatch: cleanup staging dir %s: %v", taskID, err)
 		}

@@ -20,6 +20,8 @@ package dispatch
 import (
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,7 +41,7 @@ func TestUploadFileOffsetSemantics(t *testing.T) {
 	if claimed != taskID {
 		t.Fatalf("claimed %s", claimed)
 	}
-	name := storage.StagingPath(claimed, "pkg.pkg.tar.zst")
+	name := env.fs.StagingPath(claimed, "pkg.pkg.tar.zst")
 
 	// First segment at offset 0.
 	meta, err := env.o.UploadFile(ctx(), claimed, token, "pkg.pkg.tar.zst", strings.NewReader("AAAA"), 4, 0)
@@ -76,6 +78,70 @@ func TestUploadFileOffsetSemantics(t *testing.T) {
 	// Bad token.
 	if _, err := env.o.UploadFile(ctx(), claimed, "nope", "x", strings.NewReader(""), 0, 8); !errors.Is(err, ErrForbidden) {
 		t.Errorf("UploadFile bad token = %v, want ErrForbidden", err)
+	}
+}
+
+// TestCustomStagingDirChain drives the consumer path end to end against a
+// real local backend whose staging tree lives in a configured directory
+// outside the repository root: UploadFile stages into the custom tree,
+// DownloadFile reads it back, and cleanupStaging removes the task
+// directory under it.
+func TestCustomStagingDirChain(t *testing.T) {
+	env := newTestEnv(t)
+	root := t.TempDir()
+	staging := t.TempDir() // absolute staging dir outside the root
+	backend, err := storage.OpenLocal(root, staging)
+	if err != nil {
+		t.Fatalf("OpenLocal: %v", err)
+	}
+	env.o.storage = backend
+
+	const name = "pkg.pkg.tar.zst"
+	taskID := env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+	if claimed != taskID {
+		t.Fatalf("claimed %s, want %s", claimed, taskID)
+	}
+
+	// Upload a first segment; the bytes must land under the custom tree.
+	meta, err := env.o.UploadFile(ctx(), claimed, token, name, strings.NewReader("AAAA"), 4, 0)
+	if err != nil {
+		t.Fatalf("UploadFile: %v", err)
+	}
+	if meta.Offset != 4 {
+		t.Errorf("offset = %d, want 4", meta.Offset)
+	}
+	physical := filepath.Join(staging, claimed, name)
+	if _, err := os.Stat(physical); err != nil {
+		t.Fatalf("staged file not under custom dir %s: %v", staging, err)
+	}
+
+	// DownloadFile streams the staged content back.
+	rc, err := env.o.DownloadFile(ctx(), claimed, token, name)
+	if err != nil {
+		t.Fatalf("DownloadFile: %v", err)
+	}
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		t.Fatalf("read download: %v", err)
+	}
+	if string(data) != "AAAA" {
+		t.Errorf("download = %q, want %q", data, "AAAA")
+	}
+
+	// cleanupStaging removes the staged files and the task directory.
+	env.o.cleanupStaging(ctx(), claimed, []string{name})
+	if _, err := os.Stat(physical); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("staged file not cleaned: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(staging, claimed)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("task staging dir not cleaned: %v", err)
+	}
+	// The repository root stays empty.
+	if _, err := os.Stat(filepath.Join(root, name)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("artifact leaked into root: %v", err)
 	}
 }
 

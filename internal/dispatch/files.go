@@ -41,7 +41,7 @@ func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name s
 		}
 		return nil, err
 	}
-	staging := storage.StagingPath(taskID, name)
+	staging := o.storage.StagingPath(taskID, name)
 	current, err := o.stagingSize(ctx, staging)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (o *OrchestratorImpl) DownloadFile(ctx context.Context, taskID, token, name
 		}
 		return nil, err
 	}
-	staging := storage.StagingPath(taskID, name)
+	staging := o.storage.StagingPath(taskID, name)
 	// Existence is checked up front so the 404 reaches the client before any
 	// bytes are streamed; the read error path is still surfaced through the
 	// pipe for races.

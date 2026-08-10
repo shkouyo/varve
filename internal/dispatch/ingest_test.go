@@ -113,7 +113,7 @@ func TestReportSucceeded(t *testing.T) {
 	}
 	// Staging cleaned up.
 	for _, a := range artifacts {
-		if _, err := env.fs.Stat(context.Background(), storage.StagingPath(claimed, a.File)); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := env.fs.Stat(context.Background(), env.fs.StagingPath(claimed, a.File)); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("staging %s not cleaned up", a.File)
 		}
 	}
@@ -295,7 +295,7 @@ func TestReportIngestFailure(t *testing.T) {
 	}
 	// Staging preserved for retry.
 	for _, a := range artifacts {
-		if _, err := env.fs.Stat(context.Background(), storage.StagingPath(claimed, a.File)); err != nil {
+		if _, err := env.fs.Stat(context.Background(), env.fs.StagingPath(claimed, a.File)); err != nil {
 			t.Errorf("staging %s was not preserved: %v", a.File, err)
 		}
 	}

@@ -139,7 +139,7 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 		if a.Kind == "srcinfo" {
 			continue
 		}
-		if err := u.moveInto(ctx, storage.StagingPath(task.ID, a.File), a.File); err != nil {
+		if err := u.moveInto(ctx, u.backend.StagingPath(task.ID, a.File), a.File); err != nil {
 			return fmt.Errorf("repo: ingest: move artifact %q: %w", a.File, err)
 		}
 	}
@@ -213,7 +213,7 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 // readStaged reads one artifact from the task staging area.
 func (u *updater) readStaged(ctx context.Context, taskID, file string) ([]byte, error) {
 	var buf bytes.Buffer
-	name := storage.StagingPath(taskID, file)
+	name := u.backend.StagingPath(taskID, file)
 	if err := u.backend.Get(ctx, name, &buf); err != nil {
 		return nil, fmt.Errorf("repo: ingest: read staged %q: %w", file, err)
 	}

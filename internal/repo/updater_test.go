@@ -126,6 +126,14 @@ func (f *fakeStorage) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
+// StagingPath returns the default virtual staging path of a task artifact.
+func (f *fakeStorage) StagingPath(taskID, fileName string) string {
+	return "staging/" + taskID + "/" + fileName
+}
+
+// StagingDir returns "" because the fake has no physical staging tree.
+func (f *fakeStorage) StagingDir() string { return "" }
+
 func (f *fakeStorage) List(ctx context.Context, prefix string) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -344,7 +352,7 @@ func (e *ingestEnv) stage(manifest []Artifact) {
 		if a.Kind == "srcinfo" {
 			data = srcinfoText(testPkgbase)
 		}
-		e.fs.files[storage.StagingPath(e.task.ID, a.File)] = data
+		e.fs.files[e.fs.StagingPath(e.task.ID, a.File)] = data
 	}
 }
 
@@ -423,7 +431,7 @@ func TestIngestMoveSequence(t *testing.T) {
 
 	// The staged source is gone, the root targets exist.
 	for _, name := range []string{testPkgFile, testSigFile} {
-		if _, ok := e.fs.files[storage.StagingPath(testTaskID, name)]; ok {
+		if _, ok := e.fs.files[e.fs.StagingPath(testTaskID, name)]; ok {
 			t.Errorf("staging %s still present after move", name)
 		}
 		if _, ok := e.fs.files[name]; !ok {
@@ -431,7 +439,7 @@ func TestIngestMoveSequence(t *testing.T) {
 		}
 	}
 	// .SRCINFO stays in staging (not persisted).
-	if _, ok := e.fs.files[storage.StagingPath(testTaskID, testSrcinfo)]; !ok {
+	if _, ok := e.fs.files[e.fs.StagingPath(testTaskID, testSrcinfo)]; !ok {
 		t.Error(".SRCINFO was moved out of staging; it must stay for the caller's staging cleanup")
 	}
 
@@ -503,8 +511,8 @@ func TestIngestSidecarContent(t *testing.T) {
 				{File: tc.pkgFile, Kind: "package", Pkgname: tc.pkgbase, Version: "1-1", Arch: "x86_64", Size: 1, SHA256: "h1"},
 				{File: testSrcinfo, Kind: "srcinfo", Size: 1, SHA256: "h2"},
 			}
-			e.fs.files[storage.StagingPath(testTaskID, tc.pkgFile)] = []byte("pkg")
-			e.fs.files[storage.StagingPath(testTaskID, testSrcinfo)] = srcinfoText(tc.pkgbase)
+			e.fs.files[e.fs.StagingPath(testTaskID, tc.pkgFile)] = []byte("pkg")
+			e.fs.files[e.fs.StagingPath(testTaskID, testSrcinfo)] = srcinfoText(tc.pkgbase)
 			e.build.Branch = tc.pkgbase
 
 			if err := e.upd.Ingest(context.Background(), e.task, e.build, "worker-a", m); err != nil {
@@ -714,7 +722,7 @@ func TestIngestIdempotent(t *testing.T) {
 // repository root (atomic write, no residue).
 func TestIngestLocalAtomicNoTempResidue(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
-	real, err := storage.OpenLocal(e.root)
+	real, err := storage.OpenLocal(e.root, "")
 	if err != nil {
 		t.Fatalf("OpenLocal: %v", err)
 	}
@@ -725,7 +733,7 @@ func TestIngestLocalAtomicNoTempResidue(t *testing.T) {
 		if a.Kind == "srcinfo" {
 			data = srcinfoText(testPkgbase)
 		}
-		if err := real.Put(context.Background(), storage.StagingPath(testTaskID, a.File), strings.NewReader(string(data)), int64(len(data))); err != nil {
+		if err := real.Put(context.Background(), real.StagingPath(testTaskID, a.File), strings.NewReader(string(data)), int64(len(data))); err != nil {
 			t.Fatalf("seed staging: %v", err)
 		}
 	}

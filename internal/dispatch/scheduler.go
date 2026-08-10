@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"git.0x0f.dev/varve/internal/db"
-	"git.0x0f.dev/varve/internal/storage"
 )
 
 // runScheduler is the single periodic goroutine: a 30s scan for stale
@@ -225,7 +224,7 @@ func (o *OrchestratorImpl) sweepStaging(ctx context.Context) {
 		log.Printf("dispatch: staging sweep skipped for backend %q", o.cfg.Storage.Backend)
 		return
 	}
-	stagingRoot := filepath.Join(o.cfg.Storage.Local.Root, "staging")
+	stagingRoot := o.storage.StagingDir()
 	entries, err := os.ReadDir(stagingRoot)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -254,7 +253,7 @@ func (o *OrchestratorImpl) sweepStaging(ctx context.Context) {
 			continue
 		}
 		for _, f := range files {
-			if err := o.storage.Delete(ctx, storage.StagingPath(taskID, f.Name())); err != nil {
+			if err := o.storage.Delete(ctx, o.storage.StagingPath(taskID, f.Name())); err != nil {
 				log.Printf("dispatch: staging sweep: delete %s/%s: %v", taskID, f.Name(), err)
 			}
 		}

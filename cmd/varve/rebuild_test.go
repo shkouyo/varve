@@ -43,7 +43,7 @@ func TestRebuildIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	backend, err := storage.OpenLocal(filepath.Join(dir, "repo"))
+	backend, err := storage.OpenLocal(filepath.Join(dir, "repo"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestRebuildIndexEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	backend, err := storage.OpenLocal(filepath.Join(dir, "repo"))
+	backend, err := storage.OpenLocal(filepath.Join(dir, "repo"), "")
 	if err != nil {
 		t.Fatal(err)
 	}

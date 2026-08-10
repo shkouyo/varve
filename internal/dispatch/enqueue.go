@@ -28,7 +28,6 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/detect"
 	"git.0x0f.dev/varve/internal/detect/srcinfo"
-	"git.0x0f.dev/varve/internal/storage"
 )
 
 // maxScanBuilds bounds the paged scans used by the conflict checks and the
@@ -277,8 +276,8 @@ func (o *OrchestratorImpl) srcinfoHash(ctx context.Context, branch string) (stri
 }
 
 // archiveSource snapshots the branch at commit into
-// staging/<taskID>/source.tar.zst by streaming "git archive
-// --format=tar.zst <commit>" through storage.Put. Git performs the zstd
+// <staging>/<taskID>/source.tar.zst by streaming "git archive
+// --format=tar.zst <commit>" through the storage backend. Git performs the zstd
 // compression itself, so no external compressor is needed. The snapshot
 // is written immediately after task creation; a worker that claims the
 // task in the tiny window before the write finishes fails with a download
@@ -294,7 +293,7 @@ func (o *OrchestratorImpl) archiveSource(ctx context.Context, taskID, commit str
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("git archive: %w", err)
 	}
-	name := storage.StagingPath(taskID, sourceArchiveName)
+	name := o.storage.StagingPath(taskID, sourceArchiveName)
 	if err := o.storage.Put(cctx, name, stdout, -1); err != nil {
 		cancel() // kill git so Wait cannot block on a full pipe
 		_ = cmd.Wait()

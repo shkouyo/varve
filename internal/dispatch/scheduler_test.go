@@ -378,12 +378,12 @@ func TestSweepStaging(t *testing.T) {
 	env := newTestEnv(t)
 	// The sweep enumerates the real filesystem, so this test drives the
 	// orchestrator with a real local backend instead of the in-memory fake.
-	backend, err := storage.OpenLocal(env.cfg.Storage.Local.Root)
+	backend, err := storage.OpenLocal(env.cfg.Storage.Local.Root, "")
 	if err != nil {
 		t.Fatalf("OpenLocal: %v", err)
 	}
 	env.o.storage = backend
-	stagingRoot := filepath.Join(env.cfg.Storage.Local.Root, "staging")
+	stagingRoot := backend.StagingDir()
 	oldDir := filepath.Join(stagingRoot, "old-task")
 	if err := os.MkdirAll(oldDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -410,5 +410,56 @@ func TestSweepStaging(t *testing.T) {
 	}
 	if _, err := os.Stat(freshDir); err != nil {
 		t.Errorf("fresh staging dir removed: %v", err)
+	}
+}
+
+// TestSweepStagingCustomDir runs the stale-staging pass against a real
+// local backend whose staging tree lives in a configured directory outside
+// the repository root: only directories under that tree are considered.
+func TestSweepStagingCustomDir(t *testing.T) {
+	env := newTestEnv(t)
+	root := t.TempDir()
+	staging := t.TempDir() // absolute staging dir outside the root
+	backend, err := storage.OpenLocal(root, staging)
+	if err != nil {
+		t.Fatalf("OpenLocal: %v", err)
+	}
+	env.o.storage = backend
+
+	oldDir := filepath.Join(staging, "old-task")
+	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(oldDir, "a.pkg.tar.zst"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	backdate := time.Now().Add(-25 * time.Hour)
+	if err := os.Chtimes(oldDir, backdate, backdate); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	freshDir := filepath.Join(staging, "fresh-task")
+	if err := os.MkdirAll(freshDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// A non-staging directory under the root must never be touched.
+	foreignDir := filepath.Join(root, "foreign")
+	if err := os.MkdirAll(foreignDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	backdate = time.Now().Add(-25 * time.Hour)
+	if err := os.Chtimes(foreignDir, backdate, backdate); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	env.o.sweepStaging(context.Background())
+
+	if _, err := os.Stat(oldDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stale staging dir not swept: %v", err)
+	}
+	if _, err := os.Stat(freshDir); err != nil {
+		t.Errorf("fresh staging dir removed: %v", err)
+	}
+	if _, err := os.Stat(foreignDir); err != nil {
+		t.Errorf("non-staging dir removed: %v", err)
 	}
 }

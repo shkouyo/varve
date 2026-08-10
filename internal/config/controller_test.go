@@ -175,6 +175,9 @@ func TestLoadControllerFullExample(t *testing.T) {
 	if cfg.Storage.Local.Root != "/data/repo" {
 		t.Errorf("Storage.Local.Root = %q", cfg.Storage.Local.Root)
 	}
+	if cfg.Storage.Local.StagingDir != "/data/repo/staging" || cfg.Storage.S3.StagingPrefix != "staging" {
+		t.Errorf("staging defaults = %q/%q, want /data/repo/staging/staging", cfg.Storage.Local.StagingDir, cfg.Storage.S3.StagingPrefix)
+	}
 	if cfg.Storage.S3.Endpoint != "https://s3.example.org" ||
 		cfg.Storage.S3.Bucket != "varve-repo" ||
 		cfg.Storage.S3.Region != "us-east-1" ||
@@ -241,6 +244,56 @@ func TestLoadControllerFullExample(t *testing.T) {
 	}
 }
 
+// TestLoadControllerStagingFields covers the configurable staging
+// settings: an absolute staging_dir is used as-is and a custom S3
+// staging_prefix is carried through to the resolved configuration.
+func TestLoadControllerStagingFields(t *testing.T) {
+	content := minimalConfig + `
+[storage]
+backend = "s3"
+
+[storage.local]
+root = "/data/repo"
+staging_dir = "/srv/varve/uploads"
+
+[storage.s3]
+endpoint = "https://s3.example.org"
+bucket = "varve-repo"
+staging_prefix = "uploads/tmp"
+`
+	cfg, err := LoadController(writeConfig(t, content))
+	if err != nil {
+		t.Fatalf("LoadController: %v", err)
+	}
+	if cfg.Storage.Local.StagingDir != "/srv/varve/uploads" {
+		t.Errorf("Local.StagingDir = %q, want /srv/varve/uploads", cfg.Storage.Local.StagingDir)
+	}
+	if cfg.Storage.S3.StagingPrefix != "uploads/tmp" {
+		t.Errorf("S3.StagingPrefix = %q, want uploads/tmp", cfg.Storage.S3.StagingPrefix)
+	}
+}
+
+// TestLoadControllerStagingPrefixInvalid rejects unsafe S3 staging
+// prefixes at load time.
+func TestLoadControllerStagingPrefixInvalid(t *testing.T) {
+	content := minimalConfig + `
+[storage]
+backend = "s3"
+
+[storage.s3]
+endpoint = "https://s3.example.org"
+bucket = "varve-repo"
+staging_prefix = "/abs/prefix"
+`
+	_, err := LoadController(writeConfig(t, content))
+	if err == nil {
+		t.Fatal("LoadController with invalid staging_prefix: want error")
+	}
+	if !strings.Contains(err.Error(), "storage.s3.staging_prefix") {
+		t.Errorf("error %q does not mention storage.s3.staging_prefix", err)
+	}
+}
+
 func TestLoadControllerMemoryLimitString(t *testing.T) {
 	content := minimalConfig + `
 [worker]
@@ -271,6 +324,9 @@ func TestLoadControllerDefaults(t *testing.T) {
 	}
 	if cfg.Storage.Backend != "local" || cfg.Storage.Local.Root != "/data/repo" || !cfg.Storage.S3.PathStyle {
 		t.Errorf("Storage defaults = %+v", cfg.Storage)
+	}
+	if cfg.Storage.Local.StagingDir != "/data/repo/staging" || cfg.Storage.S3.StagingPrefix != "staging" {
+		t.Errorf("staging defaults = %q/%q, want /data/repo/staging/staging", cfg.Storage.Local.StagingDir, cfg.Storage.S3.StagingPrefix)
 	}
 	if cfg.Repo.Name != "varve" || cfg.Repo.WorkDir != "/data/work" ||
 		cfg.Repo.Sign != "off" || cfg.Repo.KeepVersions != 1 {

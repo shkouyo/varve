@@ -262,7 +262,7 @@ func openStorage(cfg *config.StorageConfig) (storage.Backend, error) {
 	if cfg.Backend == "s3" {
 		return storage.OpenS3(cfg.S3)
 	}
-	return storage.OpenLocal(cfg.Local.Root)
+	return storage.OpenLocal(cfg.Local.Root, cfg.Local.StagingDir)
 }
 
 // closeQuiet closes a server during error-unwind paths, where the primary

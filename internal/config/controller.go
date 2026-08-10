@@ -125,16 +125,18 @@ type rawStorage struct {
 }
 
 type rawLocal struct {
-	Root string `toml:"root"`
+	Root       string `toml:"root"`
+	StagingDir string `toml:"staging_dir"`
 }
 
 type rawS3 struct {
-	Endpoint  string `toml:"endpoint"`
-	Bucket    string `toml:"bucket"`
-	Region    string `toml:"region"`
-	AccessKey string `toml:"access_key"`
-	SecretKey string `toml:"secret_key"`
-	PathStyle bool   `toml:"path_style"`
+	Endpoint      string `toml:"endpoint"`
+	Bucket        string `toml:"bucket"`
+	Region        string `toml:"region"`
+	AccessKey     string `toml:"access_key"`
+	SecretKey     string `toml:"secret_key"`
+	PathStyle     bool   `toml:"path_style"`
+	StagingPrefix string `toml:"staging_prefix"`
 }
 
 type rawRepo struct {
@@ -375,14 +377,18 @@ func (r *rawConfig) export() *ControllerConfig {
 		Database: DatabaseConfig{Path: r.Database.Path},
 		Storage: StorageConfig{
 			Backend: r.Storage.Backend,
-			Local:   LocalConfig{Root: r.Storage.Local.Root},
+			Local: LocalConfig{
+				Root:       r.Storage.Local.Root,
+				StagingDir: r.Storage.Local.StagingDir,
+			},
 			S3: S3Config{
-				Endpoint:  r.Storage.S3.Endpoint,
-				Bucket:    r.Storage.S3.Bucket,
-				Region:    r.Storage.S3.Region,
-				AccessKey: r.Storage.S3.AccessKey,
-				SecretKey: r.Storage.S3.SecretKey,
-				PathStyle: r.Storage.S3.PathStyle,
+				Endpoint:      r.Storage.S3.Endpoint,
+				Bucket:        r.Storage.S3.Bucket,
+				Region:        r.Storage.S3.Region,
+				AccessKey:     r.Storage.S3.AccessKey,
+				SecretKey:     r.Storage.S3.SecretKey,
+				PathStyle:     r.Storage.S3.PathStyle,
+				StagingPrefix: r.Storage.S3.StagingPrefix,
 			},
 		},
 		Repo: RepoConfig{

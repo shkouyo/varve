@@ -21,23 +21,6 @@ import (
 	"testing"
 )
 
-// TestStagingPath asserts the staging convention:
-// "staging/<taskID>/<fileName>".
-func TestStagingPath(t *testing.T) {
-	cases := []struct {
-		taskID, fileName, want string
-	}{
-		{"t-1", "foo-1.2.3-1-x86_64.pkg.tar.zst", "staging/t-1/foo-1.2.3-1-x86_64.pkg.tar.zst"},
-		{"proud-heron-7", "foo.meta.toml", "staging/proud-heron-7/foo.meta.toml"},
-		{"t2", ".SRCINFO", "staging/t2/.SRCINFO"},
-	}
-	for _, c := range cases {
-		if got := StagingPath(c.taskID, c.fileName); got != c.want {
-			t.Errorf("StagingPath(%q, %q) = %q, want %q", c.taskID, c.fileName, got, c.want)
-		}
-	}
-}
-
 // TestValidName is the path traversal and whitelist table.
 func TestValidName(t *testing.T) {
 	valid := []string{
@@ -47,6 +30,7 @@ func TestValidName(t *testing.T) {
 		".SRCINFO",
 		"source.tar.zst",
 		"staging/task-1/foo.pkg.tar.zst",
+		"uploads/tmp/task-1/foo.pkg.tar.zst",
 	}
 	for _, name := range valid {
 		if !validName(name) {

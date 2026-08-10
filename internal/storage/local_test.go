@@ -20,6 +20,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -31,21 +32,101 @@ import (
 // mustLocal opens a local backend under a fresh temp dir.
 func mustLocal(t *testing.T) *localBackend {
 	t.Helper()
-	b, err := OpenLocal(t.TempDir())
+	b, err := OpenLocal(t.TempDir(), "")
 	if err != nil {
 		t.Fatalf("OpenLocal: %v", err)
 	}
 	return b.(*localBackend)
 }
 
+// TestLocalStagingDir asserts the configurable staging tree: staged files
+// land in the configured physical directory (default <root>/staging,
+// absolute paths used as-is, relative paths joined onto the root), the
+// ingest-style Move relocates them into the flat root, and List never
+// surfaces staging entries even when the tree lies under a differently
+// named subdirectory of the root.
+func TestLocalStagingDir(t *testing.T) {
+	cases := []struct {
+		name            string
+		staging         string // "" = default
+		wantRel         string // physical staging dir relative to a fresh root
+		noStagingInRoot bool   // root must not gain a "staging" entry
+	}{
+		{"default", "", "staging", false},
+		{"relative", "tmp/uploads", "tmp/uploads", false},
+		{"absolute outside root", "OUTSIDE", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			staging := tc.staging
+			if staging == "OUTSIDE" {
+				staging = t.TempDir()
+			}
+			wantDir := filepath.Join(root, tc.wantRel)
+			if tc.wantRel == "" {
+				wantDir = staging
+			}
+			b, err := OpenLocal(root, staging)
+			if err != nil {
+				t.Fatalf("OpenLocal: %v", err)
+			}
+			lb := b.(*localBackend)
+			if got := lb.StagingDir(); got != wantDir {
+				t.Errorf("StagingDir() = %q, want %q", got, wantDir)
+			}
+
+			ctx := context.Background()
+			const file = "pkg-1.0-1-x86_64.pkg.tar.zst"
+			staged := lb.StagingPath("t-1", file)
+			if err := b.Put(ctx, staged, strings.NewReader("staged"), 6); err != nil {
+				t.Fatalf("Put staged: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(wantDir, "t-1", file)); err != nil {
+				t.Errorf("staged file not under %s: %v", wantDir, err)
+			}
+
+			// Ingest-style move from staging into the flat root.
+			m := b.(Mover)
+			if err := m.Move(ctx, staged, file); err != nil {
+				t.Fatalf("Move: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(root, file)); err != nil {
+				t.Errorf("moved file missing from root: %v", err)
+			}
+			// The staged name is gone after the move.
+			if err := b.Delete(ctx, staged); err != nil {
+				t.Fatalf("Delete staged: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(wantDir, "t-1", file)); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("staged file still present after move: %v", err)
+			}
+
+			// List only sees the flat root file.
+			got, err := b.List(ctx, "*")
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(got) != 1 || got[0] != file {
+				t.Errorf("List = %v, want only %q", got, file)
+			}
+			if tc.noStagingInRoot {
+				if _, err := os.Stat(filepath.Join(root, "staging")); !errors.Is(err, fs.ErrNotExist) {
+					t.Errorf("root gained a staging entry: %v", err)
+				}
+			}
+		})
+	}
+}
+
 // TestLocalOpenLocalValidation guards the OpenLocal contract: the root is
 // required and created on demand.
 func TestLocalOpenLocalValidation(t *testing.T) {
-	if _, err := OpenLocal(""); err == nil {
+	if _, err := OpenLocal("", ""); err == nil {
 		t.Error("OpenLocal(\"\") = nil error, want error")
 	}
 	root := t.TempDir() + "/nested/repo"
-	if _, err := OpenLocal(root); err != nil {
+	if _, err := OpenLocal(root, ""); err != nil {
 		t.Fatalf("OpenLocal(%q): %v", root, err)
 	}
 	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {

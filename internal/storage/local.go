@@ -34,29 +34,71 @@ import (
 // into memory at once (memory-cap test asserts this bound).
 const copyBufSize = 256 << 10
 
+// stagingPrefix is the fixed virtual path prefix of the staging tree on the
+// local backend. The physical location is stagingDir; the virtual names
+// keep this prefix so the staging namespace is stable and documented.
+const stagingPrefix = "staging"
+
 // localBackend implements Backend over a real filesystem directory. Names
-// are validated and joined onto the root; all operations are confined to
-// the root by construction.
+// are validated and joined onto the backend root; all operations are
+// confined to the root by construction. Staging names (virtual prefix
+// "staging/") resolve onto the configured staging directory instead, which
+// may lie outside the root.
 type localBackend struct {
-	root string
+	root       string
+	stagingDir string
+	// stagingRel is the staging directory relative to the root, or "" when
+	// the staging tree lies outside the root (then no subtree under the
+	// root needs skipping during List).
+	stagingRel string
 }
 
-// OpenLocal returns a Backend rooted at root (typically "/data/repo").
-// The root directory is created if missing.
-func OpenLocal(root string) (Backend, error) {
+// OpenLocal returns a Backend rooted at root (typically "/data/repo") with
+// its staging upload tree at stagingDir. An empty stagingDir keeps the
+// default <root>/staging. Both directories are created if missing.
+func OpenLocal(root, stagingDir string) (Backend, error) {
 	if root == "" {
 		return nil, errors.New("storage: empty local root")
 	}
+	if stagingDir == "" {
+		stagingDir = filepath.Join(root, "staging")
+	} else if !filepath.IsAbs(stagingDir) {
+		stagingDir = filepath.Join(root, stagingDir)
+	}
+	stagingDir = filepath.Clean(stagingDir)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, fmt.Errorf("storage: create local root %q: %w", root, err)
 	}
-	return &localBackend{root: root}, nil
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return nil, fmt.Errorf("storage: create local staging dir %q: %w", stagingDir, err)
+	}
+	stagingRel := ""
+	if rel, err := filepath.Rel(root, stagingDir); err == nil && rel != "." &&
+		rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		stagingRel = rel
+	}
+	return &localBackend{root: root, stagingDir: stagingDir, stagingRel: stagingRel}, nil
 }
 
-// resolve validates name and joins it onto the backend root.
+// StagingPath returns the virtual staging path of a task artifact:
+// "staging/<taskID>/<fileName>", which resolves onto the configured
+// staging directory.
+func (b *localBackend) StagingPath(taskID, fileName string) string {
+	return stagingPrefix + "/" + taskID + "/" + fileName
+}
+
+// StagingDir returns the physical staging directory of the backend.
+func (b *localBackend) StagingDir() string { return b.stagingDir }
+
+// resolve validates name and joins it onto the backend root, or onto the
+// staging directory for staging-prefixed names.
 func (b *localBackend) resolve(name string) (string, error) {
 	if !validName(name) {
 		return "", fmt.Errorf("storage: invalid name %q", name)
+	}
+	if strings.HasPrefix(name, stagingPrefix+"/") {
+		rest := strings.TrimPrefix(name, stagingPrefix+"/")
+		return filepath.Join(b.stagingDir, filepath.FromSlash(rest)), nil
 	}
 	return filepath.Join(b.root, filepath.FromSlash(name)), nil
 }
@@ -132,8 +174,9 @@ func (b *localBackend) Delete(ctx context.Context, name string) error {
 }
 
 // List walks the root and returns the file names in the flat root area that
-// match the glob prefix. The staging/ subtree is skipped, so staging
-// entries never appear in results.
+// match the glob prefix. The staging tree (the physical staging directory
+// when it lies under the root) is skipped, so staging entries never appear
+// in results.
 func (b *localBackend) List(ctx context.Context, prefix string) ([]string, error) {
 	var names []string
 	err := filepath.WalkDir(b.root, func(p string, d fs.DirEntry, err error) error {
@@ -148,7 +191,7 @@ func (b *localBackend) List(ctx context.Context, prefix string) ([]string, error
 			return nil
 		}
 		if d.IsDir() {
-			if rel == "staging" || strings.HasPrefix(rel, "staging"+string(filepath.Separator)) {
+			if b.stagingRel != "" && (rel == b.stagingRel || strings.HasPrefix(rel, b.stagingRel+string(filepath.Separator))) {
 				return filepath.SkipDir
 			}
 			return nil

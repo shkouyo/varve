@@ -161,7 +161,7 @@ func (f *fakeObjectAPI) StatObject(ctx context.Context, bucket, key string) (obj
 
 // newFakeBackend wires a fake object store into an s3Backend.
 func newFakeBackend(f *fakeObjectAPI) *s3Backend {
-	return &s3Backend{client: f, bucket: fakeBucket}
+	return &s3Backend{client: f, bucket: fakeBucket, stagingPrefix: "staging"}
 }
 
 func mustFakeBackend(t *testing.T) (*s3Backend, *fakeObjectAPI) {
@@ -191,7 +191,7 @@ func getContent(t *testing.T, b Backend, name string) string {
 func TestS3PutObjectParams(t *testing.T) {
 	b, f := mustFakeBackend(t)
 	putContent(t, b, "foo-1-1-x86_64.pkg.tar.zst", "flat")
-	putContent(t, b, StagingPath("task-7", "foo-1-1-x86_64.pkg.tar.zst"), "staged")
+	putContent(t, b, b.StagingPath("task-7", "foo-1-1-x86_64.pkg.tar.zst"), "staged")
 
 	puts := f.callsOf("PutObject")
 	if len(puts) != 2 {
@@ -209,7 +209,7 @@ func TestS3PutObjectParams(t *testing.T) {
 	if len(f.objects) != 2 {
 		t.Errorf("stored objects = %d, want 2", len(f.objects))
 	}
-	if got := getContent(t, b, StagingPath("task-7", "foo-1-1-x86_64.pkg.tar.zst")); got != "staged" {
+	if got := getContent(t, b, b.StagingPath("task-7", "foo-1-1-x86_64.pkg.tar.zst")); got != "staged" {
 		t.Errorf("staged Get = %q, want %q", got, "staged")
 	}
 }
@@ -273,7 +273,7 @@ func TestS3ListPagination(t *testing.T) {
 			t.Fatalf("Put(%q): %v", k, err)
 		}
 	}
-	putContent(t, b, StagingPath("task-3", "s.pkg.tar.zst"), "hidden")
+	putContent(t, b, b.StagingPath("task-3", "s.pkg.tar.zst"), "hidden")
 
 	got, err := b.List(ctx, "*.pkg.tar.zst")
 	if err != nil {
@@ -299,6 +299,35 @@ func TestS3ListPagination(t *testing.T) {
 			t.Errorf("ListObjects[%d] prefix=%q token=%q, want prefix %q token %q",
 				i, l.prefix, l.token, "", wantTokens[i])
 		}
+	}
+}
+
+// TestS3CustomStagingPrefix asserts a custom staging object-key prefix:
+// staged keys carry the prefix, StagingPath reflects it, and List never
+// exposes staging entries under the configured prefix.
+func TestS3CustomStagingPrefix(t *testing.T) {
+	b := &s3Backend{client: newFakeObjectAPI(), bucket: fakeBucket, stagingPrefix: "uploads/tmp"}
+	ctx := context.Background()
+
+	staged := b.StagingPath("t-7", "foo-1.0-1-x86_64.pkg.tar.zst")
+	if want := "uploads/tmp/t-7/foo-1.0-1-x86_64.pkg.tar.zst"; staged != want {
+		t.Errorf("StagingPath = %q, want %q", staged, want)
+	}
+	if err := b.Put(ctx, staged, strings.NewReader("staged"), 6); err != nil {
+		t.Fatalf("Put staged: %v", err)
+	}
+	if err := b.Put(ctx, "bar.meta.toml", strings.NewReader("flat"), 4); err != nil {
+		t.Fatalf("Put flat: %v", err)
+	}
+	if got := getContent(t, b, staged); got != "staged" {
+		t.Errorf("staged Get = %q, want %q", got, "staged")
+	}
+	got, err := b.List(ctx, "*")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0] != "bar.meta.toml" {
+		t.Errorf("List = %v, want only the flat file", got)
 	}
 }
 
@@ -396,6 +425,8 @@ func TestOpenS3Validation(t *testing.T) {
 	bad := []config.S3Config{
 		{Endpoint: "", Bucket: "b"},
 		{Endpoint: "http://127.0.0.1:9000", Bucket: ""},
+		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", StagingPrefix: "bad prefix"},
+		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", StagingPrefix: "/abs"},
 	}
 	for _, cfg := range bad {
 		if _, err := OpenS3(cfg); err == nil {
@@ -418,5 +449,18 @@ func TestOpenS3Validation(t *testing.T) {
 	sb, ok := backend.(*s3Backend)
 	if !ok || sb.bucket != "repo" {
 		t.Errorf("OpenS3 returned %T with bucket %q, want *s3Backend bucket %q", backend, sb.bucket, "repo")
+	}
+	if sb.stagingPrefix != "staging" {
+		t.Errorf("default stagingPrefix = %q, want %q", sb.stagingPrefix, "staging")
+	}
+
+	custom := good
+	custom.StagingPrefix = "uploads/tmp"
+	backend, err = OpenS3(custom)
+	if err != nil {
+		t.Fatalf("OpenS3(custom prefix): %v", err)
+	}
+	if sb, ok := backend.(*s3Backend); !ok || sb.stagingPrefix != "uploads/tmp" {
+		t.Errorf("custom stagingPrefix = %+v, want uploads/tmp", backend)
 	}
 }

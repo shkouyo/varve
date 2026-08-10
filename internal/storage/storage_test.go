@@ -32,7 +32,7 @@ import (
 func TestLocalBackendContract(t *testing.T) {
 	testBackendContract(t, func(t *testing.T) Backend {
 		t.Helper()
-		b, err := OpenLocal(t.TempDir())
+		b, err := OpenLocal(t.TempDir(), "")
 		if err != nil {
 			t.Fatalf("OpenLocal: %v", err)
 		}
@@ -84,7 +84,7 @@ func testBackendContract(t *testing.T, newBackend func(t *testing.T) Backend) {
 	run("roundtrip", func(t *testing.T, b Backend) {
 		for _, name := range []string{
 			"foo-1.2.3-1-x86_64.pkg.tar.zst",
-			StagingPath("task-1", "chunk.pkg.tar.zst"),
+			b.StagingPath("task-1", "chunk.pkg.tar.zst"),
 		} {
 			want := "content-of-" + name
 			put(t, b, name, want)
@@ -144,7 +144,7 @@ func testBackendContract(t *testing.T, newBackend func(t *testing.T) Backend) {
 		put(t, b, "libfoo.meta.toml", "c")
 		put(t, b, "libbar.meta.toml", "d")
 		put(t, b, "libbaz.pkg.tar.zst", "e")
-		put(t, b, StagingPath("task-9", "libfoo-1.0-1-x86_64.pkg.tar.zst"), "f")
+		put(t, b, b.StagingPath("task-9", "libfoo-1.0-1-x86_64.pkg.tar.zst"), "f")
 
 		cases := []struct {
 			glob string

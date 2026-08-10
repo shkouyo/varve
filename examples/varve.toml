@@ -22,10 +22,12 @@ backend = "local" # artifact storage backend (default "local"; "local" | "s3")
 
 [storage.local]
 root = "/data/repo" # local backend repository root (default "/data/repo"; flat repo files plus the staging/ upload area)
+staging_dir = "" # staging upload directory (default "" = <root>/staging); an absolute path is used as-is and may lie outside the root, a relative path is resolved against the root
 
 [storage.s3]
 endpoint = "https://s3.example.org" # S3-compatible endpoint URL
-bucket = "varve-repo" # bucket root holding flat repo files; the staging/ prefix is the upload area
+bucket = "varve-repo" # bucket root holding flat repo files; the configured staging_prefix is the upload area
+staging_prefix = "" # object-key prefix of the staging upload area (default "" = "staging"; e.g. "uploads/tmp")
 region = "us-east-1" # S3 region
 access_key = "" # access key; overridable via VARVE_S3_ACCESS_KEY
 secret_key = "" # secret key; overridable via VARVE_S3_SECRET_KEY

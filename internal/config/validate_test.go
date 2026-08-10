@@ -255,6 +255,72 @@ func TestValidateErrors(t *testing.T) {
 	}
 }
 
+// TestValidateStagingDirResolution asserts the local staging directory
+// normalization: the default keeps <root>/staging, an absolute value is
+// used as-is, a relative value is joined onto the root, and redundant or
+// parent segments are cleaned away so the staging tree cannot traverse.
+func TestValidateStagingDirResolution(t *testing.T) {
+	cases := []struct {
+		name, root, dir, want string
+	}{
+		{"default", "/data/repo", "", "/data/repo/staging"},
+		{"absolute used as-is", "/data/repo", "/srv/varve/staging", "/srv/varve/staging"},
+		{"absolute cleaned", "/data/repo", "/srv/../srv/varve/staging", "/srv/varve/staging"},
+		{"relative joined onto root", "/data/repo", "tmp/staging", "/data/repo/tmp/staging"},
+		{"relative traversal cleaned", "/data/repo", "a/../b", "/data/repo/b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validController()
+			cfg.Storage.Local.Root = tc.root
+			cfg.Storage.Local.StagingDir = tc.dir
+			if err := validate(cfg); err != nil {
+				t.Fatalf("validate(): %v", err)
+			}
+			if got := cfg.Storage.Local.StagingDir; got != tc.want {
+				t.Errorf("StagingDir = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidateStagingPrefix asserts the S3 staging prefix contract: an
+// empty value keeps the default "staging", valid prefixes (including
+// multi-segment keys) pass, and unsafe prefixes are rejected with the
+// field name.
+func TestValidateStagingPrefix(t *testing.T) {
+	valid := []string{"", "staging", "uploads", "uploads/tmp", "tmp-2026/staging.area"}
+	for _, prefix := range valid {
+		cfg := validController()
+		cfg.Storage.S3.StagingPrefix = prefix
+		if err := validate(cfg); err != nil {
+			t.Errorf("validate() with prefix %q: %v", prefix, err)
+			continue
+		}
+		want := prefix
+		if want == "" {
+			want = "staging"
+		}
+		if cfg.Storage.S3.StagingPrefix != want {
+			t.Errorf("StagingPrefix = %q, want %q", cfg.Storage.S3.StagingPrefix, want)
+		}
+	}
+
+	invalid := []string{"/uploads", "uploads/", "a//b", "a/./b", "a/../b", "up loads", "uploads@2026", ".."}
+	for _, prefix := range invalid {
+		cfg := validController()
+		cfg.Storage.S3.StagingPrefix = prefix
+		err := validate(cfg)
+		if err == nil {
+			t.Errorf("validate() with prefix %q: want error", prefix)
+			continue
+		}
+		if !strings.Contains(err.Error(), "storage.s3.staging_prefix") {
+			t.Errorf("error %q does not mention storage.s3.staging_prefix", err)
+		}
+	}
+}
+
 func TestValidatePackagerOK(t *testing.T) {
 	for _, packager := range []string{
 		"", // unset: no PACKAGER injected

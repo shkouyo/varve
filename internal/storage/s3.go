@@ -125,20 +125,29 @@ func (s *s3Client) StatObject(ctx context.Context, bucket, key string) (objectIn
 
 // s3Backend implements Backend over an S3-compatible object store. Object
 // keys are the virtual paths; the bucket root corresponds to the repository
-// root.
+// root. Staging keys carry the configured staging prefix instead of the
+// default "staging".
 type s3Backend struct {
-	client objectAPI
-	bucket string
+	client        objectAPI
+	bucket        string
+	stagingPrefix string
 }
 
 // OpenS3 returns a Backend backed by an S3-compatible object store
 // (MinIO / SeaweedFS / Ceph RGW / Cloudflare R2). The client is constructed
 // from the controller's S3 configuration; no network I/O happens until the
 // first operation. Multipart uploads are handled automatically by
-// minio-go.
+// minio-go. An empty staging prefix keeps the default "staging".
 func OpenS3(cfg config.S3Config) (Backend, error) {
 	if cfg.Endpoint == "" || cfg.Bucket == "" {
 		return nil, errors.New("storage: s3 endpoint and bucket are required")
+	}
+	stagingPrefix := cfg.StagingPrefix
+	if stagingPrefix == "" {
+		stagingPrefix = "staging"
+	}
+	if !validName(stagingPrefix) {
+		return nil, fmt.Errorf("storage: invalid s3 staging prefix %q", stagingPrefix)
 	}
 	lookup := minio.BucketLookupPath
 	if !cfg.PathStyle {
@@ -157,8 +166,18 @@ func OpenS3(cfg config.S3Config) (Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("storage: open s3 client: %w", err)
 	}
-	return &s3Backend{client: &s3Client{c: c}, bucket: cfg.Bucket}, nil
+	return &s3Backend{client: &s3Client{c: c}, bucket: cfg.Bucket, stagingPrefix: stagingPrefix}, nil
 }
+
+// StagingPath returns the object key of a task artifact in the staging
+// upload area: "<stagingPrefix>/<taskID>/<fileName>".
+func (b *s3Backend) StagingPath(taskID, fileName string) string {
+	return b.stagingPrefix + "/" + taskID + "/" + fileName
+}
+
+// StagingDir returns "" for the s3 backend: an object store has no
+// physical staging directory.
+func (b *s3Backend) StagingDir() string { return "" }
 
 // Put stores the content of r under name. size is passed through to the
 // object store (unknown when negative).
@@ -208,8 +227,9 @@ func (b *s3Backend) Delete(ctx context.Context, name string) error {
 
 // List returns the flat-root names matching the glob prefix: the server
 // lists objects under the literal prefix extracted from the glob, results
-// are filtered client-side with path.Match, and staging entries are never
-// returned. Pagination follows the continuation token until the last page.
+// are filtered client-side with path.Match, and staging entries (keys under
+// the configured staging prefix) are never returned. Pagination follows the
+// continuation token until the last page.
 func (b *s3Backend) List(ctx context.Context, prefix string) ([]string, error) {
 	literal := globLiteralPrefix(prefix)
 	var names []string
@@ -220,7 +240,7 @@ func (b *s3Backend) List(ctx context.Context, prefix string) ([]string, error) {
 			return nil, fmt.Errorf("storage: list %q in bucket %q: %w", prefix, b.bucket, err)
 		}
 		for _, obj := range page.objects {
-			if strings.HasPrefix(obj.key, "staging/") {
+			if strings.HasPrefix(obj.key, b.stagingPrefix+"/") {
 				continue // the staging tree is never listed
 			}
 			ok, err := path.Match(prefix, obj.key)

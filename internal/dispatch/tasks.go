@@ -27,7 +27,6 @@ import (
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/detect"
-	"git.0x0f.dev/varve/internal/storage"
 )
 
 // GetTask returns the task detail for a one-shot agent. The first call
@@ -146,7 +145,7 @@ func (o *OrchestratorImpl) taskDetail(ctx context.Context, t *db.Task) (*TaskDet
 	archive := ""
 	if o.archiveMode() {
 		mode = "archive"
-		archive = storage.StagingPath(t.ID, sourceArchiveName)
+		archive = o.storage.StagingPath(t.ID, sourceArchiveName)
 	}
 	deadline := time.Time{}
 	if t.AssignedAt != nil {

@@ -75,17 +75,19 @@ type StorageConfig struct {
 
 // LocalConfig configures the local repository root directory.
 type LocalConfig struct {
-	Root string // "/data/repo"
+	Root       string // "/data/repo"
+	StagingDir string // staging upload dir; "" = <root>/staging, absolute = used as-is, relative = joined onto root (resolved at load)
 }
 
 // S3Config configures an S3-compatible artifact backend.
 type S3Config struct {
-	Endpoint  string // S3 endpoint URL
-	Bucket    string // bucket name
-	Region    string // S3 region
-	AccessKey string // access key; overridable via VARVE_S3_ACCESS_KEY
-	SecretKey string // secret key; overridable via VARVE_S3_SECRET_KEY
-	PathStyle bool   // use path-style addressing (default true)
+	Endpoint      string // S3 endpoint URL
+	Bucket        string // bucket name
+	Region        string // S3 region
+	AccessKey     string // access key; overridable via VARVE_S3_ACCESS_KEY
+	SecretKey     string // secret key; overridable via VARVE_S3_SECRET_KEY
+	PathStyle     bool   // use path-style addressing (default true)
+	StagingPrefix string // object-key prefix of the staging upload area, "staging"
 }
 
 // RepoConfig configures the generated pacman repository.
