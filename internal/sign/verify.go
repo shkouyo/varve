@@ -41,7 +41,7 @@ func (s *Signer) VerifyDetached(ctx context.Context, sigPath, pkgPath string) er
 	cmdCtx, cancel := context.WithTimeout(ctx, gpgCmdTimeout)
 	defer cancel()
 	cmd := s.execCommand(cmdCtx, "gpg", "--homedir", s.gnupgHome,
-		"--batch", "--verify", sigPath, pkgPath)
+		"--batch", "--verify", "--", sigPath, pkgPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("sign: verify %s against %s: %w: %s",

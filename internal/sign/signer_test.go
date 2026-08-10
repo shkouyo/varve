@@ -67,12 +67,24 @@ func genTestKey(t *testing.T, home, passphrase string) string {
 	return ""
 }
 
-// exportArmored dumps the secret key from home as armored text.
+// exportArmored dumps the secret key from home as armored text. Like the
+// production export path it feeds the passphrase through a pipe on fd 3
+// so test coverage exercises the same gpg invocation shape.
 func exportArmored(t *testing.T, home, keyID, passphrase string) string {
 	t.Helper()
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("passphrase pipe: %v", err)
+	}
 	cmd := exec.Command("gpg", "--homedir", home, "--batch", "--pinentry-mode", "loopback",
-		"--passphrase", passphrase, "--export-secret-keys", "--armor", keyID)
+		"--passphrase-fd", "3", "--export-secret-keys", "--armor", "--", keyID)
+	cmd.ExtraFiles = []*os.File{pr}
+	if _, err := pw.WriteString(passphrase + "\n"); err != nil {
+		t.Fatalf("write passphrase: %v", err)
+	}
+	pw.Close()
 	out, err := cmd.CombinedOutput()
+	pr.Close()
 	if err != nil {
 		t.Fatalf("export-secret-keys: %v: %s", err, out)
 	}

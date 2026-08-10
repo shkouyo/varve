@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -43,10 +44,30 @@ func (s *Signer) ExportForTask(ctx context.Context, taskID string) (*KeyMaterial
 	}
 	cmdCtx, cancel := context.WithTimeout(ctx, gpgCmdTimeout)
 	defer cancel()
+	// The passphrase is handed to gpg through a pipe on fd 3
+	// (--passphrase-fd), never through argv, so it stays out of
+	// /proc/<pid>/cmdline and ps output. The write end is closed before
+	// the subprocess runs; the passphrase is far below the pipe buffer
+	// size, so the write cannot block.
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("sign: export secret key for task %s: passphrase pipe: %w", taskID, err)
+	}
 	cmd := s.execCommand(cmdCtx, "gpg", "--homedir", s.gnupgHome, "--batch",
-		"--pinentry-mode", "loopback", "--passphrase", s.cfg.Passphrase,
-		"--export-secret-keys", "--armor", s.keyID)
+		"--pinentry-mode", "loopback", "--passphrase-fd", "3",
+		"--export-secret-keys", "--armor", "--", s.keyID)
+	cmd.ExtraFiles = []*os.File{pr}
+	if _, werr := pw.WriteString(s.cfg.Passphrase + "\n"); werr != nil {
+		pw.Close()
+		pr.Close()
+		return nil, fmt.Errorf("sign: export secret key for task %s: write passphrase: %w", taskID, werr)
+	}
+	if cerr := pw.Close(); cerr != nil {
+		pr.Close()
+		return nil, fmt.Errorf("sign: export secret key for task %s: close passphrase pipe: %w", taskID, cerr)
+	}
 	out, err := cmd.CombinedOutput()
+	pr.Close()
 	if err != nil {
 		return nil, fmt.Errorf("sign: export secret key for task %s: %w: %s",
 			taskID, err, strings.TrimSpace(string(out)))

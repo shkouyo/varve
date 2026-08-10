@@ -209,3 +209,50 @@ func TestExportForTaskTimeout(t *testing.T) {
 		t.Fatalf("ExportForTask(hung gpg) took %v, want the gpgCmdTimeout bound", elapsed)
 	}
 }
+
+// TestExportForTaskPassphraseFd asserts the passphrase never lands in the
+// gpg argv: the export command must carry --passphrase-fd 3 and must not
+// contain the passphrase or a --passphrase flag.
+func TestExportForTaskPassphraseFd(t *testing.T) {
+	const secret = "super-secret-passphrase"
+	var mu sync.Mutex
+	var exportArgs []string
+	old := execCommand
+	execCommand = func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		mu.Lock()
+		for _, a := range arg {
+			if a == "--export-secret-keys" {
+				exportArgs = append(exportArgs, arg...)
+				break
+			}
+		}
+		mu.Unlock()
+		// A fast no-op gpg stand-in; the export itself is covered by the
+		// real-gpg tests.
+		return exec.CommandContext(ctx, "true")
+	}
+	defer func() { execCommand = old }()
+
+	s, err := newSigner(&config.GPGConfig{KeyID: "DEADBEEF", Passphrase: secret}, t.TempDir())
+	if err != nil {
+		t.Fatalf("newSigner: %v", err)
+	}
+	if _, err := s.ExportForTask(context.Background(), "task-argv"); err != nil {
+		t.Fatalf("ExportForTask: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(exportArgs) == 0 {
+		t.Fatal("export command not recorded")
+	}
+	joined := strings.Join(exportArgs, " ")
+	if !strings.Contains(joined, "--passphrase-fd") || !strings.Contains(joined, " 3 ") {
+		t.Errorf("export argv missing --passphrase-fd 3: %q", joined)
+	}
+	if strings.Contains(joined, "--passphrase ") {
+		t.Errorf("export argv still carries --passphrase: %q", joined)
+	}
+	if strings.Contains(joined, secret) {
+		t.Errorf("export argv leaks the passphrase: %q", joined)
+	}
+}

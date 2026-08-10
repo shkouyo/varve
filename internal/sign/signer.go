@@ -149,7 +149,7 @@ func (s *Signer) listSecretKeyID() (string, error) {
 // the managed keyring; startup fails otherwise.
 func (s *Signer) verifySecretKey(keyID string) error {
 	cmd := s.execCommand(context.Background(), "gpg", "--homedir", s.gnupgHome,
-		"--batch", "--list-secret-keys", keyID)
+		"--batch", "--list-secret-keys", "--", keyID)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("sign: secret key %s not found: %w: %s", keyID, err, strings.TrimSpace(string(out)))
