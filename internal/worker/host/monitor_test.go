@@ -42,6 +42,10 @@ func TestHandleTaskEnvInjection(t *testing.T) {
 	if run.image != "archlinux/archlinux:multilib-devel" {
 		t.Errorf("image = %q", run.image)
 	}
+	// The zero limits of the test task pass through as "unrestricted".
+	if run.cpuLimit != 0 || run.memLimit != "" {
+		t.Errorf(`run limits = %d/%q, want 0/"" for a task without limits`, run.cpuLimit, run.memLimit)
+	}
 	want := []string{
 		"VARVE_ROLE=agent",
 		"VARVE_ONE_SHOT=1",
@@ -307,4 +311,25 @@ func TestMonitorDrainCapBoundsNoTimeoutTask(t *testing.T) {
 		t.Fatal("monitor did not return after the drain cap")
 	}
 	close(rt.blocked) // let the stray Wait goroutine finish
+}
+
+// TestHandleTaskPassesResourceLimits asserts the per-task cpu/memory
+// limits are handed to the container runtime (the config values were dead
+// before: the run call hardcoded 0, "").
+func TestHandleTaskPassesResourceLimits(t *testing.T) {
+	rt := newFakeRuntime()
+	c := newFakeClient()
+	r := testRunner(t, nil, c, rt)
+	r.slots <- struct{}{}
+
+	task := testTask("t1")
+	task.Build.CPULimit = 4
+	task.Build.MemoryLimit = "8GiB"
+	r.handleTask(context.Background(), task, "tok-1")
+
+	waitFor(t, 2*time.Second, func() bool { return rt.runCount() >= 1 })
+	run := rt.run(0)
+	if run.cpuLimit != 4 || run.memLimit != "8GiB" {
+		t.Errorf("run limits = %d/%q, want 4/8GiB", run.cpuLimit, run.memLimit)
+	}
 }

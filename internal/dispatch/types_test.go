@@ -50,6 +50,8 @@ func TestTaskDetailJSONGolden(t *testing.T) {
 		Build: BuildInfo{
 			TimeoutSeconds: 1800,
 			Deadline:       time.Date(2026, 8, 5, 10, 30, 0, 0, time.UTC),
+			CPULimit:       4,
+			MemoryLimit:    "8GiB",
 		},
 	}
 	got, err := json.Marshal(d)
@@ -63,7 +65,7 @@ func TestTaskDetailJSONGolden(t *testing.T) {
 		`"hooks":{"pre_build":["scripts/pre.sh"],"post_build":["scripts/post.sh"],"on_success":["scripts/ok.sh"],"on_failure":["scripts/fail.sh"]},` +
 		`"collect":{"exclude":["*-debug"]},` +
 		`"signing":{"required":true,"mode":"packages"},` +
-		`"build":{"timeout_seconds":1800,"deadline":"2026-08-05T10:30:00Z"},` +
+		`"build":{"timeout_seconds":1800,"deadline":"2026-08-05T10:30:00Z","cpu_limit":4,"memory_limit":"8GiB"},` +
 		`"packager":""}`
 	if string(got) != want {
 		t.Errorf("TaskDetail JSON mismatch\n got: %s\nwant: %s", got, want)

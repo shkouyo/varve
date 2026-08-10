@@ -185,6 +185,8 @@ func (o *OrchestratorImpl) taskDetail(ctx context.Context, t *db.Task) (*TaskDet
 		Build: BuildInfo{
 			TimeoutSeconds: int64(o.cfg.Worker.BuildTimeout.Seconds()),
 			Deadline:       deadline,
+			CPULimit:       o.cfg.Worker.CPULimit,
+			MemoryLimit:    o.cfg.Worker.MemoryLimit,
 		},
 		Packager: o.cfg.Worker.Packager,
 	}

@@ -188,6 +188,29 @@ func TestAppendLogProgress(t *testing.T) {
 	}
 }
 
+// TestTaskDetailCarriesLimits asserts the configured worker cpu/memory
+// limits are dispatched onto the task detail so the host can hand them
+// to the container runtime.
+func TestTaskDetailCarriesLimits(t *testing.T) {
+	env := newTestEnv(t)
+	env.cfg.Worker.CPULimit = 4
+	env.cfg.Worker.MemoryLimit = "8GiB"
+	env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	taskID, token := env.claim(t, "w1")
+
+	detail, err := env.o.GetTask(ctx(), taskID, token)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if detail.Build.CPULimit != 4 {
+		t.Errorf("cpu limit = %d, want 4", detail.Build.CPULimit)
+	}
+	if detail.Build.MemoryLimit != "8GiB" {
+		t.Errorf("memory limit = %q, want 8GiB", detail.Build.MemoryLimit)
+	}
+}
+
 // TestTaskDetailPackager asserts the configured worker.packager identity
 // is carried onto the dispatched task detail (and thus into the agent's
 // build environment).

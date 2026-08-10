@@ -154,10 +154,15 @@ type SigningInfo struct {
 }
 
 // BuildInfo mirrors the "build" block of TaskDetail: the per-task timeout
-// and the absolute deadline derived from assigned_at + build_timeout.
+// and the absolute deadline derived from assigned_at + build_timeout,
+// plus the configured container resource limits (host mode only; zero
+// values leave the container unrestricted). The limit fields are omitted
+// when unset, so older workers keep parsing the payload unchanged.
 type BuildInfo struct {
 	TimeoutSeconds int64     `json:"timeout_seconds"`
 	Deadline       time.Time `json:"deadline"`
+	CPULimit       int       `json:"cpu_limit,omitempty"`
+	MemoryLimit    string    `json:"memory_limit,omitempty"`
 }
 
 // TaskDetail is the full task description handed to a worker at claim

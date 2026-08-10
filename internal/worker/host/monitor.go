@@ -98,7 +98,7 @@ func (r *Runner) handleTask(ctx context.Context, task *api.TaskDetail, claimToke
 			return
 		}
 	}
-	id, err := r.rt.Run(cctx, r.cfg.Image, r.containerEnv(task.ID, claimToken), 0, "")
+	id, err := r.rt.Run(cctx, r.cfg.Image, r.containerEnv(task.ID, claimToken), task.Build.CPULimit, task.Build.MemoryLimit)
 	if err != nil {
 		r.reportResult(cctx, task.ID, claimToken,
 			failedResult("container", "run container: "+err.Error()))
