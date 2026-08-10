@@ -7,6 +7,8 @@
 # real git binary. Behavior is driven by environment variables:
 #
 #   VARVE_TEST_GIT_HEAD  canned HEAD hash for ls-remote (empty = no HEAD)
+#   VARVE_TEST_GIT_FAIL  non-empty: ls-remote fails like an unreachable
+#                         upstream (fatal on stderr, exit 1)
 #   VARVE_TEST_GIT_BARRIER path of a barrier file: ls-remote parks until the
 #                         test creates the file (concurrency tests)
 #   VARVE_TEST_GIT_TRACE file to append start/end markers (concurrency tests)
@@ -25,6 +27,10 @@ if [ "$1" = "ls-remote" ]; then
         while [ ! -e "$VARVE_TEST_GIT_BARRIER" ]; do
             sleep 0.01
         done
+    fi
+    if [ -n "$VARVE_TEST_GIT_FAIL" ]; then
+        echo "fatal: unable to access 'https://example.org/upstream.git/': Could not resolve host" >&2
+        exit 1
     fi
     if [ -n "$VARVE_TEST_GIT_HEAD" ]; then
         printf '%s\tHEAD\n' "$VARVE_TEST_GIT_HEAD"

@@ -341,12 +341,13 @@ func TestPollOnceSkips(t *testing.T) {
 	})
 }
 
-// TestPollOnceUpstreamQueryFailureSkips asserts a failed upstream query
-// skips the branch instead of submitting a false positive.
-// The svn shim fails when invoked without --xml; here the source= entry is
-// not a VCS URL so no query runs at all, and a package that cannot name an
-// upstream is still submitted on srcinfo changes with an empty ref.
-func TestPollOnceUpstreamQueryFailureSkips(t *testing.T) {
+// TestPollOnceNonVCSSubmitsCommitChange covers the non-VCS source path:
+// the source= entry is not a VCS URL so no upstream query runs at all,
+// and a package that cannot name an upstream is still submitted on
+// srcinfo changes with an empty ref. (The name was changed from
+// "UpstreamQueryFailure" because no query fails in this scenario; the
+// real failure path has its own test below.)
+func TestPollOnceNonVCSSubmitsCommitChange(t *testing.T) {
 	src := newSourceRepo(t, "foo-git", map[string]string{
 		".SRCINFO": srcinfoWithSource("foo-git", "1.0", "1", "https://example.org/foo.tar.gz"),
 	})
@@ -361,6 +362,27 @@ func TestPollOnceUpstreamQueryFailureSkips(t *testing.T) {
 	if changes[0].UpstreamRef != "" || changes[0].Reason != ReasonCommit {
 		t.Errorf("change = %+v, want commit change with empty upstream ref", changes[0])
 	}
+}
+
+// TestPollOnceUpstreamQueryFailureSkipsBranch drives a real upstream
+// query failure through the git PATH shim (VARVE_TEST_GIT_FAIL): the
+// git+ VCS source is queried, the ls-remote fails like an unreachable
+// upstream, and submitChange's upstreamErr branch skips the package
+// instead of submitting a false positive.
+func TestPollOnceUpstreamQueryFailureSkipsBranch(t *testing.T) {
+	withShimPath(t)
+	t.Setenv("VARVE_TEST_GIT_FAIL", "1")
+	src := newSourceRepo(t, "foo-git", map[string]string{
+		".SRCINFO": srcinfoWithSource("foo-git", "1.0", "1", "git+https://example.org/upstream.git"),
+	})
+	store, _ := openStore(t)
+	sink := &fakeSink{}
+	d := newTestDetector(t, "file://"+src, store, sink)
+
+	if err := d.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	assertChangeCount(t, sink, 0)
 }
 
 // TestPollOnceUpstreamConcurrencyBounded drives eight VCS branches whose
