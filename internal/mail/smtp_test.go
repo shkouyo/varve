@@ -57,6 +57,7 @@ type testSMTP struct {
 	tlsCfg   *tls.Config // server TLS config; nil disables TLS features
 	implicit bool        // wrap accepted connections in TLS immediately
 	authFail bool        // reject AUTH with 535
+	hang     bool        // answer the greeting, then never speak again
 	reject   map[string]bool
 
 	mu   sync.Mutex
@@ -150,6 +151,11 @@ func (s *testSMTP) serve(conn net.Conn) {
 	}
 	if !replyf("220 test smtp ready\r\n") {
 		return
+	}
+	if s.hang {
+		// Stalled-relay simulation: accept, answer the greeting, then go
+		// silent. Only the client's session deadline ends this exchange.
+		select {}
 	}
 
 	authWait := 0 // 0 = idle, 1 = username expected, 2 = password expected
@@ -492,6 +498,83 @@ func TestSendRcptRejected(t *testing.T) {
 	if got := len(srv.messages()); got != 0 {
 		t.Errorf("queued %d messages despite recipient rejection", got)
 	}
+}
+
+// TestSendSessionTimeout asserts the absolute session deadline: a relay
+// that accepts the connection but never answers (neither the 220 greeting
+// nor any later command reply) fails around sessionTimeout instead of
+// blocking the caller forever. Both failure points are covered: the
+// greeting read in NewClient and a mid-session command after a healthy
+// greeting.
+func TestSendSessionTimeout(t *testing.T) {
+	old := sessionTimeout
+	sessionTimeout = 100 * time.Millisecond
+	defer func() { sessionTimeout = old }()
+
+	t.Run("greeting never arrives", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func(c net.Conn) {
+					<-done // hold the connection without ever writing
+					c.Close()
+				}(conn)
+			}
+		}()
+		host, port, _ := net.SplitHostPort(ln.Addr().String())
+		var p int
+		fmt.Sscanf(port, "%d", &p)
+		m := testMailer(config.MailConfig{
+			Enabled: true, Host: host, Port: p, From: "varve@example.org", TLS: "none",
+		}, nil)
+		start := time.Now()
+		err = m.send(context.Background(), "who@example.org", []byte(testMessage))
+		elapsed := time.Since(start)
+		if err == nil {
+			t.Fatal("send to a silent relay: want a deadline error, got nil")
+		}
+		if elapsed > 5*time.Second {
+			t.Errorf("send took %v, want it to fail around sessionTimeout", elapsed)
+		}
+	})
+
+	t.Run("silent after the greeting", func(t *testing.T) {
+		// Built by hand so the hang flag is set before the accept loop
+		// starts (writing it afterwards would race with serve).
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv := &testSMTP{t: t, ln: ln, hang: true, reject: map[string]bool{}}
+		go srv.acceptLoop()
+		t.Cleanup(func() { ln.Close() })
+		m := testMailer(config.MailConfig{
+			Enabled: true, Host: srv.host(), Port: srv.port(),
+			From: "varve@example.org", TLS: "none",
+		}, nil)
+		start := time.Now()
+		err = m.send(context.Background(), "who@example.org", []byte(testMessage))
+		elapsed := time.Since(start)
+		if err == nil {
+			t.Fatal("send to a relay that stalls mid-session: want a deadline error, got nil")
+		}
+		if elapsed > 5*time.Second {
+			t.Errorf("send took %v, want it to fail around sessionTimeout", elapsed)
+		}
+		if got := len(srv.messages()); got != 0 {
+			t.Errorf("queued %d messages despite the stalled session", got)
+		}
+	})
 }
 
 // TestSendDialFailure asserts a refused connection surfaces a connect-stage

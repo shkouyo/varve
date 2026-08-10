@@ -25,7 +25,17 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// sessionTimeout bounds one full SMTP session (greeting, AUTH, envelope,
+// DATA, QUIT) measured from the moment the TCP connection is established.
+// The deadline sits on the raw connection, so it also covers a later
+// STARTTLS upgrade whose tls.Conn reads and writes still fall through to
+// the underlying conn. A relay that accepts TCP but never answers would
+// otherwise wedge the scheduler goroutine and the ingest mutex forever.
+// Tests may shorten it.
+var sessionTimeout = 30 * time.Second
 
 // send delivers msg to a single recipient over one SMTP connection. The
 // transport is selected by cfg.TLS: "none" is plaintext, "starttls" starts
@@ -86,6 +96,10 @@ func (m *Mailer) dial(ctx context.Context) (*smtp.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Absolute session deadline from connection establishment: every
+	// command phase below (including a STARTTLS upgrade on top of this
+	// conn) is bounded by sessionTimeout.
+	conn.SetDeadline(time.Now().Add(sessionTimeout))
 
 	switch m.cfg.TLS {
 	case "implicit":
