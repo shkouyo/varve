@@ -191,9 +191,11 @@ func TestTaskClaimTokenSurvivesReopen(t *testing.T) {
 }
 
 // TestSetDispatchBindingConcurrentClaim asserts the claim race is safe:
-// a dispatch binding never clobbers a concurrent worker claim. Whichever
-// op wins, the final claim token is the worker's token once the claim
-// happened.
+// a dispatch binding never clobbers a concurrent worker claim and vice
+// versa. The write lock (BEGIN IMMEDIATE) serializes the two ops, so
+// exactly one wins: the claim (binding gets ErrConflict) or the binding
+// (claim gets ErrNoTask — a dispatched task is reserved for its one-shot
+// runner, see TestClaimSkipsDispatchedTask). Both outcomes are legal.
 func TestSetDispatchBindingConcurrentClaim(t *testing.T) {
 	s := newTestStore(t)
 	pkg := mustSeedPackage(t, s, "race")
@@ -208,18 +210,38 @@ func TestSetDispatchBindingConcurrentClaim(t *testing.T) {
 	go func() {
 		done <- s.SetDispatchBinding(testCtx, "race-1", "dispatch-tok", at(time.Minute))
 	}()
-	for i := 0; i < 2; i++ {
-		err := <-done
-		// SetDispatchBinding legitimately conflicts when the claim won
-		// first; the claim itself must always succeed.
-		if err != nil && !errors.Is(err, ErrConflict) {
+
+	errs := []error{<-done, <-done}
+	claimWon, bindingWon := false, false
+	for _, err := range errs {
+		switch {
+		case err == nil: // the winner is inferred from the final state and the other error
+		case errors.Is(err, ErrNoTask):
+			bindingWon = true // only ClaimTask can return ErrNoTask
+		case errors.Is(err, ErrConflict):
+			claimWon = true // only SetDispatchBinding can return ErrConflict
+		default:
 			t.Fatalf("concurrent op: %v", err)
 		}
 	}
+	if claimWon && bindingWon {
+		t.Fatal("concurrent ops: both reported the other side's error, impossible")
+	}
+
 	task, err := s.GetTask(testCtx, "race-1")
 	if err != nil {
 		t.Fatalf("GetTask: %v", err)
 	}
+	if bindingWon { // interleaving B: task stays queued, reserved for the one-shot runner
+		if task.State != "queued" {
+			t.Errorf("task state = %q, want queued (binding won)", task.State)
+		}
+		if task.ClaimToken != "dispatch-tok" {
+			t.Errorf("dispatched task token = %q, want dispatch-tok", task.ClaimToken)
+		}
+		return
+	}
+	// interleaving A: the claim won (including claim=nil with binding=ErrConflict)
 	if task.State != "assigned" {
 		t.Errorf("task state = %q, want assigned (a fresh worker always claims)", task.State)
 	}
