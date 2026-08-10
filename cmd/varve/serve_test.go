@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -233,9 +234,9 @@ func TestRunServeStartupFailures(t *testing.T) {
 
 // TestRunServeGracefulShutdown drives the full serve path with recorder
 // fakes: the startup order of the injected components and the graceful
-// shutdown order (signal → orch.Stop → detect stopped → api closed → web
-// closed) are asserted from the recorded event list. The real config,
-// database and storage backends run against t.TempDir().
+// shutdown order (signal → orch.Stop → detect stopped → api drained →
+// web drained) are asserted from the recorded event list. The real
+// config, database and storage backends run against t.TempDir().
 func TestRunServeGracefulShutdown(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := writeControllerConfig(t, dir, "off", "")
@@ -255,7 +256,7 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 		rec.record("server.start:" + addr)
 		return &fakeServer{rec: rec, name: addr}, nil
 	})
-	replaceVar(t, &waitSignal, func() error {
+	replaceVar(t, &waitSignal, func(<-chan os.Signal) error {
 		rec.record("signal")
 		return nil
 	})
@@ -274,8 +275,8 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 		"signal",
 		"orch.Stop",
 		"detect.stopped",
-		"close:" + testAPIPort,
-		"close:" + testWebPort,
+		"shutdown:" + testAPIPort,
+		"shutdown:" + testWebPort,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("events = %v, want %v", got, want)
@@ -316,6 +317,54 @@ func TestNewHTTPServerHardening(t *testing.T) {
 	}
 }
 
+// TestRunServeSecondSignalForcesExit covers the second-signal contract:
+// once the first signal arrived, another signal makes the process exit
+// immediately (forceExit with code 1) instead of waiting for a stuck
+// shutdown. forceExit is injected so the test observes the exit without
+// killing the test binary.
+func TestRunServeSecondSignalForcesExit(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeControllerConfig(t, dir, "off", "")
+
+	rec := newRecorder()
+	fakeOrch := &fakeOrchestrator{rec: rec}
+	replaceVar(t, &newOrchestrator, func(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
+		signer signerSurface, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
+		rec.record("orch.New")
+		return fakeOrch
+	})
+	replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink, cooldown time.Duration) (detector, error) {
+		return &fakeDetector{rec: rec}, nil
+	})
+	replaceVar(t, &startServer, func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {
+		return &fakeServer{rec: rec, name: addr}, nil
+	})
+	replaceVar(t, &waitSignal, func(sig <-chan os.Signal) error {
+		rec.record("signal")
+		// A second signal arrives while the shutdown is still running.
+		// runServe owns the real signal.Notify registration, so the kill
+		// lands in its channel (buffer 2) instead of killing the test.
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			t.Fatalf("kill self: %v", err)
+		}
+		return nil
+	})
+	exited := make(chan int, 1)
+	replaceVar(t, &forceExit, func(code int) { exited <- code })
+
+	if err := runServe([]string{"--config", cfgPath}); err != nil {
+		t.Fatalf("runServe: %v", err)
+	}
+	select {
+	case code := <-exited:
+		if code != 1 {
+			t.Errorf("forceExit code = %d, want 1", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("second signal did not force an exit")
+	}
+}
+
 // TestRunServeSignerWiring pins the signer wiring contract: with
 // repo.sign="off" the orchestrator injectable must receive a true nil
 // signer, and with signing enabled a non-nil one. The pre-fix shape, a
@@ -339,7 +388,7 @@ func TestRunServeSignerWiring(t *testing.T) {
 		replaceVar(t, &startServer, func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {
 			return &fakeServer{rec: rec, name: addr}, nil
 		})
-		replaceVar(t, &waitSignal, func() error { return nil })
+		replaceVar(t, &waitSignal, func(<-chan os.Signal) error { return nil })
 		if err := runServe([]string{"--config", cfgPath}); err != nil {
 			t.Fatalf("runServe: %v", err)
 		}
@@ -530,10 +579,16 @@ func (d *fakeDetector) Run(ctx context.Context) error {
 }
 
 // fakeServer is the startServer recorder: it never binds a socket and
-// records its Close.
+// records its Shutdown (the graceful drain) and Close (the error-unwind
+// and fallback paths).
 type fakeServer struct {
 	rec  *recorder
 	name string
+}
+
+func (s *fakeServer) Shutdown(ctx context.Context) error {
+	s.rec.record("shutdown:" + s.name)
+	return nil
 }
 
 func (s *fakeServer) Close() error {

@@ -59,9 +59,11 @@ type detector interface {
 	Run(ctx context.Context) error
 }
 
-// httpServer is a started HTTP server: Close stops it. The default is
+// httpServer is a started HTTP server: Shutdown drains it within the
+// given context, Close stops it immediately. The default is
 // *http.Server; tests substitute a recorder.
 type httpServer interface {
+	Shutdown(ctx context.Context) error
 	Close() error
 }
 
@@ -119,17 +121,27 @@ var (
 		return srv, nil
 	}
 
-	// waitSignal blocks until SIGTERM/SIGINT. Tests replace it to
-	// trigger the shutdown path deterministically.
-	waitSignal = func() error {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-		defer signal.Stop(sig)
+	// waitSignal blocks until the first SIGTERM/SIGINT arrives on sig.
+	// Tests replace it to trigger the shutdown path deterministically;
+	// the real implementation only reads the channel, because the
+	// signal.Notify registration is owned by runServe.
+	waitSignal = func(sig <-chan os.Signal) error {
 		s := <-sig
 		log.Printf("varve: received %s, shutting down", s)
 		return nil
 	}
+
+	// forceExit replaces os.Exit so the second-signal force-exit path is
+	// testable without killing the test binary.
+	forceExit = os.Exit
 )
+
+// shutdownTimeout is the whole graceful-shutdown budget: each HTTP
+// server drains within a context of this length (then falls back to
+// Close) and the stop sequence forces an exit when the same budget
+// elapses, so a stuck external call cannot hang the process forever.
+// Tests may shorten it.
+var shutdownTimeout = 30 * time.Second
 
 // newHTTPServer builds an http.Server with the hardening settings shared
 // by both ports: request headers must arrive within 5s (slowloris is cut
@@ -152,6 +164,14 @@ func newHTTPServer(addr string, h http.Handler) *http.Server {
 // startup steps run in order; any failure aborts startup. On
 // SIGTERM/SIGINT the stack shuts down gracefully in the mandated order.
 func runServe(args []string) error {
+	// Signals are registered before any startup step: config loading, db
+	// migration and gpg key handling can take seconds, and a SIGTERM
+	// during them must reach the shutdown path instead of the default
+	// hard kill. The registration stays active until runServe returns.
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
 	path, err := configPath(args)
 	if err != nil {
 		return err
@@ -241,7 +261,7 @@ func runServe(args []string) error {
 
 	// 10. Wait for a signal or a fatal serve error (step 10).
 	signalErr := make(chan error, 1)
-	go func() { signalErr <- waitSignal() }()
+	go func() { signalErr <- waitSignal(sigCh) }()
 	select {
 	case serr := <-serveErr:
 		orch.Stop()
@@ -261,15 +281,52 @@ func runServe(args []string) error {
 		}
 	}
 
+	// A second signal during shutdown forces an immediate exit: the
+	// operator's second SIGTERM/SIGINT must always work, even when a
+	// shutdown step is stuck.
+	go func() {
+		if s, ok := <-sigCh; ok {
+			log.Printf("varve: received second signal %v, forcing exit", s)
+			forceExit(1)
+		}
+	}()
+
 	// Graceful shutdown order: stop the orchestrator (halts the
-	// scheduler, drains the ingest mutex), stop detection, then close
-	// both HTTP servers.
-	orch.Stop()
-	detCancel()
-	<-detDone
-	apiErr := apiSrv.Close()
-	webErr := webSrv.Close()
-	return errors.Join(apiErr, webErr)
+	// scheduler, drains the ingest mutex), stop detection, then drain
+	// both HTTP servers with Shutdown. The whole sequence is bounded by
+	// shutdownTimeout; a stuck step forces an exit instead of hanging
+	// the process forever.
+	done := make(chan error, 1)
+	go func() {
+		orch.Stop()
+		detCancel()
+		<-detDone
+		done <- errors.Join(shutdownServer(apiSrv), shutdownServer(webSrv))
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(shutdownTimeout):
+		log.Printf("varve: graceful shutdown timed out after %s, forcing exit", shutdownTimeout)
+		forceExit(1)
+		return nil // unreachable: forceExit never returns
+	}
+}
+
+// shutdownServer drains one HTTP server within the shutdown budget and
+// falls back to Close when the drain cannot finish in time, so in-flight
+// SSE streams and uploads get the budget to finish instead of being cut
+// off by Close immediately.
+func shutdownServer(s httpServer) error {
+	if s == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		return errors.Join(err, s.Close())
+	}
+	return nil
 }
 
 // openStorage opens the configured artifact backend: the local
