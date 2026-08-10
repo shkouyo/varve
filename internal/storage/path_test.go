@@ -52,6 +52,9 @@ func TestValidName(t *testing.T) {
 		"a@b",          // '@' not in whitelist
 		"a\\b",         // backslash not in whitelist
 		"a~b",          // '~' not in whitelist
+		"-q",           // leading dash in a single segment
+		"a/-b",         // leading dash in a later segment
+		"-foo.pkg.tar.zst",
 	}
 	for _, name := range invalid {
 		if validName(name) {

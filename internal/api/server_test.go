@@ -190,6 +190,8 @@ func TestUploadNameWhitelist(t *testing.T) {
 		"é",    // non-ASCII
 		"a?b",  // query meta
 		"a#b",  // fragment meta
+		"-q",   // leading dash: parsed as an option by repo tools
+		"-foo.pkg.tar.zst",
 	}
 	// Note: "..", "." and "" never reach the handler: ServeMux
 	// normalizes dot segments and trailing slashes at the router level, so

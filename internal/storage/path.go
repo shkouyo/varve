@@ -56,6 +56,11 @@ func validName(name string) bool {
 // validBasename reports whether a single path segment contains only
 // whitelisted characters.
 func validBasename(seg string) bool {
+	if seg == "" || seg[0] == '-' {
+		// A leading dash would be parsed as an option by the pacman
+		// database tools (repo-add/repo-remove) downstream.
+		return false
+	}
 	for _, r := range seg {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':

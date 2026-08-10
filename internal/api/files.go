@@ -35,6 +35,11 @@ func validUploadName(name string) bool {
 	if name == "" || name == "." || name == ".." || len(name) > maxFileNameLen {
 		return false
 	}
+	if name[0] == '-' {
+		// A leading dash would be parsed as an option by the pacman
+		// database tools (repo-add/repo-remove) downstream.
+		return false
+	}
 	for i := 0; i < len(name); i++ {
 		switch c := name[i]; {
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
