@@ -89,13 +89,33 @@ func sanitizeCSS(css []byte) []byte {
 	return css
 }
 
+// buildStore is the read-only store surface the web UI needs; *db.Store
+// satisfies it. Tests substitute wrappers that inject failures (e.g. a
+// flaky GetBuild for the SSE lifecycle).
+type buildStore interface {
+	GetBuild(ctx context.Context, id string) (*db.Build, error)
+	ListBuilds(ctx context.Context, page, perPage int, failedOnly bool) ([]db.Build, int, error)
+	ListBuildsByPackage(ctx context.Context, packageID int64, page, perPage int) ([]db.Build, int, error)
+	ListActiveTasks(ctx context.Context) ([]db.Task, error)
+	GetPackageByBase(ctx context.Context, pkgbase string) (*db.Package, error)
+	GetPackageByID(ctx context.Context, id int64) (*db.Package, error)
+	ListPackages(ctx context.Context, q string, page, perPage int) ([]db.Package, int, error)
+	GetWorkerByID(ctx context.Context, id int64) (*db.Worker, error)
+	ListWorkers(ctx context.Context) ([]db.Worker, error)
+}
+
+// maxConcurrentSSE caps the number of live log streams. Each stream
+// polls the build row every few seconds, so without a cap an unauthenticated
+// client can multiply database load. A variable so tests can shrink it.
+var maxConcurrentSSE = 64
+
 // Server hosts the whole web UI. Handlers are stateless and safe for
 // concurrent use; the template set and the compiled stylesheet are
 // read-only after New.
 type Server struct {
 	cfg   *config.ControllerConfig
 	orch  dispatch.Orchestrator
-	store *db.Store
+	store buildStore
 	logs  LogReader
 
 	tmpl *template.Template
@@ -104,11 +124,14 @@ type Server struct {
 	// pingInterval is the SSE keep-alive comment interval (2s). Tests
 	// shorten it to keep SSE runs fast.
 	pingInterval time.Duration
+	// sseSem gates live log streams at maxConcurrentSSE; a full
+	// semaphore answers 503 instead of opening another stream.
+	sseSem chan struct{}
 }
 
 // New builds a web server over the controller configuration, the
 // orchestrator, the read-only store and the log reader.
-func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store *db.Store, logs LogReader) *Server {
+func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store buildStore, logs LogReader) *Server {
 	return &Server{
 		cfg:          cfg,
 		orch:         orch,
@@ -117,6 +140,7 @@ func New(cfg *config.ControllerConfig, orch dispatch.Orchestrator, store *db.Sto
 		tmpl:         template.Must(template.New("").Funcs(funcs).ParseFS(templatesFS, "templates/*.html")),
 		css:          sanitizeCSS(appCSS),
 		pingInterval: 2 * time.Second,
+		sseSem:       make(chan struct{}, maxConcurrentSSE),
 	}
 }
 

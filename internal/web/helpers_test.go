@@ -204,12 +204,30 @@ func testConfig() *config.ControllerConfig {
 	}
 }
 
-// newTestServer builds a server with a short SSE ping interval and no
-// dependencies wired yet.
-func newTestServer(t *testing.T, cfg *config.ControllerConfig, orch *fakeOrchestrator, store *db.Store, logs *fakeLogReader) *Server {
+// flakyStore wraps a store and injects a GetBuild failure after the first
+// successful lookup (the stream handler's own lookup), so the SSE
+// terminal-state check hits the injected error.
+type flakyStore struct {
+	*db.Store
+	getBuildErr error
+	lookups     int
+}
+
+func (f *flakyStore) GetBuild(ctx context.Context, id string) (*db.Build, error) {
+	f.lookups++
+	if f.lookups > 1 && f.getBuildErr != nil {
+		return nil, f.getBuildErr
+	}
+	return f.Store.GetBuild(ctx, id)
+}
+
+// newTestServer builds a server with a short SSE ping interval, a
+// single-slot stream semaphore and no dependencies wired yet.
+func newTestServer(t *testing.T, cfg *config.ControllerConfig, orch *fakeOrchestrator, store buildStore, logs *fakeLogReader) *Server {
 	t.Helper()
 	s := New(cfg, orch, store, logs)
 	s.pingInterval = 10 * time.Millisecond
+	s.sseSem = make(chan struct{}, 1)
 	return s
 }
 

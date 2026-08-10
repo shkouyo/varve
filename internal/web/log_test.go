@@ -20,6 +20,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -366,6 +367,95 @@ func TestSSELogMissingWaits(t *testing.T) {
 	mustContain(t, body, ": ping")
 	if strings.Contains(body, "event: done") {
 		t.Error("active build with missing log must not close the stream")
+	}
+}
+
+// TestSSEConcurrencyLimit asserts the stream semaphore: once the cap is
+// reached, a new stream request answers 503 instead of opening another
+// polling goroutine.
+func TestSSEConcurrencyLimit(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedActiveBuild(t, store, pkg, "running") // non-terminal: pings forever
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream")
+	req = req.WithContext(ctx)
+	done := make(chan struct{})
+	go func() {
+		serve(t, s, req)
+		close(done)
+	}()
+
+	// Wait until the first stream holds the single semaphore slot.
+	for {
+		select {
+		case s.sseSem <- struct{}{}:
+			<-s.sseSem // still free: the first stream has not acquired it yet
+		default:
+			goto occupied
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+occupied:
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream", nil)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("stream past the cap = %d, want 503", rec.Code)
+	}
+	cancel()
+	<-done
+}
+
+// TestSSEStreamMethodNotAllowed asserts HEAD requests on the stream and
+// download endpoints are refused with 405: the ServeMux matches HEAD on
+// GET patterns, and a HEAD stream would otherwise spin the infinite SSE
+// loop (a HEAD download would stream the whole log).
+func TestSSEStreamMethodNotAllowed(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\n"))
+
+	id := "/builds/" + itoa(build.ID)
+	if rec := get(t, s, http.MethodHead, id+"/log/stream", nil); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("HEAD stream = %d, want 405", rec.Code)
+	}
+	if rec := get(t, s, http.MethodHead, id+"/log/download", nil); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("HEAD download = %d, want 405", rec.Code)
+	}
+	// GET on both endpoints still works.
+	if rec := get(t, s, http.MethodGet, id+"/log/stream", nil); rec.Code != http.StatusOK {
+		t.Errorf("GET stream = %d, want 200", rec.Code)
+	}
+	if rec := get(t, s, http.MethodGet, id+"/log/download", nil); rec.Code != http.StatusOK {
+		t.Errorf("GET download = %d, want 200", rec.Code)
+	}
+}
+
+// TestSSEStreamClosesOnBuildError asserts a stream closes immediately
+// (event: done, no pings) when the build row becomes unreadable: no
+// further increments will arrive, and the client's EventSource reconnects
+// with Last-Event-ID once the row is back. The no-log notice must not be
+// misreported on a database failure.
+func TestSSEStreamClosesOnBuildError(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedActiveBuild(t, store, pkg, "running") // non-terminal
+	logs := newFakeLogReader("")
+	logs.tailErr = dispatch.ErrNotFound
+	flaky := &flakyStore{Store: store, getBuildErr: errors.New("db down")}
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, flaky, logs)
+
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream", nil)
+	body := rec.Body.String()
+	mustContain(t, body, "event: done")
+	if strings.Contains(body, ": ping") {
+		t.Error("stream must close instead of pinging when the build row is unreadable")
+	}
+	if strings.Contains(body, "No log was recorded") {
+		t.Error("must not report the no-log notice when the build row is unreadable")
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -82,6 +83,10 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 // log stream consumed by the EventSource on the build page. A malformed
 // build id is a 400; a well-formed but unknown one a 404.
 func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	ctx := r.Context()
 	id, ok := parseID(r.PathValue("id"))
 	if !ok {
@@ -107,6 +112,10 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 // original file. A malformed build id is a 400; a well-formed but
 // unknown one or a build without a log is a 404.
 func (s *Server) handleLogDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	ctx := r.Context()
 	id, ok := parseID(r.PathValue("id"))
 	if !ok {
@@ -149,6 +158,16 @@ func (s *Server) handleLogDownload(w http.ResponseWriter, r *http.Request) {
 // value, and never serves history older than the most recent
 // maxInlineLog bytes.
 func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string) {
+	// Bound the number of live streams: each one polls the build row
+	// every few seconds, so an unbounded count amplifies database load.
+	select {
+	case s.sseSem <- struct{}{}:
+	default:
+		s.renderError(w, r, http.StatusServiceUnavailable, "Too many live log streams.")
+		return
+	}
+	defer func() { <-s.sseSem }()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		s.renderError(w, r, http.StatusInternalServerError, "Streaming is not supported.")
@@ -189,8 +208,17 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 				// still active (the first segment may arrive), and close
 				// with a notice once the build reaches a terminal state
 				// without ever writing a log.
-				if s.isTerminalBuild(ctx, buildID) {
-					writeSSELog(w, offset, "No log was recorded for this build.\n")
+				if terminal, ok := s.isTerminalBuild(ctx, buildID); ok {
+					if terminal {
+						writeSSELog(w, offset, "No log was recorded for this build.\n")
+						writeSSEDone(w)
+						return
+					}
+				} else {
+					// The build row cannot be loaded: no further
+					// increments will arrive. Close the stream; the
+					// EventSource reconnects with Last-Event-ID and the
+					// state check recovers if the row reappears.
 					writeSSEDone(w)
 					return
 				}
@@ -218,7 +246,7 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 
 		// Empty increment: check whether the build reached a terminal
 		// state (no more increments coming).
-		if s.isTerminalBuild(ctx, buildID) {
+		if terminal, _ := s.isTerminalBuild(ctx, buildID); terminal {
 			writeSSEDone(w)
 			flusher.Flush()
 			return
@@ -258,10 +286,18 @@ func sseResume(r *http.Request) (int64, bool) {
 	return n, true
 }
 
-// isTerminalBuild reports whether the build row reached a terminal status.
-func (s *Server) isTerminalBuild(ctx context.Context, buildID string) bool {
+// isTerminalBuild reports whether the build row reached a terminal
+// status. ok is false when the row cannot be loaded; a missing or
+// unreadable build produces no further increments, so callers treat it
+// as terminal and close the stream (the client's EventSource reconnects
+// with Last-Event-ID and the state check recovers if the row reappears).
+func (s *Server) isTerminalBuild(ctx context.Context, buildID string) (terminal, ok bool) {
 	b, err := s.store.GetBuild(ctx, buildID)
-	return err == nil && isTerminalStatus(b.Status)
+	if err != nil {
+		log.Printf("web: check terminal state of build %s: %v", buildID, err)
+		return true, false
+	}
+	return isTerminalStatus(b.Status), true
 }
 
 // writeSSELog emits one event: log with the JSON payload. The event id
