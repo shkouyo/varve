@@ -109,6 +109,14 @@ func (s *Store) GetPackageByID(ctx context.Context, id int64) (*Package, error) 
 // Enqueueing a change whose pkgbase appears in the source for the first
 // time needs a creation path; the maintainers snapshot is refreshed here
 // at enqueue time.
+//
+// Empty incoming values never clobber an existing row: the metadata
+// columns fall back to the stored value when the incoming one is empty
+// ("" or "null" for the JSON string arrays, 0 for epoch). A rebuild or
+// re-check path that misses a field therefore cannot wipe already
+// recorded metadata; only non-empty detection output advances the row.
+// vcs_kind and aur_submit are exempt: "" and false are meaningful
+// transitions of their own.
 func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 	if p == nil || p.Pkgbase == "" {
 		return errors.New("db: UpsertPackage requires a package with a pkgbase")
@@ -143,21 +151,26 @@ func (s *Store) UpsertPackage(ctx context.Context, p *Package) error {
 		 pkgname, source, pkgver, pkgrel, epoch)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(pkgbase) DO UPDATE SET
-			branch = excluded.branch,
+			branch = CASE WHEN excluded.branch = '' THEN packages.branch ELSE excluded.branch END,
 			vcs_kind = excluded.vcs_kind,
-			arch = excluded.arch,
-			maintainers = excluded.maintainers,
-			aur_name = excluded.aur_name,
+			arch = CASE WHEN excluded.arch = '' THEN packages.arch ELSE excluded.arch END,
+			maintainers = CASE WHEN excluded.maintainers IN ('', 'null') THEN packages.maintainers ELSE excluded.maintainers END,
+			aur_name = CASE WHEN excluded.aur_name = '' THEN packages.aur_name ELSE excluded.aur_name END,
 			aur_submit = excluded.aur_submit,
-			url = excluded.url,
-			licenses = excluded.licenses,
-			conflicts = excluded.conflicts,
-			provides = excluded.provides,
-			pkgname = excluded.pkgname,
-			source = excluded.source,
-			pkgver = excluded.pkgver,
-			pkgrel = excluded.pkgrel,
-			epoch = excluded.epoch
+			url = CASE WHEN excluded.url = '' THEN packages.url ELSE excluded.url END,
+			arch = CASE WHEN excluded.arch = '' THEN packages.arch ELSE excluded.arch END,
+			maintainers = CASE WHEN excluded.maintainers IN ('', 'null') THEN packages.maintainers ELSE excluded.maintainers END,
+			aur_name = CASE WHEN excluded.aur_name = '' THEN packages.aur_name ELSE excluded.aur_name END,
+			aur_submit = excluded.aur_submit,
+			url = CASE WHEN excluded.url = '' THEN packages.url ELSE excluded.url END,
+			licenses = CASE WHEN excluded.licenses IN ('', 'null') THEN packages.licenses ELSE excluded.licenses END,
+			conflicts = CASE WHEN excluded.conflicts IN ('', 'null') THEN packages.conflicts ELSE excluded.conflicts END,
+			provides = CASE WHEN excluded.provides IN ('', 'null') THEN packages.provides ELSE excluded.provides END,
+			pkgname = CASE WHEN excluded.pkgname IN ('', 'null') THEN packages.pkgname ELSE excluded.pkgname END,
+			source = CASE WHEN excluded.source IN ('', 'null') THEN packages.source ELSE excluded.source END,
+			pkgver = CASE WHEN excluded.pkgver = '' THEN packages.pkgver ELSE excluded.pkgver END,
+			pkgrel = CASE WHEN excluded.pkgrel = '' THEN packages.pkgrel ELSE excluded.pkgrel END,
+			epoch = CASE WHEN excluded.epoch = 0 THEN packages.epoch ELSE excluded.epoch END
 		RETURNING id`,
 		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, maintainers, p.AURName, p.AURSubmit, p.URL, licenses, conflicts, provides,
 		pkgname, source, p.Pkgver, p.Pkgrel, p.Epoch).Scan(&id)

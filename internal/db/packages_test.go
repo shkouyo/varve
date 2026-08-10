@@ -348,7 +348,9 @@ func TestUpsertPackageMetadata(t *testing.T) {
 		t.Errorf("pkgname/source/pkgver/pkgrel/epoch round trip = %v/%v/%q/%q/%d", got.Pkgname, got.Source, got.Pkgver, got.Pkgrel, got.Epoch)
 	}
 
-	// An upsert on the same pkgbase refreshes the metadata.
+	// An upsert on the same pkgbase refreshes the metadata: non-empty
+	// values advance, empty ones leave the stored value untouched (a
+	// rebuild or re-check path that misses a field must not wipe it).
 	p2 := &Package{Pkgbase: "meta", Branch: "main", Arch: "x86_64", URL: "https://new.example.org/meta"}
 	if err := s.UpsertPackage(testCtx, p2); err != nil {
 		t.Fatalf("UpsertPackage refresh: %v", err)
@@ -357,7 +359,70 @@ func TestUpsertPackageMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPackageByBase after refresh: %v", err)
 	}
-	if got.URL != "https://new.example.org/meta" || len(got.Licenses) != 0 || len(got.Provides) != 0 {
-		t.Errorf("refreshed metadata = url %q licenses %v provides %v, want empty refresh", got.URL, got.Licenses, got.Provides)
+	if got.URL != "https://new.example.org/meta" {
+		t.Errorf("refreshed url = %q, want https://new.example.org/meta", got.URL)
+	}
+	if !reflect.DeepEqual(got.Licenses, []string{"MIT"}) || !reflect.DeepEqual(got.Provides, []string{"meta-lib"}) {
+		t.Errorf("refreshed licenses/provides = %v/%v, want preserved (empty refresh must not clobber)", got.Licenses, got.Provides)
+	}
+	if !reflect.DeepEqual(got.Pkgname, []string{"meta"}) ||
+		!reflect.DeepEqual(got.Source, []string{"https://example.org/meta.tar.gz"}) ||
+		got.Pkgver != "1.0" || got.Pkgrel != "1" || got.Epoch != 3 {
+		t.Errorf("refreshed pkgname/source/pkgver/pkgrel/epoch = %v/%v/%q/%q/%d, want preserved",
+			got.Pkgname, got.Source, got.Pkgver, got.Pkgrel, got.Epoch)
+	}
+}
+
+// TestUpsertPackageEmptyValuesDoNotClobber pins the no-clobber rule for
+// the remaining columns: maintainers, the AUR record and the
+// architecture/kind fields survive an upsert that carries empty values,
+// and a later non-empty value still advances them.
+func TestUpsertPackageEmptyValuesDoNotClobber(t *testing.T) {
+	s := newTestStore(t)
+	seed := &Package{
+		Pkgbase: "clobber", Branch: "main", VCSKind: "git", Arch: "aarch64|x86_64",
+		Maintainers: []Maintainer{{Name: "A", Email: "a@example.org"}},
+		AURName:     "aur-clobber", AURSubmit: true,
+	}
+	if err := s.UpsertPackage(testCtx, seed); err != nil {
+		t.Fatalf("UpsertPackage seed: %v", err)
+	}
+	// An upsert that only knows the pkgbase must leave every field alone.
+	if err := s.UpsertPackage(testCtx, &Package{Pkgbase: "clobber"}); err != nil {
+		t.Fatalf("UpsertPackage sparse: %v", err)
+	}
+	got, err := s.GetPackageByBase(testCtx, "clobber")
+	if err != nil {
+		t.Fatalf("GetPackageByBase: %v", err)
+	}
+	if got.Branch != "main" || got.Arch != "aarch64|x86_64" {
+		t.Errorf("branch/arch after sparse upsert = %q/%q, want preserved", got.Branch, got.Arch)
+	}
+	if len(got.Maintainers) != 1 || got.Maintainers[0].Email != "a@example.org" {
+		t.Errorf("maintainers after sparse upsert = %+v, want preserved", got.Maintainers)
+	}
+	if got.AURName != "aur-clobber" {
+		t.Errorf("aur_name after sparse upsert = %q, want preserved", got.AURName)
+	}
+	// vcs_kind and aur_submit are exempt from the guard on purpose: ""
+	// (the branch is no longer a VCS package) and false (AUR opt-out)
+	// are meaningful transitions, so the sparse upsert clears them.
+	if got.VCSKind != "" || got.AURSubmit {
+		t.Errorf("vcs_kind/aur_submit after sparse upsert = %q/%v, want cleared (unguarded transitions)",
+			got.VCSKind, got.AURSubmit)
+	}
+	// A non-empty value still wins.
+	if err := s.UpsertPackage(testCtx, &Package{Pkgbase: "clobber", Arch: "any"}); err != nil {
+		t.Fatalf("UpsertPackage advance: %v", err)
+	}
+	got, err = s.GetPackageByBase(testCtx, "clobber")
+	if err != nil {
+		t.Fatalf("GetPackageByBase after advance: %v", err)
+	}
+	if got.Arch != "any" {
+		t.Errorf("arch after advance = %q, want any", got.Arch)
+	}
+	if got.AURName != "aur-clobber" {
+		t.Errorf("aur_name after advance = %q, want preserved (the empty name never clobbers)", got.AURName)
 	}
 }
