@@ -29,6 +29,59 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
+// panicDispatcher panics on every dispatch attempt; it proves the
+// scheduler pass wrapper contains a panicking pass instead of killing the
+// scheduler goroutine.
+type panicDispatcher struct{}
+
+func (panicDispatcher) Dispatch(ctx context.Context, ref, taskID, token string) error {
+	panic("test: actions dispatcher exploded")
+}
+
+// TestRunScanPassContainsPanic covers the pass containment directly: a
+// panic inside the scan pass (here the actions dispatcher) is recovered,
+// the pass returns and the scheduler core still works afterwards.
+func TestRunScanPassContainsPanic(t *testing.T) {
+	env := newTestEnv(t)
+	env.cfg.Worker.Actions = enabledActions()
+	env.o.actions = panicDispatcher{}
+	env.enqueue(t, "foo", "foo")
+
+	env.o.runScanPass(context.Background()) // must not panic
+	env.o.runHourlyPass(context.Background())
+	if err := env.o.scanStalled(context.Background()); err != nil {
+		t.Fatalf("scanStalled after a contained panic: %v", err)
+	}
+}
+
+// TestSchedulerSurvivesPanickingPass drives the real loop: a panicking
+// tick must not kill the scheduler goroutine, and cancellation must
+// still halt it cleanly (otherwise Stop would hang on schedDone).
+func TestSchedulerSurvivesPanickingPass(t *testing.T) {
+	env := newTestEnv(t)
+	env.o.Stop() // halt the constructor-started scheduler (30s tick)
+	env.cfg.Worker.Actions = enabledActions()
+	env.o.actions = panicDispatcher{}
+	env.o.stallInterval = 10 * time.Millisecond
+	env.enqueue(t, "foo", "foo")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	env.o.schedCancel = cancel
+	env.o.schedDone = make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		env.o.runScheduler(ctx)
+		close(done)
+	}()
+	time.Sleep(60 * time.Millisecond) // several ticks; the first panics
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scheduler goroutine died after a panicking pass")
+	}
+}
+
 // claimAndStall claims the fifo task and advances the clock past the stall
 // timeout without any progress.
 func (e *testEnv) claimAndStall(t *testing.T, worker string) (string, string) {

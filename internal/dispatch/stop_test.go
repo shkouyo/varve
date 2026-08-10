@@ -19,9 +19,35 @@ package dispatch
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
+
+// TestStopBoundsSchedulerHang covers the Stop safety net: a scheduler
+// that never halts (a pass wedged in an external call) makes Stop return
+// after stopTimeout instead of blocking the shutdown forever.
+func TestStopBoundsSchedulerHang(t *testing.T) {
+	o := &OrchestratorImpl{
+		stopOnce:    sync.Once{},
+		schedCancel: func() {},
+		schedDone:   make(chan struct{}), // never closed
+	}
+	old := stopTimeout
+	stopTimeout = 50 * time.Millisecond
+	defer func() { stopTimeout = old }()
+
+	done := make(chan struct{})
+	go func() {
+		o.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not return after the scheduler failed to halt")
+	}
+}
 
 // TestStopDrainsIngest covers the graceful shutdown contract: Stop blocks
 // while an ingest orchestration is in flight and returns once it drains.

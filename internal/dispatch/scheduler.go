@@ -45,15 +45,40 @@ func (o *OrchestratorImpl) runScheduler(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-stall.C:
-			if err := o.scanStalled(ctx); err != nil {
-				log.Printf("dispatch: scheduler scan: %v", err)
-			}
-			o.autoscaleWorkers(ctx)
+			o.runScanPass(ctx)
 		case <-hourly.C:
-			if err := o.hourlyMaintenance(ctx); err != nil {
-				log.Printf("dispatch: hourly maintenance: %v", err)
-			}
+			o.runHourlyPass(ctx)
 		}
+	}
+}
+
+// runScanPass runs one stall-tick pass: the stall/timeout sweep followed
+// by the actions dispatch. A panic inside either is contained so the
+// single scheduler goroutine survives and keeps the recovery loop alive.
+func (o *OrchestratorImpl) runScanPass(ctx context.Context) {
+	defer o.recoverScheduler("scan")
+	if err := o.scanStalled(ctx); err != nil {
+		log.Printf("dispatch: scheduler scan: %v", err)
+	}
+	o.autoscaleWorkers(ctx)
+}
+
+// runHourlyPass runs one hourly maintenance pass, panics contained.
+func (o *OrchestratorImpl) runHourlyPass(ctx context.Context) {
+	defer o.recoverScheduler("hourly")
+	if err := o.hourlyMaintenance(ctx); err != nil {
+		log.Printf("dispatch: hourly maintenance: %v", err)
+	}
+}
+
+// recoverScheduler logs a panic in one scheduler pass and lets the loop
+// continue with the next tick. Without it a single bad pass would kill
+// the only recovery goroutine (stall/timeout finalization, worker
+// offline marking, log retention and actions dispatch all live here),
+// leaving the system permanently stalled and Stop hanging on schedDone.
+func (o *OrchestratorImpl) recoverScheduler(pass string) {
+	if r := recover(); r != nil {
+		log.Printf("dispatch: scheduler %s pass panicked: %v (continuing)", pass, r)
 	}
 }
 

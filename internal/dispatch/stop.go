@@ -17,6 +17,18 @@
 
 package dispatch
 
+import (
+	"log"
+	"time"
+)
+
+// stopTimeout bounds the wait for the scheduler goroutine to halt after
+// its context is cancelled. The happy path exits promptly; a pass stuck
+// in a hung external call (SMTP relay, GitHub API) could otherwise hold
+// Stop forever and hang the whole graceful shutdown. Tests may shorten
+// it.
+var stopTimeout = 30 * time.Second
+
 // Stop halts the periodic scheduler goroutine, then waits for the ingest
 // mutex to drain so no ingest orchestration is in flight when the caller
 // shuts the servers down. It is idempotent; the concrete
@@ -25,7 +37,11 @@ package dispatch
 func (o *OrchestratorImpl) Stop() {
 	o.stopOnce.Do(func() {
 		o.schedCancel()
-		<-o.schedDone
+		select {
+		case <-o.schedDone:
+		case <-time.After(stopTimeout):
+			log.Printf("dispatch: stop: scheduler did not halt within %s, proceeding", stopTimeout)
+		}
 		o.ingestMu.Lock()
 		o.ingestMu.Unlock()
 	})
