@@ -369,3 +369,56 @@ func TestLatestBuildForPackage(t *testing.T) {
 		t.Errorf("latest for unknown package = %v, want ErrNotFound", err)
 	}
 }
+
+// TestAppendResourceSamplesCaps asserts the growth bound: appending more
+// than maxSamples entries keeps only the most recent maxSamples (by
+// timestamp) in the stored column, so a long build cannot inflate the
+// JSON without bound.
+func TestAppendResourceSamplesCaps(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "samp-cap")
+	_, b := createTask(t, s, "samp-cap-1", "running", pkg, at(0))
+
+	// Push maxSamples + 25 samples in small batches, like the streaming
+	// heartbeat path does.
+	for i := 0; i < maxSamples+25; i++ {
+		sample := Sample{At: at(time.Duration(i) * time.Second), CPUTimeNS: int64(i), MemoryBytes: 100}
+		if err := s.AppendResourceSamples(testCtx, b.ID, []Sample{sample}); err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+	}
+	build, err := s.GetBuild(testCtx, b.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if len(build.ResourceUsage) != maxSamples {
+		t.Fatalf("stored samples = %d, want the %d cap", len(build.ResourceUsage), maxSamples)
+	}
+	// The most recent samples are kept, in ascending time order.
+	first := build.ResourceUsage[0]
+	if !first.At.Equal(at(time.Duration(25) * time.Second)) {
+		t.Errorf("first kept sample at = %v, want the sample 25s in (oldest dropped)", first.At)
+	}
+	last := build.ResourceUsage[len(build.ResourceUsage)-1]
+	if last.CPUTimeNS != maxSamples+24 {
+		t.Errorf("last kept sample cpu = %d, want %d (newest retained)", last.CPUTimeNS, maxSamples+24)
+	}
+	// Appending more samples keeps the column at the cap instead of
+	// growing it.
+	for i := 0; i < 10; i++ {
+		sample := Sample{At: at(time.Duration(maxSamples+25+i) * time.Second), CPUTimeNS: int64(maxSamples + 25 + i)}
+		if err := s.AppendResourceSamples(testCtx, b.ID, []Sample{sample}); err != nil {
+			t.Fatalf("append overflow %d: %v", i, err)
+		}
+	}
+	build, err = s.GetBuild(testCtx, b.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if len(build.ResourceUsage) != maxSamples {
+		t.Errorf("stored samples after overflow = %d, want %d", len(build.ResourceUsage), maxSamples)
+	}
+	if last := build.ResourceUsage[len(build.ResourceUsage)-1]; last.CPUTimeNS != maxSamples+34 {
+		t.Errorf("last sample after overflow = %d, want %d (most recent wins)", last.CPUTimeNS, maxSamples+34)
+	}
+}

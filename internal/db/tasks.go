@@ -323,8 +323,11 @@ func (s *Store) TouchTaskProgress(ctx context.Context, id string, at time.Time) 
 }
 
 // AppendResourceSamples merges samples into the build's resource_usage
-// JSON, keeping one sample per timestamp and sorting by time. ErrNotFound
-// when the build does not exist.
+// JSON, keeping one sample per timestamp and sorting by time. The merged
+// list is capped to the most recent maxSamples entries, so a long build's
+// column cannot grow without bound and each append rewrites at most
+// maxSamples entries instead of the whole history. ErrNotFound when the
+// build does not exist.
 func (s *Store) AppendResourceSamples(ctx context.Context, buildID string, samples []Sample) error {
 	if len(samples) == 0 {
 		return nil
@@ -343,7 +346,7 @@ func (s *Store) AppendResourceSamples(ctx context.Context, buildID string, sampl
 		if err != nil {
 			return fmt.Errorf("db: decode resource_usage for build %s: %w", buildID, err)
 		}
-		merged := mergeSamples(existing, samples)
+		merged := capSamples(mergeSamples(existing, samples))
 		if reflect.DeepEqual(existing, merged) {
 			return nil
 		}
