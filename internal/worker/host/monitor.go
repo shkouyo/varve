@@ -148,8 +148,9 @@ func (r *Runner) monitor(ctx context.Context, task *api.TaskDetail, claimToken, 
 
 	res, timedOut := r.awaitExit(ctx, waitDone, deadline)
 	if timedOut {
-		// Build timeout: force kill, then wait briefly for the exit code
-		// so the container is truly gone before reporting.
+		// Build timeout (or shutdown drain cap): force kill, then wait
+		// briefly for the exit code so the container is truly gone
+		// before reporting.
 		log.Printf("host: task %s exceeded its build timeout, killing container %s", task.ID, containerID)
 		if err := r.rt.Kill(waitCtx, containerID); err != nil {
 			log.Printf("host: kill container %s: %v", containerID, err)
@@ -161,8 +162,11 @@ func (r *Runner) monitor(ctx context.Context, task *api.TaskDetail, claimToken, 
 			}
 		case <-time.After(r.timeoutCheck * 10):
 		}
-		r.reportResult(waitCtx, task.ID, claimToken,
-			failedResult("timeout", fmt.Sprintf("build exceeded the timeout of %d seconds", task.Build.TimeoutSeconds)))
+		summary := fmt.Sprintf("build exceeded the timeout of %d seconds", task.Build.TimeoutSeconds)
+		if task.Build.TimeoutSeconds <= 0 {
+			summary = fmt.Sprintf("container did not exit within the shutdown drain cap of %s", r.drainCap)
+		}
+		r.reportResult(waitCtx, task.ID, claimToken, failedResult("timeout", summary))
 		return
 	}
 	r.classify(ctx, task, claimToken, containerID, res)
@@ -177,28 +181,36 @@ type waitResult struct {
 // awaitExit waits for the container to exit, enforcing the per-task
 // deadline. When ctx is cancelled (shutdown) it switches to a drain wait:
 // the container may finish on its own, and the deadline still force-kills
-// it as the fallback.
+// it as the fallback. A task without a build timeout (deadline zero) is
+// bounded by the shutdown drain cap instead, so a hung container can
+// never hang the drain and Run's deregister.
 func (r *Runner) awaitExit(ctx context.Context, waitDone chan waitResult, deadline time.Time) (waitResult, bool) {
 	tick := time.NewTicker(r.timeoutCheck)
 	defer tick.Stop()
-	check := func() bool {
-		return !deadline.IsZero() && r.now().After(deadline)
+	check := func(dl time.Time) bool {
+		return !dl.IsZero() && r.now().After(dl)
 	}
 	for {
 		select {
 		case res := <-waitDone:
 			return res, false
 		case <-tick.C:
-			if check() {
+			if check(deadline) {
 				return waitResult{}, true
 			}
 		case <-ctx.Done():
+			// Drain wait: keep the build deadline when one is still in
+			// the future, otherwise bound the wait by the drain cap.
+			drainDeadline := deadline
+			if drainDeadline.IsZero() || r.now().After(drainDeadline) {
+				drainDeadline = r.now().Add(r.drainCap)
+			}
 			for {
 				select {
 				case res := <-waitDone:
 					return res, false
 				case <-tick.C:
-					if check() {
+					if check(drainDeadline) {
 						return waitResult{}, true
 					}
 				}

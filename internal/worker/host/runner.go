@@ -109,6 +109,7 @@ type Runner struct {
 	heartbeatInterval  time.Duration // heartbeat period (30s)
 	timeoutCheck       time.Duration // monitor deadline check granularity
 	drainInterval      time.Duration // shutdown drain poll interval
+	drainCap           time.Duration // force-kill bound for containers without a build timeout
 	registerBackoff    time.Duration // initial register retry delay
 	registerBackoffMax time.Duration // register retry delay cap
 	deregisterTimeout  time.Duration // per-call timeout for the final deregister
@@ -165,6 +166,7 @@ func newRunner(cfg *config.WorkerConfig, client client, rt runtime, name, dataDi
 		heartbeatInterval:  30 * time.Second,
 		timeoutCheck:       100 * time.Millisecond,
 		drainInterval:      100 * time.Millisecond,
+		drainCap:           30 * time.Second,
 		registerBackoff:    5 * time.Second,
 		registerBackoffMax: 60 * time.Second,
 		deregisterTimeout:  30 * time.Second,

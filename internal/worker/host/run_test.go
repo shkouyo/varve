@@ -146,3 +146,38 @@ func TestRunRegisterFailsPermanently(t *testing.T) {
 		t.Errorf("deregisters = %d, want 0 (never registered)", c.deregisterCount())
 	}
 }
+
+// TestRunShutdownDrainsHungContainer asserts a container that never exits
+// (and has no per-task build timeout) cannot hang Run: the drain cap
+// force-kills it and the node still deregisters.
+func TestRunShutdownDrainsHungContainer(t *testing.T) {
+	rt := newFakeRuntime()
+	rt.blocked = make(chan struct{}) // the container never exits
+	c := newFakeClient()
+	c.pollRepeat = &api.PollResp{Task: testTask("t1"), ClaimToken: "tok-1"}
+	r := testRunner(t, nil, c, rt)
+	r.drainCap = 100 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+
+	waitFor(t, 3*time.Second, func() bool { return rt.runCount() >= 1 && rt.waitCount() >= 1 })
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run: %v, want nil", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return: the hung container blocked the drain")
+	}
+	if c.deregisterCount() != 1 {
+		t.Errorf("deregisters = %d, want 1", c.deregisterCount())
+	}
+	if rt.killCount() != 1 {
+		t.Errorf("kills = %v, want the drain cap to force-kill the container", rt.kills)
+	}
+	close(rt.blocked) // release the stray Wait goroutine
+}

@@ -260,3 +260,51 @@ func TestMonitorReportConflictIgnored(t *testing.T) {
 		t.Errorf("result count = %d, want 1 (the 409 must not panic or loop)", c.resultCount())
 	}
 }
+
+// TestMonitorDrainCapBoundsNoTimeoutTask asserts the shutdown drain cap:
+// a container with no per-task build timeout that refuses to exit is
+// force-killed and reported failed(stage=timeout) once the drain cap
+// passes after shutdown, instead of hanging awaitExit forever.
+func TestMonitorDrainCapBoundsNoTimeoutTask(t *testing.T) {
+	rt := newFakeRuntime()
+	rt.blocked = make(chan struct{}) // Wait never returns on its own
+	c := newFakeClient()
+	r := testRunner(t, nil, c, rt)
+	withSlot(r)
+	r.drainCap = 30 * time.Second
+	clock := newFakeClock(time.Unix(1000, 0))
+	r.now = clock.now
+
+	task := testTask("t1") // Build zero: no per-task timeout
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		r.monitor(ctx, task, "tok-1", "c1")
+		close(done)
+	}()
+	waitFor(t, 2*time.Second, func() bool { return rt.waitCount() >= 1 })
+
+	cancel() // shutdown: the monitor enters the drain wait
+	// Let the monitor reach its drain select before advancing the
+	// clock: the drain deadline is computed on entry, so advancing too
+	// early would move the cap with it.
+	time.Sleep(3 * r.timeoutCheck)
+	clock.add(31 * time.Second)
+	waitFor(t, 2*time.Second, func() bool { return c.resultCount() >= 1 })
+
+	if rt.killCount() != 1 || rt.killed(0) != "c1" {
+		t.Errorf("kills = %v, want the drain cap to force-kill [c1]", rt.kills)
+	}
+	res := c.result(0).res
+	if res.Status != "failed" || res.Error == nil || res.Error.Stage != "timeout" ||
+		!strings.Contains(res.Error.Summary, "drain cap") {
+		t.Errorf("result = %+v, want failed(stage=timeout) with the drain-cap summary", res)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("monitor did not return after the drain cap")
+	}
+	close(rt.blocked) // let the stray Wait goroutine finish
+}
