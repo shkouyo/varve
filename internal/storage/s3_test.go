@@ -46,6 +46,7 @@ type fakeObjectAPI struct {
 	calls    []fakeCall
 	pageSize int // 0 = everything in one page; > 0 simulates multi-page listings
 	now      time.Time
+	statErr  error // injected StatObject failure
 }
 
 type fakeObject struct {
@@ -155,6 +156,9 @@ func (f *fakeObjectAPI) ListObjects(ctx context.Context, bucket, prefix, token s
 
 func (f *fakeObjectAPI) StatObject(ctx context.Context, bucket, key string) (objectInfo, error) {
 	f.record(fakeCall{method: "StatObject", bucket: bucket, key: key})
+	if f.statErr != nil {
+		return objectInfo{}, f.statErr
+	}
 	o, ok := f.objects[key]
 	if !ok {
 		return objectInfo{}, notFoundErr()
@@ -500,6 +504,70 @@ func TestS3AppendMerge(t *testing.T) {
 	// Offset mismatch is rejected defensively.
 	if err := a.Append(ctx, "seg.pkg.tar.zst", strings.NewReader("!"), 2); err == nil {
 		t.Error("Append with wrong offset: want error")
+	}
+}
+
+// TestS3AppendStreamsExisting asserts the degraded Append re-uploads the
+// merged content even when the stored object is far larger than a single
+// multipart part: the merge streams instead of buffering the whole object.
+func TestS3AppendStreamsExisting(t *testing.T) {
+	b, f := mustFakeBackend(t)
+	ctx := context.Background()
+	head := strings.Repeat("a", 20<<20) // 20 MiB stored object
+	putContent(t, b, "big.pkg.tar.zst", head)
+
+	a, ok := any(b).(Appender)
+	if !ok {
+		t.Fatal("s3Backend does not implement Appender")
+	}
+	if err := a.Append(ctx, "big.pkg.tar.zst", strings.NewReader("tail"), int64(len(head))); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if got := getContent(t, b, "big.pkg.tar.zst"); got != head+"tail" {
+		t.Errorf("appended content = %d bytes, want the stored object plus the segment", len(got))
+	}
+	// The re-upload streams with unknown length (multipart).
+	puts := f.callsOf("PutObject")
+	if len(puts) != 2 || puts[1].size != -1 {
+		t.Errorf("PutObject calls = %+v, want a streamed second put (size -1)", puts)
+	}
+}
+
+// TestS3AppendStatError asserts a storage-side StatObject failure is
+// propagated instead of being mistaken for a missing object.
+func TestS3AppendStatError(t *testing.T) {
+	b, f := mustFakeBackend(t)
+	ctx := context.Background()
+	putContent(t, b, "seg.pkg.tar.zst", "01234")
+	f.statErr = errors.New("storage down")
+
+	a, ok := any(b).(Appender)
+	if !ok {
+		t.Fatal("s3Backend does not implement Appender")
+	}
+	if err := a.Append(ctx, "seg.pkg.tar.zst", strings.NewReader("56789"), 5); err == nil {
+		t.Error("Append with failing Stat: want error")
+	}
+	if got := getContent(t, b, "seg.pkg.tar.zst"); got != "01234" {
+		t.Errorf("object after failed append = %q, want the untouched original", got)
+	}
+}
+
+// TestS3AppendMissingOffsetRejected asserts an append offset on a missing
+// object is refused (the object was never created at that offset).
+func TestS3AppendMissingOffsetRejected(t *testing.T) {
+	b, _ := mustFakeBackend(t)
+	ctx := context.Background()
+
+	a, ok := any(b).(Appender)
+	if !ok {
+		t.Fatal("s3Backend does not implement Appender")
+	}
+	if err := a.Append(ctx, "never.pkg.tar.zst", strings.NewReader("x"), 7); err == nil {
+		t.Error("Append(missing, offset 7): want error")
+	}
+	if _, err := b.Stat(ctx, "never.pkg.tar.zst"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing object after rejected append = %v, want ErrNotFound (nothing stored)", err)
 	}
 }
 

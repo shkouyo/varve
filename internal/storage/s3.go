@@ -18,7 +18,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -407,25 +406,55 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 // (Appender capability). This is the degraded resume path for s3:
 // correctness is preserved, efficiency is lost: every chunk re-uploads the
 // whole object. The caller pre-checks offset == stored size; the backend
-// re-checks it defensively. The existing content is buffered in memory
-// (bounded by the staging object size).
+// re-checks it defensively via StatObject. The stored content is streamed
+// out of the object store and straight into the re-upload through an
+// io.Pipe (unknown length, so minio-go selects a bounded multipart
+// upload), keeping memory bounded regardless of the stored object size.
 func (b *s3Backend) Append(ctx context.Context, name string, r io.Reader, offset int64) error {
 	if !validName(name) {
 		return fmt.Errorf("storage: invalid name %q", name)
 	}
-	var existing bytes.Buffer
-	if err := b.Get(ctx, name, &existing); err != nil {
-		if !errors.Is(err, ErrNotFound) {
-			return err
+	key := b.resolve(name)
+	info, err := b.client.StatObject(ctx, b.bucket, key)
+	if err != nil {
+		if !isNotFound(err) {
+			return fmt.Errorf("storage: append %q: stat: %w", name, err)
 		}
 		if offset != 0 {
 			return fmt.Errorf("storage: append %q: offset %d on missing object, want 0", name, offset)
 		}
-	} else if int64(existing.Len()) != offset {
-		return fmt.Errorf("storage: append %q: offset %d does not match current size %d", name, offset, existing.Len())
+		// Nothing stored yet: stream the new segment on its own.
+		return b.Put(ctx, name, r, -1)
 	}
-	merged := io.MultiReader(bytes.NewReader(existing.Bytes()), r)
-	return b.Put(ctx, name, merged, -1)
+	if info.size != offset {
+		return fmt.Errorf("storage: append %q: offset %d does not match current size %d", name, offset, info.size)
+	}
+	obj, err := b.client.GetObject(ctx, b.bucket, key)
+	if err != nil {
+		return fmt.Errorf("storage: append %q: get: %w", name, err)
+	}
+	defer obj.Close()
+
+	pr, pw := io.Pipe()
+	errCh := make(chan error, 1)
+	go func() {
+		_, copyErr := copyContext(ctx, pw, obj)
+		pw.CloseWithError(copyErr) // nil is a clean close
+		errCh <- copyErr
+	}()
+	putErr := b.client.PutObject(ctx, b.bucket, key, io.MultiReader(pr, r), -1, contentTypeForKey(key))
+	pr.Close()
+	copyErr := <-errCh
+	if putErr != nil {
+		return fmt.Errorf("storage: append %q: put: %w", name, putErr)
+	}
+	if copyErr != nil {
+		if isNotFound(copyErr) {
+			return fmt.Errorf("storage: append %q: %w", name, ErrNotFound)
+		}
+		return fmt.Errorf("storage: append %q: get: %w", name, copyErr)
+	}
+	return nil
 }
 
 // splitEndpoint strips the optional scheme from a configured S3 endpoint
