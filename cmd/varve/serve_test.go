@@ -296,6 +296,26 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 	}
 }
 
+// TestNewHTTPServerHardening pins the hardening fields shared by both
+// ports: slow request headers, oversized header blocks and idle
+// keep-alive connections are bounded, while Read/WriteTimeout stay unset
+// so SSE streams and large uploads are not cut off.
+func TestNewHTTPServerHardening(t *testing.T) {
+	srv := newHTTPServer("127.0.0.1:0", http.NotFoundHandler())
+	if srv.ReadHeaderTimeout != 5*time.Second {
+		t.Errorf("ReadHeaderTimeout = %v, want 5s", srv.ReadHeaderTimeout)
+	}
+	if srv.IdleTimeout != 60*time.Second {
+		t.Errorf("IdleTimeout = %v, want 60s", srv.IdleTimeout)
+	}
+	if srv.MaxHeaderBytes != 1<<20 {
+		t.Errorf("MaxHeaderBytes = %d, want 1MiB", srv.MaxHeaderBytes)
+	}
+	if srv.ReadTimeout != 0 || srv.WriteTimeout != 0 {
+		t.Errorf("Read/WriteTimeout = %v/%v, want unset for SSE and uploads", srv.ReadTimeout, srv.WriteTimeout)
+	}
+}
+
 // TestRunServeSignerWiring pins the signer wiring contract: with
 // repo.sign="off" the orchestrator injectable must receive a true nil
 // signer, and with signing enabled a non-nil one. The pre-fix shape, a

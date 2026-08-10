@@ -106,7 +106,7 @@ var (
 	// errCh (a graceful Close never sends). Tests replace it with a
 	// recorder that observes start/close order without sockets.
 	startServer = func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {
-		srv := &http.Server{Addr: addr, Handler: h}
+		srv := newHTTPServer(addr, h)
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			return nil, err
@@ -130,6 +130,22 @@ var (
 		return nil
 	}
 )
+
+// newHTTPServer builds an http.Server with the hardening settings shared
+// by both ports: request headers must arrive within 5s (slowloris is cut
+// off), header blocks over 1MiB are rejected and idle keep-alive
+// connections are reaped after 60s. Write/ReadTimeout stay unset on
+// purpose: the web port serves SSE streams and the API port accepts
+// multi-gigabyte uploads, both of which need unbounded reads and writes.
+func newHTTPServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
+	}
+}
 
 // runServe is the testable entry of the serve subcommand. args may carry
 // the optional "--config <path>" pair (default /data/varve.toml). The ten
