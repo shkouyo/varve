@@ -58,8 +58,9 @@ type objectListPage struct {
 // minio-go's internally-paged ListObjectsV2 stream into one page.
 type objectAPI interface {
 	// PutObject stores an object. size < 0 means the length is unknown and
-	// the reader is streamed until EOF.
-	PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64) error
+	// the reader is streamed until EOF; contentType is stored as the
+	// object's Content-Type header.
+	PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error
 	// GetObject returns the object content. A missing object surfaces as an
 	// S3 NoSuchKey error either on the call or on the first read of the
 	// returned reader.
@@ -80,8 +81,8 @@ type s3Client struct {
 	c *minio.Client
 }
 
-func (s *s3Client) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64) error {
-	_, err := s.c.PutObject(ctx, bucket, key, r, size, minio.PutObjectOptions{})
+func (s *s3Client) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error {
+	_, err := s.c.PutObject(ctx, bucket, key, r, size, minio.PutObjectOptions{ContentType: contentType})
 	return err
 }
 
@@ -121,6 +122,41 @@ func (s *s3Client) StatObject(ctx context.Context, bucket, key string) (objectIn
 		return objectInfo{}, err
 	}
 	return objectInfo{key: info.Key, size: info.Size, modTime: info.LastModified}, nil
+}
+
+// s3ContentTypes maps object-key suffixes onto the Content-Type stored with
+// each object. Longer, more specific suffixes are listed first and win; a
+// key that matches none of them falls back to application/octet-stream.
+// Pacman database objects are gzip archives in both their bare (.db,
+// .files) and .tar.gz forms.
+var s3ContentTypes = []struct {
+	suffix string
+	typ    string
+}{
+	{".pkg.tar.zst", "application/zstd"},
+	{".src.tar.zst", "application/zstd"},
+	{".zst", "application/zstd"},
+	{".db.tar.gz", "application/gzip"},
+	{".files.tar.gz", "application/gzip"},
+	{".db", "application/gzip"},
+	{".files", "application/gzip"},
+	{".sig", "application/pgp-signature"},
+	{".toml", "text/plain; charset=utf-8"},
+	{".SRCINFO", "text/plain; charset=utf-8"},
+	{".txt", "text/plain; charset=utf-8"},
+	{".log", "text/plain; charset=utf-8"},
+}
+
+// contentTypeForKey infers the Content-Type of an object from its key
+// suffix. It operates on the final object key, so staging uploads, flat
+// repository objects and repository-prefixed keys are covered alike.
+func contentTypeForKey(key string) string {
+	for _, m := range s3ContentTypes {
+		if strings.HasSuffix(key, m.suffix) {
+			return m.typ
+		}
+	}
+	return "application/octet-stream"
 }
 
 // s3Backend implements Backend over an S3-compatible object store. Object
@@ -207,13 +243,15 @@ func (b *s3Backend) resolve(name string) string {
 }
 
 // Put stores the content of r under name. size is passed through to the
-// object store (unknown when negative).
+// object store (unknown when negative). The Content-Type is inferred from
+// the resolved object key's suffix, so staging uploads and flat repository
+// objects are typed the same way.
 func (b *s3Backend) Put(ctx context.Context, name string, r io.Reader, size int64) error {
 	if !validName(name) {
 		return fmt.Errorf("storage: invalid name %q", name)
 	}
 	key := b.resolve(name)
-	if err := b.client.PutObject(ctx, b.bucket, key, r, size); err != nil {
+	if err := b.client.PutObject(ctx, b.bucket, key, r, size, contentTypeForKey(key)); err != nil {
 		return fmt.Errorf("storage: put %q in bucket %q: %w", name, b.bucket, err)
 	}
 	return nil
@@ -345,7 +383,7 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 		pw.CloseWithError(err) // nil is a clean close
 		errCh <- err
 	}()
-	putErr := b.client.PutObject(ctx, b.bucket, dstKey, pr, -1)
+	putErr := b.client.PutObject(ctx, b.bucket, dstKey, pr, -1, contentTypeForKey(dstKey))
 	pr.Close()
 	copyErr := <-errCh
 	if copyErr != nil && isNotFound(copyErr) {

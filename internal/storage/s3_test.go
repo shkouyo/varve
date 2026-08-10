@@ -49,17 +49,19 @@ type fakeObjectAPI struct {
 }
 
 type fakeObject struct {
-	data    []byte
-	modTime time.Time
+	data        []byte
+	modTime     time.Time
+	contentType string
 }
 
 type fakeCall struct {
-	method string
-	bucket string
-	key    string
-	size   int64
-	prefix string
-	token  string
+	method      string
+	bucket      string
+	key         string
+	size        int64
+	contentType string
+	prefix      string
+	token       string
 }
 
 func newFakeObjectAPI() *fakeObjectAPI {
@@ -92,13 +94,13 @@ func notFoundErr() error {
 	}
 }
 
-func (f *fakeObjectAPI) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64) error {
-	f.record(fakeCall{method: "PutObject", bucket: bucket, key: key, size: size})
+func (f *fakeObjectAPI) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) error {
+	f.record(fakeCall{method: "PutObject", bucket: bucket, key: key, size: size, contentType: contentType})
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	f.objects[key] = fakeObject{data: data, modTime: f.now}
+	f.objects[key] = fakeObject{data: data, modTime: f.now, contentType: contentType}
 	return nil
 }
 
@@ -193,8 +195,9 @@ func getContent(t *testing.T, b Backend, name string) string {
 	return buf.String()
 }
 
-// TestS3PutObjectParams asserts the key mapping (staging vs flat root) and
-// the recorded PutObject arguments (bucket/key/size).
+// TestS3PutObjectParams asserts the key mapping (staging vs flat root), the
+// recorded PutObject arguments (bucket/key/size) and the Content-Type
+// inferred from the final object key.
 func TestS3PutObjectParams(t *testing.T) {
 	b, f := mustFakeBackend(t)
 	putContent(t, b, "foo-1-1-x86_64.pkg.tar.zst", "flat")
@@ -205,11 +208,11 @@ func TestS3PutObjectParams(t *testing.T) {
 		t.Fatalf("PutObject calls = %d, want 2", len(puts))
 	}
 	want := []fakeCall{
-		{method: "PutObject", bucket: fakeBucket, key: "foo-1-1-x86_64.pkg.tar.zst", size: 4},
-		{method: "PutObject", bucket: fakeBucket, key: "staging/task-7/foo-1-1-x86_64.pkg.tar.zst", size: 6},
+		{method: "PutObject", bucket: fakeBucket, key: "foo-1-1-x86_64.pkg.tar.zst", size: 4, contentType: "application/zstd"},
+		{method: "PutObject", bucket: fakeBucket, key: "staging/task-7/foo-1-1-x86_64.pkg.tar.zst", size: 6, contentType: "application/zstd"},
 	}
 	for i, w := range want {
-		if puts[i].bucket != w.bucket || puts[i].key != w.key || puts[i].size != w.size {
+		if puts[i].bucket != w.bucket || puts[i].key != w.key || puts[i].size != w.size || puts[i].contentType != w.contentType {
 			t.Errorf("PutObject[%d] = %+v, want %+v", i, puts[i], w)
 		}
 	}
@@ -218,6 +221,55 @@ func TestS3PutObjectParams(t *testing.T) {
 	}
 	if got := getContent(t, b, b.StagingPath("task-7", "foo-1-1-x86_64.pkg.tar.zst")); got != "staged" {
 		t.Errorf("staged Get = %q, want %q", got, "staged")
+	}
+}
+
+// TestS3PutContentType asserts the Content-Type recorded with every Put:
+// the extension map is table-driven and keys that match no mapping fall
+// back to application/octet-stream. Each case runs through the full Put
+// path, so staging keys and repository-prefixed keys exercise the same
+// inference as flat repository names.
+func TestS3PutContentType(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+		want string
+	}{
+		{"pkg archive", "foo-1.0-1-x86_64.pkg.tar.zst", "application/zstd"},
+		{"source archive", "foo-1.0-1.src.tar.zst", "application/zstd"},
+		{"bare zstd", "blob.zst", "application/zstd"},
+		{"db", "varve.db", "application/gzip"},
+		{"db tarball", "varve.db.tar.gz", "application/gzip"},
+		{"files", "varve.files", "application/gzip"},
+		{"files tarball", "varve.files.tar.gz", "application/gzip"},
+		{"signature", "foo-1.0-1-x86_64.pkg.tar.zst.sig", "application/pgp-signature"},
+		{"sidecar toml", "foo.meta.toml", "text/plain; charset=utf-8"},
+		{"srcinfo", "foo.SRCINFO", "text/plain; charset=utf-8"},
+		{"text", "notes.txt", "text/plain; charset=utf-8"},
+		{"log", "build.log", "text/plain; charset=utf-8"},
+		{"staging key", "staging/task-1/foo-1.0-1-x86_64.pkg.tar.zst", "application/zstd"},
+		{"repo-prefixed key", "artifacts/repo/foo-1.0-1-x86_64.pkg.tar.zst", "application/zstd"},
+		{"unknown extension", "tool.bin", "application/octet-stream"},
+		{"no extension", "README", "application/octet-stream"},
+		{"plain tar.gz", "backup.tar.gz", "application/octet-stream"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			b, f := mustFakeBackend(t)
+			if err := b.Put(context.Background(), tc.key, strings.NewReader("x"), 1); err != nil {
+				t.Fatalf("Put(%q): %v", tc.key, err)
+			}
+			puts := f.callsOf("PutObject")
+			if len(puts) != 1 {
+				t.Fatalf("PutObject calls = %d, want 1", len(puts))
+			}
+			if got := puts[0].contentType; got != tc.want {
+				t.Errorf("PutObject(%q) contentType = %q, want %q", tc.key, got, tc.want)
+			}
+			if got := f.objects[tc.key].contentType; got != tc.want {
+				t.Errorf("stored object %q contentType = %q, want %q", tc.key, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -339,7 +391,8 @@ func TestS3CustomStagingPrefix(t *testing.T) {
 }
 
 // TestS3MoveSequence asserts the degraded Move degrades to Get+Put+Delete in
-// order and moves the content.
+// order and moves the content. The destination re-upload carries the
+// Content-Type inferred from its own key.
 func TestS3MoveSequence(t *testing.T) {
 	b, f := mustFakeBackend(t)
 	ctx := context.Background()
@@ -369,6 +422,9 @@ func TestS3MoveSequence(t *testing.T) {
 	}
 	if got := f.callsOf("PutObject")[1].key; got != "src.pkg.tar.zst" {
 		t.Errorf("PutObject key = %q, want the destination", got)
+	}
+	if got := f.callsOf("PutObject")[1].contentType; got != "application/zstd" {
+		t.Errorf("Move PutObject contentType = %q, want %q", got, "application/zstd")
 	}
 	if got := f.callsOf("DeleteObject")[0].key; got != "staging/t-2/src.pkg.tar.zst" {
 		t.Errorf("DeleteObject key = %q, want the source", got)
