@@ -249,6 +249,53 @@ func TestNotFoundUnknownPath(t *testing.T) {
 	}
 }
 
+// TestListCapsRejectOversizedPayloads asserts the HTTP layer rejects
+// heartbeats and results whose lists exceed the caps with 400, while the
+// boundary values pass through to the orchestrator.
+func TestListCapsRejectOversizedPayloads(t *testing.T) {
+	f := newFake()
+	srv := newTestServer(t, f)
+
+	hb := func(n int) string {
+		var b strings.Builder
+		b.WriteString(`{"name":"n1","tasks":[`)
+		for i := 0; i < n; i++ {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(`{"task_id":"task-0001"}`)
+		}
+		b.WriteString(`]}`)
+		return b.String()
+	}
+	if status, _ := rawRequest(t, srv, http.MethodPost, "/api/v1/heartbeat", bearer(), hb(maxTasksPerHeartbeat)); status != http.StatusOK {
+		t.Errorf("heartbeat at the task cap = %d, want 200", status)
+	}
+	if status, _ := rawRequest(t, srv, http.MethodPost, "/api/v1/heartbeat", bearer(), hb(maxTasksPerHeartbeat+1)); status != http.StatusBadRequest {
+		t.Errorf("heartbeat over the task cap = %d, want 400", status)
+	}
+
+	res := func(n int) string {
+		var b strings.Builder
+		b.WriteString(`{"status":"succeeded","resource_usage":[`)
+		for i := 0; i < n; i++ {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(`{"at":"2026-01-01T00:00:00Z"}`)
+		}
+		b.WriteString(`]}`)
+		return b.String()
+	}
+	path := "/api/v1/tasks/" + testTaskID + "/result"
+	if status, _ := rawRequest(t, srv, http.MethodPost, path, taskAuth(testClaimTok), res(maxResourceSamplesPerResult)); status != http.StatusOK {
+		t.Errorf("result at the sample cap = %d, want 200", status)
+	}
+	if status, _ := rawRequest(t, srv, http.MethodPost, path, taskAuth(testClaimTok), res(maxResourceSamplesPerResult+1)); status != http.StatusBadRequest {
+		t.Errorf("result over the sample cap = %d, want 400", status)
+	}
+}
+
 // TestRegisterRecordsRequest verifies the register payload reaches the
 // orchestrator with every field intact.
 func TestRegisterRecordsRequest(t *testing.T) {

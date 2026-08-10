@@ -52,6 +52,18 @@ const (
 	// real builds.
 	maxUploadSegment = 1 << 30
 	maxUploadTotal   = 8 << 30
+
+	// List caps for heartbeat and result payloads: every entry costs a
+	// database write or a sha256 verification on the controller, so a
+	// token-holding node cannot amplify work without bound.
+	maxTasksPerHeartbeat        = 64    // running tasks a host can report
+	maxContainersPerHeartbeat   = 32    // containers a host tracks
+	maxArtifactsPerResult       = 256   // built artifacts (split packages)
+	maxResourceSamplesPerResult = 16384 // one sample per second, ~4.5h
+	// maxResourceSamplesPerResult must track the longest supported build:
+	// the host flushes a sample roughly every second, so 16384 covers a
+	// 4.5-hour build_timeout; deployments allowing longer builds should
+	// raise it together with the timeout.
 )
 
 // validToken reports whether s is a printable ASCII string (no control
@@ -125,6 +137,17 @@ func validateHeartbeatReq(r *HeartbeatReq) error {
 	if !validToken(r.Name, maxWorkerNameLen) {
 		return errors.New("name: must be 1-255 printable ASCII characters")
 	}
+	if len(r.Tasks) > maxTasksPerHeartbeat {
+		return fmt.Errorf("tasks: must not exceed %d entries", maxTasksPerHeartbeat)
+	}
+	for i, p := range r.Tasks {
+		if !validTaskID(p.TaskID) {
+			return fmt.Errorf("tasks[%d].task_id: invalid task id", i)
+		}
+	}
+	if len(r.Containers) > maxContainersPerHeartbeat {
+		return fmt.Errorf("containers: must not exceed %d entries", maxContainersPerHeartbeat)
+	}
 	return nil
 }
 
@@ -151,6 +174,12 @@ func validateResultReq(r *ResultReq) error {
 		if err := bounded("error.summary", r.Error.Summary, maxSummaryLen); err != nil {
 			return err
 		}
+	}
+	if len(r.Artifacts) > maxArtifactsPerResult {
+		return fmt.Errorf("artifacts: must not exceed %d entries", maxArtifactsPerResult)
+	}
+	if len(r.ResourceUsage) > maxResourceSamplesPerResult {
+		return fmt.Errorf("resource_usage: must not exceed %d entries", maxResourceSamplesPerResult)
 	}
 	for i, a := range r.Artifacts {
 		// Package entries feed repo-add/repo-remove positionally; the

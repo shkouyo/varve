@@ -42,6 +42,13 @@ import (
 const (
 	requestTimeout = 30 * time.Second
 	maxRetries     = 3
+
+	// maxResponseBytes caps any success response body the client buffers
+	// (64 MiB far exceeds the largest legitimate payload) and
+	// maxErrorBytes caps non-2xx response bodies, so a hostile or broken
+	// controller cannot push unbounded data into the worker.
+	maxResponseBytes = 64 << 20
+	maxErrorBytes    = 1 << 20
 )
 
 // retryInterval is the fixed backoff between retry attempts. It is a
@@ -287,6 +294,19 @@ func (c *Client) exec(ctx context.Context, method, path, taskToken string, useBe
 	}
 }
 
+// readAllLimited reads r up to limit bytes and rejects anything larger:
+// the caller gets an explicit error instead of a silently truncated body.
+func readAllLimited(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("api: response exceeds %d bytes", limit)
+	}
+	return data, nil
+}
+
 // do performs a single request attempt and decodes the response. A
 // positive contentLength is declared on the request so the body travels
 // with a known size instead of chunked encoding.
@@ -329,7 +349,7 @@ func (c *Client) do(ctx context.Context, method, path, taskToken string, useBear
 		return decodeAPIError(resp)
 	}
 	if respBody != nil {
-		data, err := io.ReadAll(resp.Body)
+		data, err := readAllLimited(resp.Body, maxResponseBytes)
 		if err != nil {
 			return fmt.Errorf("api: read response: %w", err)
 		}
@@ -343,7 +363,7 @@ func (c *Client) do(ctx context.Context, method, path, taskToken string, useBear
 // decodeAPIError parses a non-2xx response into an APIError, extracting
 // the wire error object and the optional resume offset.
 func decodeAPIError(resp *http.Response) error {
-	data, err := io.ReadAll(resp.Body)
+	data, err := readAllLimited(resp.Body, maxErrorBytes)
 	if err != nil {
 		return fmt.Errorf("api: read error response: %w", err)
 	}

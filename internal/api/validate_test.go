@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"git.0x0f.dev/varve/internal/config"
+	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/repo"
 )
 
@@ -73,6 +74,68 @@ func TestValidToken(t *testing.T) {
 		if validToken(s, maxWorkerNameLen) {
 			t.Errorf("validToken(%q) = true, want false", s)
 		}
+	}
+}
+
+// TestValidateHeartbeatListCaps asserts the heartbeat list bounds: task
+// and container counts over the caps are rejected, every task id must be
+// well-formed, and the boundary values pass.
+func TestValidateHeartbeatListCaps(t *testing.T) {
+	tasks := func(n int) []TaskProgress {
+		out := make([]TaskProgress, n)
+		for i := range out {
+			out[i] = TaskProgress{TaskID: "task-0001"}
+		}
+		return out
+	}
+	if err := validateHeartbeatReq(&HeartbeatReq{Name: "n1", Tasks: tasks(maxTasksPerHeartbeat)}); err != nil {
+		t.Errorf("heartbeat at the task cap: %v", err)
+	}
+	if err := validateHeartbeatReq(&HeartbeatReq{Name: "n1", Tasks: tasks(maxTasksPerHeartbeat + 1)}); err == nil {
+		t.Error("heartbeat over the task cap accepted, want error")
+	}
+	containers := func(n int) []ContainerState {
+		out := make([]ContainerState, n)
+		for i := range out {
+			out[i] = ContainerState{TaskID: "task-0001"}
+		}
+		return out
+	}
+	if err := validateHeartbeatReq(&HeartbeatReq{Name: "n1", Containers: containers(maxContainersPerHeartbeat)}); err != nil {
+		t.Errorf("heartbeat at the container cap: %v", err)
+	}
+	if err := validateHeartbeatReq(&HeartbeatReq{Name: "n1", Containers: containers(maxContainersPerHeartbeat + 1)}); err == nil {
+		t.Error("heartbeat over the container cap accepted, want error")
+	}
+	bad := HeartbeatReq{Name: "n1", Tasks: []TaskProgress{{TaskID: "a/b"}}}
+	if err := validateHeartbeatReq(&bad); err == nil {
+		t.Error("heartbeat with an invalid task id accepted, want error")
+	}
+}
+
+// TestValidateResultListCaps asserts the result payload list bounds: the
+// artifact and resource-sample counts over the caps are rejected and the
+// boundary values pass.
+func TestValidateResultListCaps(t *testing.T) {
+	artifacts := func(n int) []repo.Artifact {
+		out := make([]repo.Artifact, n)
+		for i := range out {
+			out[i] = repo.Artifact{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "a"}
+		}
+		return out
+	}
+	if err := validateResultReq(&ResultReq{Status: "succeeded", Artifacts: artifacts(maxArtifactsPerResult)}); err != nil {
+		t.Errorf("result at the artifact cap: %v", err)
+	}
+	if err := validateResultReq(&ResultReq{Status: "succeeded", Artifacts: artifacts(maxArtifactsPerResult + 1)}); err == nil {
+		t.Error("result over the artifact cap accepted, want error")
+	}
+	samples := func(n int) []db.Sample { return make([]db.Sample, n) }
+	if err := validateResultReq(&ResultReq{Status: "succeeded", ResourceUsage: samples(maxResourceSamplesPerResult)}); err != nil {
+		t.Errorf("result at the sample cap: %v", err)
+	}
+	if err := validateResultReq(&ResultReq{Status: "succeeded", ResourceUsage: samples(maxResourceSamplesPerResult + 1)}); err == nil {
+		t.Error("result over the sample cap accepted, want error")
 	}
 }
 

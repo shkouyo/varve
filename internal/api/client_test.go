@@ -335,6 +335,66 @@ func TestClientReportResultRetry(t *testing.T) {
 	}
 }
 
+// bigBodyTransport answers every request with a fixed-size body; status
+// defaults to 200 and is overridable for error-path tests.
+type bigBodyTransport struct {
+	body   []byte
+	status int
+	n      int
+}
+
+func (t *bigBodyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.n++
+	status := t.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader(t.body)),
+		Request:    req,
+	}, nil
+}
+
+// TestClientResponseLimit asserts an over-limit success body surfaces an
+// explicit error instead of being buffered whole.
+func TestClientResponseLimit(t *testing.T) {
+	tr := &bigBodyTransport{body: make([]byte, maxResponseBytes+1)}
+	client := NewClient("http://controller", testToken)
+	client.http = &http.Client{Transport: tr}
+
+	_, err := client.Register(context.Background(), RegisterReq{Name: "n1"})
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("Register over the response cap = %v, want an explicit size error", err)
+	}
+}
+
+// TestClientErrorResponseLimit asserts an over-limit non-2xx body also
+// surfaces an explicit error (the worker never buffers a huge error page).
+func TestClientErrorResponseLimit(t *testing.T) {
+	tr := &bigBodyTransport{body: make([]byte, maxErrorBytes+1), status: http.StatusBadGateway}
+	client := NewClient("http://controller", testToken)
+	client.http = &http.Client{Transport: tr}
+
+	_, err := client.Register(context.Background(), RegisterReq{Name: "n1"})
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("Register over the error cap = %v, want an explicit size error", err)
+	}
+}
+
+// TestReadAllLimited covers the helper directly at small limits: bodies at
+// the limit pass, one byte over fails.
+func TestReadAllLimited(t *testing.T) {
+	ok, err := readAllLimited(strings.NewReader("hello"), 5)
+	if err != nil || string(ok) != "hello" {
+		t.Errorf("readAllLimited(at the limit) = %q, %v", ok, err)
+	}
+	if _, err := readAllLimited(strings.NewReader("hello!"), 5); err == nil {
+		t.Error("readAllLimited(over the limit) = nil error, want error")
+	}
+}
+
 // roundTripRecorder records every request the client sends and answers
 // with an empty JSON success body.
 type roundTripRecorder struct {
