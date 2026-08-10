@@ -59,3 +59,22 @@ func TestValidName(t *testing.T) {
 		}
 	}
 }
+
+// TestValidChar pins the shared upload whitelist [A-Za-z0-9._+-]: the
+// single character-class source for storage, api, config and web. The
+// AUR-only '@' separator belongs to ValidPkgname/ValidPkgbase, not here.
+func TestValidChar(t *testing.T) {
+	for c := 0; c < 128; c++ {
+		b := byte(c)
+		want := (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') ||
+			b == '.' || b == '_' || b == '+' || b == '-'
+		if ValidChar(b) != want {
+			t.Errorf("ValidChar(%q) = %v, want %v", b, ValidChar(b), want)
+		}
+	}
+	for _, c := range []byte{'@', ' ', '/', '\\', '~', 0x7f, 0x00} {
+		if ValidChar(c) {
+			t.Errorf("ValidChar(%q) = true, want false", c)
+		}
+	}
+}

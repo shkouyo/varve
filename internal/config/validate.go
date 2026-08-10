@@ -20,6 +20,8 @@ package config
 import (
 	"errors"
 	"fmt"
+
+	"git.0x0f.dev/varve/internal/objname"
 	"path"
 	"path/filepath"
 	"strings"
@@ -205,10 +207,10 @@ func validKeyPrefix(prefix string) error {
 // whitelisted characters.
 func validPrefixSegment(seg string) bool {
 	for _, r := range seg {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '.', r == '_', r == '+', r == '-':
-		default:
+		// r > 0x7f first: the whitelist is ASCII, and truncating a
+		// non-ASCII rune to a byte could accidentally hit a valid
+		// letter (e.g. U+0164 -> 'd').
+		if r > 0x7f || !objname.ValidChar(byte(r)) {
 			return false
 		}
 	}

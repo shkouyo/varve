@@ -37,18 +37,31 @@ func ValidPkgname(s string) bool {
 	return validName(s)
 }
 
+// ValidChar reports whether c is in the shared upload whitelist
+// [A-Za-z0-9._+-], the single character-class source for every layer
+// that validates object keys, upload names or config prefixes. The '@'
+// of the AUR package-name set is deliberately absent: only
+// ValidPkgname/ValidPkgbase admit it.
+func ValidChar(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return true
+	case c == '.' || c == '_' || c == '+' || c == '-':
+		return true
+	}
+	return false
+}
+
 // validName implements the shared rule: 1..maxNameLen bytes, each either
 // an ASCII letter/digit or one of "@._+-", with no leading dash (a
-// dash-prefixed name would be parsed as an option by pacman tools).
+// dash-prefixed name would be parsed as an option by pacman tools). The
+// package set is the upload whitelist plus '@' for AUR separators.
 func validName(s string) bool {
 	if s == "" || len(s) > maxNameLen || s[0] == '-' {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
-		switch c := s[i]; {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '@' || c == '.' || c == '_' || c == '+' || c == '-':
-		default:
+		if !ValidChar(s[i]) && s[i] != '@' {
 			return false
 		}
 	}

@@ -23,6 +23,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+
+	"git.0x0f.dev/varve/internal/objname"
 )
 
 // validUploadName enforces the upload whitelist [A-Za-z0-9._+-] and a
@@ -41,10 +43,7 @@ func validUploadName(name string) bool {
 		return false
 	}
 	for i := 0; i < len(name); i++ {
-		switch c := name[i]; {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '.', c == '_', c == '+', c == '-':
-		default:
+		if !objname.ValidChar(name[i]) {
 			return false
 		}
 	}
