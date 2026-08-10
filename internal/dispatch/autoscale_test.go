@@ -208,6 +208,61 @@ type dispatchStep struct {
 	want    int
 }
 
+// hangingDispatcher blocks until its context is cancelled and returns
+// the deadline error; it proves a single dispatch attempt cannot stall
+// the pass beyond dispatchTimeout.
+type hangingDispatcher struct{}
+
+func (hangingDispatcher) Dispatch(ctx context.Context, ref, taskID, token string) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// TestAutoscalePerPassCap covers the per-pass dispatch ceiling: with
+// more queued tasks than maxDispatchesPerPass, one pass dispatches at
+// most maxDispatchesPerPass and the next pass dispatches the rest.
+func TestAutoscalePerPassCap(t *testing.T) {
+	env := newTestEnv(t)
+	ac := enabledActions()
+	ac.MaxConcurrency = 10 // ceiling far above the per-pass cap
+	env.cfg.Worker.Actions = ac
+	fake := &fakeActionsDispatcher{}
+	env.o.actions = fake
+	for _, name := range []string{"a", "b", "c", "d", "e", "f"} {
+		env.enqueue(t, name, name)
+	}
+
+	env.o.autoscaleWorkers(context.Background())
+	if got := fake.count(); got != maxDispatchesPerPass {
+		t.Fatalf("first pass dispatched %d, want the per-pass cap %d", got, maxDispatchesPerPass)
+	}
+	env.o.autoscaleWorkers(context.Background())
+	if got := fake.count(); got != 6 {
+		t.Fatalf("both passes dispatched %d in total, want all 6 tasks", got)
+	}
+}
+
+// TestAutoscaleDispatchTimeout covers the per-call bound: a dispatcher
+// that never answers makes one pass return after ~dispatchTimeout per
+// attempt instead of blocking the scheduler forever.
+func TestAutoscaleDispatchTimeout(t *testing.T) {
+	old := dispatchTimeout
+	dispatchTimeout = 100 * time.Millisecond
+	defer func() { dispatchTimeout = old }()
+
+	env := newTestEnv(t)
+	env.cfg.Worker.Actions = enabledActions()
+	env.o.actions = hangingDispatcher{}
+	env.enqueue(t, "a", "a")
+	env.enqueue(t, "b", "b")
+
+	start := time.Now()
+	env.o.autoscaleWorkers(context.Background())
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("pass took %v with a hung dispatcher, want ~2 × dispatchTimeout", elapsed)
+	}
+}
+
 // TestAutoscaleWorkers is the trigger-condition matrix: a run is
 // dispatched exactly when a queued task waits without a binding and the
 // concurrency ceiling leaves room.

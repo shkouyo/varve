@@ -34,6 +34,18 @@ import (
 // githubAPIBase is the GitHub REST API origin.
 const githubAPIBase = "https://api.github.com"
 
+// maxDispatchesPerPass caps the number of workflow runs triggered by one
+// scheduler scan, so a queue of N tasks delays the pass by at most
+// maxDispatchesPerPass × dispatchTimeout instead of N × dispatchTimeout.
+// Undispatched tasks simply wait for the next scan; the claim-timeout
+// budget is unaffected.
+const maxDispatchesPerPass = 4
+
+// dispatchTimeout bounds one workflow dispatch call so a hung GitHub API
+// cannot stall the scheduler pass beyond a single attempt. Tests may
+// shorten it.
+var dispatchTimeout = 10 * time.Second
+
 // githubAPIVersion is the API version pinned in the request header; the
 // Actions endpoints require it.
 const githubAPIVersion = "2022-11-28"
@@ -120,7 +132,7 @@ func newActionsDispatcher(ac *config.WorkerActions) workflowDispatcher {
 		token:    ac.Token,
 		repo:     ac.Repo,
 		workflow: ac.Workflow,
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http:     &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -222,8 +234,9 @@ func (o *OrchestratorImpl) autoscaleWorkers(ctx context.Context) {
 	}
 
 	gap := ac.MaxConcurrency - inFlight
+	dispatched := 0
 	for _, task := range queued {
-		if gap <= 0 {
+		if gap <= 0 || dispatched >= maxDispatchesPerPass {
 			return
 		}
 		o.dispatchMu.Lock()
@@ -234,6 +247,7 @@ func (o *OrchestratorImpl) autoscaleWorkers(ctx context.Context) {
 		}
 		o.dispatchTask(ctx, task, ac)
 		gap--
+		dispatched++
 	}
 }
 
@@ -263,7 +277,9 @@ func (o *OrchestratorImpl) dispatchTask(ctx context.Context, task db.Task, ac co
 	o.dispatchMu.Lock()
 	o.dispatchMap[task.ID] = dispatchEntry{token: token, dispatchedAt: now}
 	o.dispatchMu.Unlock()
-	if err := o.actions.Dispatch(ctx, ac.Ref, task.ID, token); err != nil {
+	dctx, cancel := context.WithTimeout(ctx, dispatchTimeout)
+	defer cancel()
+	if err := o.actions.Dispatch(dctx, ac.Ref, task.ID, token); err != nil {
 		o.dispatchMu.Lock()
 		if e, ok := o.dispatchMap[task.ID]; ok {
 			e.failed = true
