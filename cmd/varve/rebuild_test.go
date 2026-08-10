@@ -69,7 +69,13 @@ func TestRebuildIndex(t *testing.T) {
 	if err := store.RegisterWorker(ctx, &db.Worker{Name: "w1", Role: "host", Mode: "host", Arch: "x86_64", Capacity: 1}); err != nil {
 		t.Fatal(err)
 	}
-	keep := &db.Package{Pkgbase: "keep", Branch: "master", VCSKind: "git", Arch: "x86_64", Maintainers: []db.Maintainer{{Email: "m@example.org"}}}
+	keep := &db.Package{
+		Pkgbase: "keep", Branch: "master", VCSKind: "git", Arch: "x86_64",
+		URL: "https://example.org/keep", Licenses: []string{"MIT"}, Conflicts: []string{"keep-legacy"}, Provides: []string{"keep-lib"},
+		Pkgname: []string{"keep"}, Source: []string{"https://example.org/keep.tar.gz"},
+		Pkgver: "1.0", Pkgrel: "2", Epoch: 1,
+		Maintainers: []db.Maintainer{{Email: "m@example.org"}},
+	}
 	if err := store.UpsertPackage(ctx, keep); err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +89,10 @@ func TestRebuildIndex(t *testing.T) {
 		}
 		return tx.UpdatePackageAfterBuild(ctx, "keep", db.PackageUpdate{
 			CurrentVersion: "1.0-1", Pkgdesc: "old desc", SrcinfoHash: "old-h", UpstreamRef: "old-ref", BuildID: seedTask.BuildID,
+			URL: "https://example.org/keep", Licenses: []string{"MIT"}, Conflicts: []string{"keep-legacy"},
+			Provides: []string{"keep-lib"}, Pkgname: []string{"keep"},
+			Source: []string{"https://example.org/keep.tar.gz"},
+			Pkgver: "1.0", Pkgrel: "2", Epoch: 1,
 		})
 	})
 	if err != nil {
@@ -92,8 +102,8 @@ func TestRebuildIndex(t *testing.T) {
 	if err := store.UpsertPackage(ctx, stale); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.CreateTask(ctx, &db.Task{ID: "seed-stale", PackageID: stale.ID, State: "queued"},
-		&db.Build{Branch: "master", Commit: "c", SrcinfoHash: "h"}); err != nil {
+	staleTask := &db.Task{ID: "seed-stale", PackageID: stale.ID, State: "queued"}
+	if err := store.CreateTask(ctx, staleTask, &db.Build{Branch: "master", Commit: "c", SrcinfoHash: "h"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,6 +111,18 @@ func TestRebuildIndex(t *testing.T) {
 	// "broken" fails to parse and must be skipped with a warning, and
 	// "stale" has no side file at all.
 	repoRoot := filepath.Join(dir, "repo")
+
+	// On-disk logs of the seeded builds: the rebuild replaces every build
+	// with a fresh id, so both files become orphans and must be removed.
+	for _, id := range []string{seedTask.BuildID, staleTask.BuildID} {
+		logFile := filepath.Join(repoRoot, "logs", id+".log")
+		if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(logFile, []byte("old log"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	built := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, filepath.Join(repoRoot, "keep.meta.toml"), sidecarTOML{
 		pkgbase: "keep",
@@ -152,6 +174,22 @@ func TestRebuildIndex(t *testing.T) {
 	}
 	if keep2.LastSrcinfoHash != "h2" || keep2.LastUpstreamRef != "ref2" {
 		t.Errorf("keep hashes = (%q, %q), want (h2, ref2)", keep2.LastSrcinfoHash, keep2.LastUpstreamRef)
+	}
+	// Detection metadata the side file cannot carry is preserved from the
+	// replaced row: url/licenses/conflicts/provides/pkgname/source and
+	// the version fields.
+	if keep2.URL != "https://example.org/keep" ||
+		len(keep2.Licenses) != 1 || keep2.Licenses[0] != "MIT" ||
+		len(keep2.Conflicts) != 1 || keep2.Conflicts[0] != "keep-legacy" ||
+		len(keep2.Provides) != 1 || keep2.Provides[0] != "keep-lib" {
+		t.Errorf("keep metadata = url %q licenses %v conflicts %v provides %v, want preserved",
+			keep2.URL, keep2.Licenses, keep2.Conflicts, keep2.Provides)
+	}
+	if len(keep2.Pkgname) != 1 || keep2.Pkgname[0] != "keep" ||
+		len(keep2.Source) != 1 || keep2.Source[0] != "https://example.org/keep.tar.gz" ||
+		keep2.Pkgver != "1.0" || keep2.Pkgrel != "2" || keep2.Epoch != 1 {
+		t.Errorf("keep pkgname/source/pkgver/pkgrel/epoch = %v/%v/%q/%q/%d, want preserved",
+			keep2.Pkgname, keep2.Source, keep2.Pkgver, keep2.Pkgrel, keep2.Epoch)
 	}
 
 	newpkg, err := store.GetPackageByBase(ctx, "newpkg")
@@ -230,6 +268,13 @@ func TestRebuildIndex(t *testing.T) {
 	}
 	if len(active) != 0 {
 		t.Errorf("active tasks after rebuild = %+v, want none", active)
+	}
+
+	// Orphaned on-disk logs of the replaced builds are cleaned up.
+	for _, id := range []string{seedTask.BuildID, staleTask.BuildID} {
+		if _, err := os.Stat(filepath.Join(repoRoot, "logs", id+".log")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("orphan log logs/%s.log still present after rebuild: %v", id, err)
+		}
 	}
 
 	// workers: untouched.

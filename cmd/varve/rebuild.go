@@ -155,8 +155,18 @@ func rebuildIndex(ctx context.Context, store *db.Store, backend storage.Backend)
 		}
 	}
 
-	if err := store.RebuildIndex(ctx, records); err != nil {
+	removed, err := store.RebuildIndex(ctx, records)
+	if err != nil {
 		return nil, fmt.Errorf("varve: rebuild-index: %w", err)
+	}
+	// The removed build rows leave their on-disk logs behind
+	// ("logs/<id>.log"); the rebuilt index points every build at a fresh
+	// log name that does not exist on disk yet, so the old files are
+	// orphaned. Best-effort cleanup: a deletion failure only warns.
+	for _, id := range removed {
+		if err := backend.Delete(ctx, "logs/"+id+".log"); err != nil {
+			log.Printf("varve: rebuild-index: delete orphaned log logs/%s.log: %v", id, err)
+		}
 	}
 	return report, nil
 }
@@ -182,7 +192,9 @@ func listAllPackages(ctx context.Context, store *db.Store) (map[string]db.Packag
 
 // toRebuildPackage maps one side file onto the database's authoritative
 // package record. Detection metadata absent from the side file (pkgdesc,
-// maintainers) is preserved from the previous row; the version comes from
+// maintainers, url, licenses, conflicts, provides, pkgname, source, pkgver,
+// pkgrel, epoch, pkgbuild_ref, the last_failed_at cooldown marker and the
+// AUR record) is preserved from the previous row; the version comes from
 // the first package artifact and the arch from the full artifact set
 // ("|"-joined, the same canonical form the live pipeline stores).
 func toRebuildPackage(sc *repo.Sidecar, old db.Package, workerID map[string]int64) db.RebuildPackage {
@@ -238,7 +250,23 @@ func toRebuildPackage(sc *repo.Sidecar, old db.Package, workerID map[string]int6
 		Arch:            arch,
 		CurrentVersion:  version,
 		Pkgdesc:         old.Pkgdesc,
+		URL:             old.URL,
+		Licenses:        old.Licenses,
+		Conflicts:       old.Conflicts,
+		Provides:        old.Provides,
+		Pkgname:         old.Pkgname,
+		Source:          old.Source,
+		Pkgver:          old.Pkgver,
+		Pkgrel:          old.Pkgrel,
+		Epoch:           old.Epoch,
+		PkgbuildRef:     old.PkgbuildRef,
+		LastFailedAt:    old.LastFailedAt,
 		Maintainers:     old.Maintainers,
+		AURName:         old.AURName,
+		AURSubmit:       old.AURSubmit,
+		LastAURPushAt:   old.LastAURPushAt,
+		LastAURCommit:   old.LastAURCommit,
+		LastAURError:    old.LastAURError,
 		LastSrcinfoHash: sc.Build.SrcinfoHash,
 		LastUpstreamRef: sc.Build.UpstreamRef,
 		WorkerID:        workerID[sc.Build.Worker],
