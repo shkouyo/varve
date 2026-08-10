@@ -306,10 +306,16 @@ func TestReportIngestFailure(t *testing.T) {
 	if !strings.Contains(build.Error, "ingest") || !strings.Contains(build.Error, "boom") {
 		t.Errorf("build error = %q, want ingest stage", build.Error)
 	}
+	// The failed build row records the reported artifacts, so the page
+	// matches the repository state (the files were already moved).
+	if len(build.Artifacts) != len(artifacts) {
+		t.Errorf("failed build artifacts = %+v, want the reported manifest recorded", build.Artifacts)
+	}
 	if len(env.not.calls) != 1 || env.not.calls[0].Stage != "ingest" {
 		t.Errorf("notifications = %+v, want one ingest notification", env.not.calls)
 	}
-	// Staging preserved for retry.
+	// Staging is preserved (the task is terminal, so the sweep is the
+	// cleanup backstop).
 	for _, a := range artifacts {
 		if _, err := env.fs.Stat(context.Background(), env.fs.StagingPath(claimed, a.File)); err != nil {
 			t.Errorf("staging %s was not preserved: %v", a.File, err)

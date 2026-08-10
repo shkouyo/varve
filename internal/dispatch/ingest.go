@@ -86,7 +86,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// recomputation matches; with signing enabled, package signatures
 	// are verified with gpg.
 	if err := o.verifyManifest(ctx, task.ID, res.Artifacts); err != nil {
-		o.failTask(ctx, task, "verify", err.Error())
+		o.failTask(ctx, task, "verify", err.Error(), toDBArtifacts(res.Artifacts))
 		o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
 		return nil // the result was processed: the task is now failed
 	}
@@ -116,8 +116,12 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// repo-add). The worker display name resolves through the database.
 	workerName := o.workerName(ctx, task.WorkerID)
 	if err := o.updater.Ingest(ctx, task, build, workerName, res.Artifacts); err != nil {
-		o.failTask(ctx, task, "ingest", err.Error())
-		// Staging is deliberately preserved so the ingest can be retried.
+		// The failed build row records the reported artifacts, so the
+		// page matches the repository state even when the ingest could
+		// not finish. The staging area is preserved until the hourly
+		// sweep; recovery comes from the detect cooldown, which
+		// re-enqueues the package on a later round.
+		o.failTask(ctx, task, "ingest", err.Error(), toDBArtifacts(res.Artifacts))
 		return nil
 	}
 
@@ -161,9 +165,12 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	})
 	if err != nil {
 		// The ingest itself already moved artifacts; a failed transaction
-		// leaves them in the repository but the task is recorded failed and
-		// retried from the preserved staging area on the next report.
-		o.failTask(stx, task, "ingest", err.Error())
+		// leaves them in the repository but the task is recorded failed
+		// with the reported artifacts. Recovery comes from the detect
+		// cooldown re-enqueue, not from a retry of this report (the task
+		// is terminal now); the preserved staging area is swept after
+		// 24h.
+		o.failTask(stx, task, "ingest", err.Error(), toDBArtifacts(res.Artifacts))
 		return nil
 	}
 
@@ -238,13 +245,14 @@ func (o *OrchestratorImpl) notifyAURFailure(ctx context.Context, pkg *db.Package
 
 // failTask finalizes a task as failed through the terminal path (verify
 // and ingest failures), notifies its maintainers and clears the token and
-// key material. These stages are not retried: a bad checksum or a failed
-// ingest has its own recovery (staging preserved for ingest; the next
-// detection round re-enqueues the change). A race with another finalizer
-// is tolerated: the already-terminal state wins and only the notification
-// is skipped.
-func (o *OrchestratorImpl) failTask(ctx context.Context, task *db.Task, stage, summary string) {
-	if err := o.finalizeFailure(ctx, task, stage, summary, nil, nil); err != nil {
+// key material. The reported artifacts ride onto the failed build row so
+// the page matches the repository state. These stages are not retried: a
+// bad checksum or a failed ingest has its own recovery (staging preserved
+// until the hourly sweep; the detect cooldown re-enqueues the change on a
+// later round). A race with another finalizer is tolerated: the
+// already-terminal state wins and only the notification is skipped.
+func (o *OrchestratorImpl) failTask(ctx context.Context, task *db.Task, stage, summary string, artifacts []db.Artifact) {
+	if err := o.finalizeFailure(ctx, task, stage, summary, artifacts, nil); err != nil {
 		if errors.Is(err, ErrConflict) {
 			log.Printf("dispatch: task %s already terminal during %s failure handling", task.ID, stage)
 			return
