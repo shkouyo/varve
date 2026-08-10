@@ -141,6 +141,7 @@ type Build struct {
 	LogPath       string
 	StartedAt     *time.Time
 	FinishedAt    *time.Time
+	CreatedAt     *time.Time // when the build was enqueued (mirrors the task created_at)
 	Error         string
 	Artifacts     []Artifact
 	ResourceUsage []Sample

@@ -30,6 +30,7 @@ var funcs = template.FuncMap{
 	"shortID":     shortID,
 	"absTime":     absTime,
 	"humanSize":   humanSize,
+	"duration":    buildDuration,
 	"aurError":    aurErrorSummary,
 	"epoch":       pkgEpoch,
 }

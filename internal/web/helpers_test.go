@@ -309,6 +309,35 @@ func seedActiveBuild(t *testing.T, s *db.Store, pkg db.Package, state string) db
 	return *build
 }
 
+// seedTimedBuild creates a task + build row, marks it running at
+// started and finalizes it into state at finished, so the row carries
+// created_at, started_at and finished_at for the duration display
+// tests. The queue wait is fixed at five minutes.
+func seedTimedBuild(t *testing.T, s *db.Store, pkg db.Package, started, finished time.Time) db.Build {
+	t.Helper()
+	seedCounter++
+	task := &db.Task{
+		ID:             "task-" + pkg.Pkgbase + "-" + itoa(seedCounter),
+		PackageID:      pkg.ID,
+		State:          "queued",
+		CreatedAt:      started.Add(-5 * time.Minute),
+		LastProgressAt: started.Add(-5 * time.Minute),
+	}
+	build := &db.Build{PackageID: pkg.ID, Branch: pkg.Branch, Commit: "deadbeef", SrcinfoHash: "srcinfo-hash"}
+	if err := s.CreateTask(testCtx, task, build); err != nil {
+		t.Fatalf("create task for %q: %v", pkg.Pkgbase, err)
+	}
+	if err := s.ClaimTaskToken(testCtx, task.ID, "tok", started); err != nil {
+		t.Fatalf("claim task %s: %v", task.ID, err)
+	}
+	if err := s.WithTx(testCtx, func(tx *db.Tx) error {
+		return tx.FinalizeTask(testCtx, task.ID, "succeeded", "", finished, nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize task %s: %v", task.ID, err)
+	}
+	return *build
+}
+
 // setPackageBuild records the outcome of a build on the package row
 // (version, description, last_build_id) through the public tx path.
 func setPackageBuild(t *testing.T, s *db.Store, pkgbase string, buildID string) {

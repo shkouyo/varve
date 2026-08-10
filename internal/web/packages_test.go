@@ -384,6 +384,19 @@ func TestPackageDetailMetadata(t *testing.T) {
 	}
 }
 
+// TestPackageHistoryDuration asserts the package build history renders
+// the wall-clock duration of finished builds in the Duration column.
+func TestPackageHistoryDuration(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	now := time.Now().UTC()
+	build := seedTimedBuild(t, store, pkg, now.Add(-2*time.Minute), now)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/packages/demo-pkg", nil)
+	body := rec.Body.String()
+	mustContain(t, body, "Duration", "/builds/"+itoa(build.ID), "2m")
+}
+
 // TestPackageHistoryPagination asserts the build history paginates per
 // package: page 1 holds the newest 20, page 2 the rest, and an
 // out-of-range page is clamped to the last one.

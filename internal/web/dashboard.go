@@ -77,6 +77,7 @@ type recentBuildView struct {
 	WorkerName string
 	StartedAt  *time.Time
 	FinishedAt *time.Time
+	Duration   string
 }
 
 // workerNameOf resolves the display name of the machine behind a build:
@@ -173,6 +174,7 @@ func (s *Server) recentBuildViews(ctx context.Context, builds []db.Build, worker
 			WorkerName: workerNameOf(b, workerNames),
 			StartedAt:  b.StartedAt,
 			FinishedAt: b.FinishedAt,
+			Duration:   buildDuration(b.StartedAt, b.FinishedAt),
 		}
 		if name, ok := pkgNames[b.PackageID]; ok {
 			view.Pkgbase = name

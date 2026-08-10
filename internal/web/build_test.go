@@ -68,6 +68,43 @@ func TestBuildDetailRenders(t *testing.T) {
 	}
 }
 
+// TestBuildDetailDuration asserts the summary renders the wall-clock
+// duration of a finished build and the queue wait (started minus
+// enqueued).
+func TestBuildDetailDuration(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	now := time.Now().UTC()
+	build := seedTimedBuild(t, store, pkg, now.Add(-2*time.Minute), now)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /builds/%s = %d, want 200", build.ID, rec.Code)
+	}
+	body := rec.Body.String()
+	mustContain(t, body,
+		"Duration",
+		"2m", // finished minus started
+		"Queue wait",
+		"5m", // started minus enqueued
+	)
+}
+
+// TestBuildDetailDurationMissing asserts a build that never started
+// renders placeholders for both duration rows instead of a value.
+func TestBuildDetailDurationMissing(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "queued", nil, nil) // never started
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil)
+	body := rec.Body.String()
+	mustContain(t, body, "Duration", "Queue wait", ">·<")
+	if strings.Contains(body, ">2m<") || strings.Contains(body, ">5m<") {
+		t.Error("unstarted build must not render duration values")
+	}
+}
+
 // logLinesText extracts the text rendered inside the initial log pane
 // (between the #log-lines div markers) from a rendered build page.
 func logLinesText(body string) string {

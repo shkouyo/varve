@@ -28,6 +28,7 @@
               <th scope="col" class="px-4 py-3 font-semibold">Machine</th>
               <th scope="col" class="px-4 py-3 font-semibold">Started</th>
               <th scope="col" class="px-4 py-3 font-semibold">Finished</th>
+              <th scope="col" class="px-4 py-3 font-semibold">Duration</th>
               <th scope="col" class="px-4 py-3 font-semibold">Log</th>
               {{if $.Admin}}<th scope="col" class="px-4 py-3 font-semibold">Action</th>{{end}}
             </tr>
@@ -55,6 +56,9 @@
               </td>
               <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
                 {{if .FinishedAt}}{{absTime .FinishedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+              </td>
+              <td class="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                {{if .Duration}}{{.Duration}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
               </td>
               <td class="px-4 py-3">
                 <a class="text-blue-800 underline underline-offset-2 dark:text-blue-300" href="/builds/{{.ID}}#log">View log</a>

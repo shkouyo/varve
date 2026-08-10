@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestBuildsListRenders asserts GET /builds lists the newest build rows
@@ -51,6 +52,19 @@ func TestBuildsListRenders(t *testing.T) {
 	empty := newTestServer(t, testConfig(), &fakeOrchestrator{}, newTestDB(t), newFakeLogReader(""))
 	rec = get(t, empty, http.MethodGet, "/builds", nil)
 	mustContain(t, rec.Body.String(), "No builds recorded yet")
+}
+
+// TestBuildsListDuration asserts the builds list renders the wall-clock
+// duration of finished builds in the Duration column.
+func TestBuildsListDuration(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	now := time.Now().UTC()
+	build := seedTimedBuild(t, store, pkg, now.Add(-2*time.Minute), now)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/builds", nil)
+	body := rec.Body.String()
+	mustContain(t, body, "Duration", "/builds/"+itoa(build.ID), "2m")
 }
 
 // TestBuildsListPagination asserts the builds page paginates and clamps

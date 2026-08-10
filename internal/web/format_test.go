@@ -23,6 +23,76 @@ import (
 	"time"
 )
 
+// TestFormatDuration pins the human duration scaling at the unit
+// boundaries: bare seconds under a minute, minutes with seconds, hours
+// with minutes, zero sub-units dropped, and negative or sub-second
+// spans rendered as "0s".
+func TestFormatDuration(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "0s"},
+		{500 * time.Millisecond, "0s"}, // sub-second truncates to zero
+		{42 * time.Second, "42s"},
+		{83 * time.Second, "1m 23s"},
+		{90 * time.Second, "1m 30s"},
+		{2 * time.Minute, "2m"}, // zero seconds dropped
+		{2*time.Hour + 5*time.Minute, "2h 5m"},
+		{1 * time.Hour, "1h"}, // zero minutes dropped
+		{-10 * time.Second, "0s"},
+	}
+	for _, tc := range cases {
+		if got := formatDuration(tc.d); got != tc.want {
+			t.Errorf("formatDuration(%v) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}
+
+// TestBuildDuration covers the finished-build span derivation: a build
+// with both timestamps renders the wall-clock duration, a missing
+// started or finished timestamp renders empty, and a negative span
+// (clock skew) is treated as unknown.
+func TestBuildDuration(t *testing.T) {
+	start := time.Date(2026, 2, 3, 4, 0, 0, 0, time.UTC)
+	finish := start.Add(83 * time.Second)
+	if got := buildDuration(&start, &finish); got != "1m 23s" {
+		t.Errorf("buildDuration = %q, want 1m 23s", got)
+	}
+	if got := buildDuration(nil, &finish); got != "" {
+		t.Errorf("buildDuration(nil started) = %q, want empty", got)
+	}
+	if got := buildDuration(&start, nil); got != "" {
+		t.Errorf("buildDuration(nil finished) = %q, want empty", got)
+	}
+	if got := buildDuration(nil, nil); got != "" {
+		t.Errorf("buildDuration(nil, nil) = %q, want empty", got)
+	}
+	if got := buildDuration(&finish, &start); got != "" {
+		t.Errorf("buildDuration(negative span) = %q, want empty", got)
+	}
+}
+
+// TestQueueWait covers the queue wait derivation (started minus
+// created): a full span renders, a missing timestamp renders empty, and
+// a negative span is treated as unknown.
+func TestQueueWait(t *testing.T) {
+	created := time.Date(2026, 2, 3, 3, 55, 0, 0, time.UTC)
+	started := created.Add(5 * time.Minute)
+	if got := queueWait(&created, &started); got != "5m" {
+		t.Errorf("queueWait = %q, want 5m", got)
+	}
+	if got := queueWait(nil, &started); got != "" {
+		t.Errorf("queueWait(nil created) = %q, want empty", got)
+	}
+	if got := queueWait(&created, nil); got != "" {
+		t.Errorf("queueWait(nil started) = %q, want empty", got)
+	}
+	if got := queueWait(&started, &created); got != "" {
+		t.Errorf("queueWait(negative span) = %q, want empty", got)
+	}
+}
+
 // TestAbsTime pins the site-wide absolute timestamp layout: nil renders
 // "never", and a fixed instant renders as local wall-clock time with
 // second precision ("2006-01-02 15:04:05"), the unified site format.

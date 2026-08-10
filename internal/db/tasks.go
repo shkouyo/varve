@@ -58,12 +58,14 @@ func (s *Store) CreateTask(ctx context.Context, t *Task, b *Build) error {
 			return err
 		}
 		b.ID = id
+		created := t.CreatedAt
 		if _, err := tx.ExecContext(ctx, `INSERT INTO builds
-			(id, seq, package_id, branch, "commit", upstream_ref, pkgbuild_ref, srcinfo_hash, status, worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage)
-			VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM builds), ?, ?, ?, ?, ?, ?, ?, NULL, '', '', NULL, NULL, '', '[]', '[]')`,
-			b.ID, b.PackageID, b.Branch, b.Commit, b.UpstreamRef, b.PkgbuildRef, b.SrcinfoHash, b.Status); err != nil {
+			(id, seq, package_id, branch, "commit", upstream_ref, pkgbuild_ref, srcinfo_hash, status, worker_id, worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage, created_at)
+			VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM builds), ?, ?, ?, ?, ?, ?, ?, NULL, '', '', NULL, NULL, '', '[]', '[]', ?)`,
+			b.ID, b.PackageID, b.Branch, b.Commit, b.UpstreamRef, b.PkgbuildRef, b.SrcinfoHash, b.Status, formatTime(created)); err != nil {
 			return err
 		}
+		b.CreatedAt = &created
 		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks
 			(id, package_id, build_id, state, worker_id, assigned_at, created_at, last_progress_at, attempts, claim_token, cancel_requested, fail_count)
 			VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 0, '', 0, 0)`,

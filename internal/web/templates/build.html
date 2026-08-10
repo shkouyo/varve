@@ -75,6 +75,14 @@
         <dd class="text-slate-900 dark:text-neutral-100">
           {{if .Build.FinishedAt}}{{absTime .Build.FinishedAt}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
         </dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Duration</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">
+          {{if .Duration}}{{.Duration}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+        </dd>
+        <dt class="font-medium text-slate-500 dark:text-neutral-400">Queue wait</dt>
+        <dd class="text-slate-900 dark:text-neutral-100">
+          {{if .QueueWait}}{{.QueueWait}}{{else}}<span class="text-slate-500 dark:text-neutral-400" aria-hidden="true">·</span>{{end}}
+        </dd>
       </dl>
     </section>
 

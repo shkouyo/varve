@@ -24,7 +24,7 @@ import (
 	"fmt"
 )
 
-const buildColumns = `id, package_id, branch, "commit", upstream_ref, pkgbuild_ref, srcinfo_hash, status, COALESCE(worker_id, 0), worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage`
+const buildColumns = `id, package_id, branch, "commit", upstream_ref, pkgbuild_ref, srcinfo_hash, status, COALESCE(worker_id, 0), worker_name, log_path, started_at, finished_at, error, artifacts, resource_usage, created_at`
 
 // GetBuild returns one build by id with artifacts and resource usage
 // decoded. ErrNotFound when the build does not exist.
@@ -133,12 +133,19 @@ func (s *Store) ListBuildsByPackage(ctx context.Context, packageID int64, page, 
 func scanBuild(rs rowScanner) (*Build, error) {
 	var b Build
 	var commit, artifacts, resourceUsage string
-	var startedAtNS, finishedAtNS sql.NullString
+	var startedAtNS, finishedAtNS, createdAtNS sql.NullString
 	if err := rs.Scan(&b.ID, &b.PackageID, &b.Branch, &commit, &b.UpstreamRef, &b.PkgbuildRef, &b.SrcinfoHash,
-		&b.Status, &b.WorkerID, &b.WorkerName, &b.LogPath, &startedAtNS, &finishedAtNS, &b.Error, &artifacts, &resourceUsage); err != nil {
+		&b.Status, &b.WorkerID, &b.WorkerName, &b.LogPath, &startedAtNS, &finishedAtNS, &b.Error, &artifacts, &resourceUsage, &createdAtNS); err != nil {
 		return nil, err
 	}
 	b.Commit = commit
+	if createdAtNS.Valid {
+		t, err := parseTime(createdAtNS.String)
+		if err != nil {
+			return nil, fmt.Errorf("db: decode created_at for build %s: %w", b.ID, err)
+		}
+		b.CreatedAt = &t
+	}
 	if startedAtNS.Valid {
 		t, err := parseTime(startedAtNS.String)
 		if err != nil {

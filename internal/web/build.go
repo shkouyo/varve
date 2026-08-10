@@ -51,6 +51,8 @@ type buildData struct {
 	TruncatedNote string
 	Wait          bool
 	Note          string
+	Duration      string
+	QueueWait     string
 	Samples       []resourceView
 	BuildID       string
 	SSEURL        string
@@ -119,6 +121,11 @@ func (s *Server) buildData(r *http.Request, id string) (buildData, error) {
 		SSEURL:  "/builds/" + id + "/log/stream",
 	}
 	data.Build.Error = "" // failure detail lives in the log, not the summary
+
+	// Timing: the wall-clock duration of a finished build and the queue
+	// wait (started minus enqueued). Empty strings render a placeholder.
+	data.Duration = buildDuration(b.StartedAt, b.FinishedAt)
+	data.QueueWait = queueWait(b.CreatedAt, b.StartedAt)
 
 	// The log stream stays live only while the build runs; a terminal
 	// build freezes the page (no SSE client).

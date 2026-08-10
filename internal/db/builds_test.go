@@ -113,6 +113,26 @@ func TestGetBuild(t *testing.T) {
 	}
 }
 
+// TestBuildCreatedAt asserts the build row mirrors the enqueue moment:
+// CreateTask records tasks.created_at onto builds.created_at and the
+// decoded build carries it back (the queue wait display reads it).
+func TestBuildCreatedAt(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "created")
+	when := at(1234 * time.Second)
+	task, build := createTask(t, s, "created-task", "queued", pkg, when)
+	if build.CreatedAt == nil || !build.CreatedAt.Equal(task.CreatedAt) {
+		t.Fatalf("CreateTask did not fill CreatedAt: %v", build.CreatedAt)
+	}
+	got, err := s.GetBuild(testCtx, build.ID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if got.CreatedAt == nil || !got.CreatedAt.Equal(when) {
+		t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, when)
+	}
+}
+
 // TestListBuilds covers failedOnly filtering and pagination.
 func TestListBuilds(t *testing.T) {
 	s := newTestStore(t)

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
@@ -62,6 +63,24 @@ func TestDashboardRender(t *testing.T) {
 		"online",                  // worker status
 		"/builds/"+itoa(build.ID), // recent build link
 	)
+}
+
+// TestDashboardRecentDuration asserts the dashboard recent-builds table
+// renders the wall-clock duration of finished builds.
+func TestDashboardRecentDuration(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	now := time.Now().UTC()
+	started := now.Add(-2 * time.Minute)
+	build := seedTimedBuild(t, store, pkg, started, now)
+	orch := &fakeOrchestrator{stats: &dispatch.Stats{
+		ByStatus:     map[string]int{"succeeded": 1},
+		RecentBuilds: []db.Build{{ID: build.ID, PackageID: pkg.ID, Status: "succeeded", StartedAt: &started, FinishedAt: &now}},
+	}}
+	s := newTestServer(t, testConfig(), orch, store, newFakeLogReader(""))
+	rec := get(t, s, http.MethodGet, "/", nil)
+	body := rec.Body.String()
+	mustContain(t, body, "Duration", "2m")
 }
 
 // TestStatusCountsZeroFill asserts every known status card renders,
