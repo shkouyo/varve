@@ -67,7 +67,7 @@ func TestRemoveLocal(t *testing.T) {
 	}
 	// The pacman database entry is repo-removed.
 	execs := e.log.read()
-	if !strings.Contains(strings.Join(execs, "\n"), "exec repo-remove "+e.root+" "+testDBName+" "+testPkgbase) {
+	if !strings.Contains(strings.Join(execs, "\n"), "exec repo-remove "+e.root+" "+testDBArchive+" "+testPkgbase) {
 		t.Errorf("no repo-remove recorded: %v", execs)
 	}
 

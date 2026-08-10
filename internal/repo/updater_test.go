@@ -268,6 +268,13 @@ func helperMain() int {
 			f.Close()
 		}
 	}
+	// Emulate the repo database commands: like repo-add / repo-remove,
+	// leave the gzip archives, the pacman-facing symlinks and (with
+	// --sign) the detached signatures in the working directory.
+	if prog == "repo-add" || prog == "repo-remove" {
+		emulateRepoDB(rest[1:])
+	}
+
 	key := execEnvKey(prog)
 	if s := os.Getenv("FAKE_EXEC_STDERR_" + key); s != "" {
 		fmt.Fprint(os.Stderr, s)
@@ -280,6 +287,55 @@ func helperMain() int {
 	return 0
 }
 
+// emulateRepoDB mirrors the output repo-add / repo-remove leave in their
+// working directory: the <name>.db.tar.gz gzip archive, the <name>.db
+// symlink, the <name>.files.tar.gz / <name>.files pair and, with --sign,
+// the matching .sig files. The archive carries fixed bytes so tests can
+// assert the pacman-facing object holds identical content.
+func emulateRepoDB(args []string) {
+	var archive string
+	sign := false
+	for _, a := range args {
+		if a == "--sign" {
+			sign = true
+			continue
+		}
+		if archive == "" && strings.HasSuffix(a, ".db.tar.gz") {
+			archive = a
+		}
+	}
+	if archive == "" {
+		return
+	}
+	name := strings.TrimSuffix(filepath.Base(archive), ".db.tar.gz")
+	pairs := [][2]string{
+		{name + ".db", name + ".db.tar.gz"},
+		{name + ".files", name + ".files.tar.gz"},
+	}
+	content := []byte("db-bytes")
+	for _, p := range pairs {
+		if err := os.WriteFile(p[1], content, 0o644); err != nil {
+			return
+		}
+		os.Remove(p[0])
+		if err := os.Symlink(p[1], p[0]); err != nil {
+			return
+		}
+	}
+	if !sign {
+		return
+	}
+	for _, p := range pairs {
+		if err := os.WriteFile(p[1]+".sig", []byte("sig-bytes"), 0o644); err != nil {
+			return
+		}
+		os.Remove(p[0] + ".sig")
+		if err := os.Symlink(p[1]+".sig", p[0]+".sig"); err != nil {
+			return
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Ingest environment helpers
 // ---------------------------------------------------------------------------
@@ -290,7 +346,13 @@ const (
 	testSigFile = "foo-1.2.3-1-x86_64.pkg.tar.zst.sig"
 	testSrcinfo = ".SRCINFO"
 	testTaskID  = "task-1"
-	testDBName  = "varve.db.tar.gz"
+	// testDBName / testFilesName are the canonical pacman-facing database
+	// names; the *Archive variants are the gzip archives repo-add derives
+	// them from.
+	testDBName       = "varve.db"
+	testDBArchive    = "varve.db.tar.gz"
+	testFilesName    = "varve.files"
+	testFilesArchive = "varve.files.tar.gz"
 )
 
 // testManifest returns the standard manifest used by most cases: one package,
@@ -462,7 +524,7 @@ func TestIngestMoveSequence(t *testing.T) {
 	if len(execs) != 1 {
 		t.Fatalf("exec lines = %d, want 1: %v", len(execs), execs)
 	}
-	wantArgs := testDBName + " " + testPkgFile
+	wantArgs := testDBArchive + " " + testPkgFile
 	if !strings.Contains(execs[0], wantArgs) {
 		t.Errorf("repo-add args = %q, want %q", execs[0], wantArgs)
 	}
@@ -580,7 +642,7 @@ func TestIngestOldVersionCleanup(t *testing.T) {
 		}
 	}
 	// remove (replaced pkgname) must precede add.
-	rem := e.logIndex("exec repo-remove " + e.root + " " + testDBName + " foo-old")
+	rem := e.logIndex("exec repo-remove " + e.root + " " + testDBArchive + " foo-old")
 	add := e.logIndex("exec repo-add " + e.root)
 	if rem < 0 {
 		t.Error("missing repo-remove for replaced pkgname foo-old")

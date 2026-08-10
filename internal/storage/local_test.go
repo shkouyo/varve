@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -193,6 +194,61 @@ func TestLocalAtomicWriteNoTmpLeftover(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk: %v", err)
+	}
+}
+
+// TestLocalSymlinkEntries asserts the pacman-facing repository names
+// (<name>.db / <name>.files, created by repo-add as symlinks to the gzip
+// archives) are served like regular files: List returns the symlink
+// entries, Get streams the archive bytes through the symlink and Stat
+// reports the archive size.
+func TestLocalSymlinkEntries(t *testing.T) {
+	b := mustLocal(t)
+	ctx := context.Background()
+
+	const (
+		dbArchive = "varve.db.tar.gz"
+		dbName    = "varve.db"
+		filesName = "varve.files"
+	)
+	archive := []byte("gzip-db-bytes")
+	if err := b.Put(ctx, dbArchive, bytes.NewReader(archive), int64(len(archive))); err != nil {
+		t.Fatalf("Put archive: %v", err)
+	}
+	// repo-add links <name>.db / <name>.files to the archives in the root.
+	for _, pair := range [][2]string{{dbName, dbArchive}, {filesName, "varve.files.tar.gz"}} {
+		if err := os.Symlink(pair[1], filepath.Join(b.root, pair[0])); err != nil {
+			t.Fatalf("symlink %s: %v", pair[0], err)
+		}
+	}
+
+	// List returns the symlink entries, not only the archives.
+	got, err := b.List(ctx, "*")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, name := range []string{dbName, dbArchive, filesName} {
+		if !slices.Contains(got, name) {
+			t.Errorf("List = %v, want it to include %s", got, name)
+		}
+	}
+
+	// Get through the symlink streams the archive bytes.
+	var buf bytes.Buffer
+	if err := b.Get(ctx, dbName, &buf); err != nil {
+		t.Fatalf("Get %s: %v", dbName, err)
+	}
+	if !bytes.Equal(buf.Bytes(), archive) {
+		t.Errorf("Get %s = %q, want the archive bytes %q", dbName, buf.Bytes(), archive)
+	}
+
+	// Stat through the symlink reports the archive size.
+	fi, err := b.Stat(ctx, dbName)
+	if err != nil {
+		t.Fatalf("Stat %s: %v", dbName, err)
+	}
+	if fi.Size != int64(len(archive)) {
+		t.Errorf("Stat %s size = %d, want %d", dbName, fi.Size, len(archive))
 	}
 }
 

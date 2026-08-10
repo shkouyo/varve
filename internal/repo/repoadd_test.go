@@ -103,7 +103,7 @@ func TestRepoRemoveAllThenAdd(t *testing.T) {
 	if len(execs) != 3 {
 		t.Fatalf("exec lines = %d, want remove+remove+add: %v", len(execs), execs)
 	}
-	for _, want := range []string{"repo-remove " + e.root + " " + testDBName + " a", "repo-remove " + e.root + " " + testDBName + " b"} {
+	for _, want := range []string{"repo-remove " + e.root + " " + testDBArchive + " a", "repo-remove " + e.root + " " + testDBArchive + " b"} {
 		if !strings.Contains(execs[0]+" "+execs[1], want) {
 			t.Errorf("missing %q in %q / %q", want, execs[0], execs[1])
 		}
