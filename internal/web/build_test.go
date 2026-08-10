@@ -68,6 +68,28 @@ func TestBuildDetailRenders(t *testing.T) {
 	}
 }
 
+// TestBuildDetailDownloadLink asserts the Command log section renders
+// the Download log link when the build has a log and hides it when the
+// build never produced one.
+func TestBuildDetailDownloadLink(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	withLog := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\n"))
+	body := get(t, s, http.MethodGet, "/builds/"+itoa(withLog.ID), nil).Body.String()
+	mustContain(t, body, `href="/builds/`+itoa(withLog.ID)+`/log/download"`, "Download log")
+
+	// A terminal build without a log renders no download link.
+	nolog := seedBuild(t, store, pkg, "cancelled", nil, nil)
+	logs := newFakeLogReader("")
+	logs.readErr = dispatch.ErrNotFound
+	s = newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
+	body = get(t, s, http.MethodGet, "/builds/"+itoa(nolog.ID), nil).Body.String()
+	if strings.Contains(body, "/log/download") {
+		t.Error("build without a log must not render the download link")
+	}
+}
+
 // TestBuildDetailDuration asserts the summary renders the wall-clock
 // duration of a finished build and the queue wait (started minus
 // enqueued).

@@ -19,6 +19,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,6 +52,52 @@ func TestLogRedirect(t *testing.T) {
 	rec = get(t, s, http.MethodGet, "/builds/99999/log", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("malformed build log = %d, want 400", rec.Code)
+	}
+}
+
+// TestLogDownload asserts GET /builds/{id}/log/download streams the
+// full log byte-for-byte as an attachment: the body equals the log
+// file, the content type is plain text and the disposition names a
+// build-scoped filename. A build without a log or an unknown build is
+// a 404 and a malformed id a 400.
+func TestLogDownload(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\nline2\n"))
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/download", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /log/download = %d, want 200", rec.Code)
+	}
+	if got := rec.Body.String(); got != "line1\nline2\n" {
+		t.Errorf("download body = %q, want the full log byte-for-byte", got)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/plain; charset=utf-8", ct)
+	}
+	want := fmt.Sprintf(`attachment; filename="build-%s.log"`, build.ID)
+	if cd := rec.Header().Get("Content-Disposition"); cd != want {
+		t.Errorf("Content-Disposition = %q, want %q", cd, want)
+	}
+
+	// No log file: 404.
+	missing := seedBuild(t, store, pkg, "cancelled", nil, nil)
+	logs := newFakeLogReader("")
+	logs.readErr = dispatch.ErrNotFound
+	s = newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
+	rec = get(t, s, http.MethodGet, "/builds/"+itoa(missing.ID)+"/log/download", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("missing log download = %d, want 404", rec.Code)
+	}
+
+	// Unknown build and malformed id.
+	rec = get(t, s, http.MethodGet, "/builds/ffffffffffffffff/log/download", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown build download = %d, want 404", rec.Code)
+	}
+	rec = get(t, s, http.MethodGet, "/builds/99999/log/download", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("malformed build download = %d, want 400", rec.Code)
 	}
 }
 

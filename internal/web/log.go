@@ -90,6 +90,46 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	s.serveSSE(w, r, build.ID)
 }
 
+// handleLogDownload serves GET /builds/{id}/log/download: the full
+// build log as an attachment, streamed byte-for-byte from the log
+// store (no truncation, unlike the inline page view). The response is
+// text/plain with an attachment filename so the browser saves the
+// original file. A malformed build id is a 400; a well-formed but
+// unknown one or a build without a log is a 404.
+func (s *Server) handleLogDownload(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, ok := parseID(r.PathValue("id"))
+	if !ok {
+		s.renderError(w, r, http.StatusBadRequest, "Invalid build id.")
+		return
+	}
+	if _, err := s.store.GetBuild(ctx, id); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			s.renderError(w, r, http.StatusNotFound, "Build not found: "+id)
+			return
+		}
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build.")
+		return
+	}
+	if _, err := s.logs.Size(ctx, id); err != nil {
+		if errors.Is(err, dispatch.ErrNotFound) {
+			s.renderError(w, r, http.StatusNotFound, "No log was recorded for this build.")
+			return
+		}
+		s.renderError(w, r, http.StatusInternalServerError, "Failed to load the build log.")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="build-%s.log"`, id))
+	w.WriteHeader(http.StatusOK)
+	// The log is streamed straight to the client from offset 0. A read
+	// error after the headers cannot change the status anymore; the
+	// partial body stands as is.
+	if _, err := s.logs.TailLog(ctx, id, 0, w); err != nil {
+		// Headers are already sent, so nothing more can be done.
+	}
+}
+
 // serveSSE streams the build log to the client: each incremental read
 // becomes an event: log with a JSON payload and the byte offset as the
 // event id, an empty read is followed by a terminal-state check (event:

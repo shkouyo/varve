@@ -87,7 +87,13 @@
     </section>
 
     <section aria-labelledby="log" class="mb-8">
-      <h2 id="log" class="mb-3 scroll-mt-6 text-xl font-semibold">Command log</h2>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="log" class="scroll-mt-6 text-xl font-semibold">Command log</h2>
+        {{if .HasLog}}
+        <a class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+           href="/builds/{{.BuildID}}/log/download">Download log</a>
+        {{end}}
+      </div>
       <div id="log-pane" role="log" aria-label="Build log" tabindex="0"
            class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100">
 {{- if .HasLog}}<div id="log-lines">{{.Log}}</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-neutral-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}

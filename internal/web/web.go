@@ -19,8 +19,9 @@
 // over html/template, a build-time Tailwind stylesheet embedded into the
 // binary, a Basic Auth protected /admin area (no cookies), an
 // Origin/Referer same-origin gate on every admin POST (CSRF defense for
-// the auto-attached Basic credentials), and a resumable SSE log stream
-// on GET /builds/{id}/log/stream. The build log is merged into the
+// the auto-attached Basic credentials), a resumable SSE log stream
+// on GET /builds/{id}/log/stream and a plain-text log download on
+// GET /builds/{id}/log/download. The build log is merged into the
 // build detail page; the legacy /builds/{id}/log URL redirects to its
 // anchor. The UI is fully usable without JavaScript: every admin action
 // is a plain form POST and every page renders semantic, keyboard
@@ -133,6 +134,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /builds/{id}", s.handleBuild)
 	mux.HandleFunc("GET /builds/{id}/log", s.handleLog)
 	mux.HandleFunc("GET /builds/{id}/log/stream", s.handleLogStream)
+	mux.HandleFunc("GET /builds/{id}/log/download", s.handleLogDownload)
 	mux.HandleFunc("GET /packages", s.handlePackages)
 	mux.HandleFunc("GET /packages/{pkgbase}", s.handlePackage)
 	mux.HandleFunc("GET /COPYING.txt", s.handleCopying)
