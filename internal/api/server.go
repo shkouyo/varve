@@ -79,9 +79,16 @@ func (s *Server) Handler() http.Handler {
 }
 
 // bearerAuth guards the node-level endpoints: the request must carry a
-// valid shared Bearer token, compared in constant time.
+// valid shared Bearer token, compared in constant time. An empty
+// configured token is a server misconfiguration (config validation
+// already requires api.token): every request is rejected so a bearer
+// that was never provisioned can never authenticate.
 func (s *Server) bearerAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.API.Token == "" {
+			writeError(w, http.StatusUnauthorized, codeUnauthorized, "server misconfigured: empty api token")
+			return
+		}
 		const prefix = "Bearer "
 		header := r.Header.Get("Authorization")
 		if !strings.HasPrefix(header, prefix) {

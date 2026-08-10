@@ -20,9 +20,12 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"git.0x0f.dev/varve/internal/config"
 )
 
 const registerBody = `{"name":"n1","role":"host","mode":"host","arch":"x86_64","capacity":1,"version":"0.1.0"}`
@@ -61,6 +64,28 @@ func TestAuthMatrixNodeLevel(t *testing.T) {
 				t.Errorf("code = %q, want %q", resp.Error.Code, codeUnauthorized)
 			}
 		})
+	}
+}
+
+// TestBearerAuthEmptyToken asserts a server constructed with an empty api
+// token rejects every node-level request with 401 and never reaches the
+// orchestrator. Production config validation already requires a token;
+// this is the api layer's own defense in depth.
+func TestBearerAuthEmptyToken(t *testing.T) {
+	f := newFake()
+	cfg := &config.ControllerConfig{} // empty API token
+	srv := httptest.NewServer(NewServer(cfg, f).Handler())
+	t.Cleanup(srv.Close)
+
+	for _, tok := range []string{"", "some-token"} {
+		status, body := rawRequest(t, srv, http.MethodPost, "/api/v1/register",
+			map[string]string{"Authorization": "Bearer " + tok}, registerBody)
+		if status != http.StatusUnauthorized {
+			t.Errorf("Bearer %q: status = %d, want 401 (body %s)", tok, status, body)
+		}
+	}
+	if f.calls["register"] != 0 {
+		t.Errorf("register reached the orchestrator %d times with an empty token config", f.calls["register"])
 	}
 }
 
