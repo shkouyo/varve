@@ -223,3 +223,29 @@ func TestRunConcurrencyZeroStillPolls(t *testing.T) {
 		})
 	}
 }
+
+// TestRunDeregisterErrorStillNil asserts a failed deregister does not
+// change the exit semantics: Run still returns nil.
+func TestRunDeregisterErrorStillNil(t *testing.T) {
+	c := newFakeClient()
+	c.deregisterErr = errors.New("boom")
+	r := testRunner(t, nil, c, newFakeRuntime())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+
+	waitFor(t, 3*time.Second, func() bool { return c.registerCount() >= 1 })
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run: %v, want nil despite the deregister error", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return")
+	}
+	if c.deregisterCount() != 1 {
+		t.Errorf("deregisters = %d, want 1 attempted", c.deregisterCount())
+	}
+}

@@ -19,6 +19,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -208,4 +209,30 @@ func TestConcurrentCapacity(t *testing.T) {
 // taskID builds a distinct task id for a queue position.
 func taskID(i int) string {
 	return "t" + string(rune('0'+i))
+}
+
+// TestPollErrorKeepsLooping verifies a failed poll is only logged: the
+// poll worker keeps polling and the node still deregisters on shutdown.
+func TestPollErrorKeepsLooping(t *testing.T) {
+	c := newFakeClient()
+	c.pollErr = errors.New("boom")
+	r := testRunner(t, nil, c, newFakeRuntime())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+
+	waitFor(t, 3*time.Second, func() bool { return c.pollCount() >= 3 })
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run: %v, want nil", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return")
+	}
+	if c.deregisterCount() != 1 {
+		t.Errorf("deregisters = %d, want 1", c.deregisterCount())
+	}
 }

@@ -171,3 +171,39 @@ func TestHeartbeatReregisterOn401Or404(t *testing.T) {
 		})
 	}
 }
+
+// TestCancelKillErrorNoPanic verifies a failed container kill is only
+// logged: the task is still flagged cancelled, the monitor completes and
+// reports cancelled, and nothing panics.
+func TestCancelKillErrorNoPanic(t *testing.T) {
+	rt := newFakeRuntime()
+	rt.exitCodes["c1"] = 137 // killed by SIGKILL
+	rt.blocked = make(chan struct{})
+	rt.killErr = errors.New("boom")
+	c := newFakeClient()
+	r := testRunner(t, nil, c, rt)
+	withSlot(r)
+
+	done := make(chan struct{})
+	go func() {
+		r.monitor(context.Background(), testTask("t1"), "tok-1", "c1")
+		close(done)
+	}()
+	waitFor(t, 2*time.Second, func() bool { return rt.waitCount() >= 1 })
+
+	r.cancelTasks(context.Background(), []string{"t1"})
+	if rt.killCount() != 1 || rt.killed(0) != "c1" {
+		t.Fatalf("kills = %v, want [c1] attempted", rt.kills)
+	}
+
+	close(rt.blocked)
+	waitFor(t, 2*time.Second, func() bool { return c.resultCount() >= 1 })
+	if got := c.result(0).res.Status; got != "cancelled" {
+		t.Errorf("status = %q, want cancelled despite the failed kill", got)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("monitor did not return")
+	}
+}
