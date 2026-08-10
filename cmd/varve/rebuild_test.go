@@ -30,6 +30,19 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
+// TestRebuildIndexLockedDatabase covers the process mutual exclusion:
+// with the lock file held (a running controller), rebuild-index refuses
+// to run instead of clearing the database underneath it.
+func TestRebuildIndexLockedDatabase(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeControllerConfig(t, dir, "off", "")
+	if _, err := acquireLock(filepath.Join(dir, "varve.db.lock")); err != nil {
+		t.Fatalf("acquireLock: %v", err)
+	}
+	err := runRebuildIndex([]string{"--config", cfgPath})
+	requireErrorContaining(t, err, "locked")
+}
+
 // TestRebuildIndex exercises the rebuild semantics: a side file set
 // including a corrupt file is turned into the authoritative
 // packages/builds state, the task queue is cleared, workers survive, and

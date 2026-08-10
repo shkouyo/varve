@@ -167,10 +167,15 @@ func TestRunServeStartupFailures(t *testing.T) {
 	t.Run("db migration failure", func(t *testing.T) {
 		dir := t.TempDir()
 		cfgPath := writeControllerConfig(t, dir, "off", "")
-		// The database path lives under a non-existent parent: sqlite
-		// cannot create the file and the migration fails at open.
+		// The database path is an existing directory: sqlite cannot open
+		// it, so the migration fails at open. The parent exists, so the
+		// process lock is acquired and does not mask the db error.
+		dbDir := filepath.Join(dir, "dbdir")
+		if err := os.Mkdir(dbDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		broken := strings.Replace(string(mustRead(t, cfgPath)),
-			filepath.Join(dir, "varve.db"), filepath.Join(dir, "missing", "varve.db"), 1)
+			filepath.Join(dir, "varve.db"), dbDir, 1)
 		if err := os.WriteFile(cfgPath, []byte(broken), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -363,6 +368,19 @@ func TestRunServeSecondSignalForcesExit(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("second signal did not force an exit")
 	}
+}
+
+// TestRunServeLockedDatabase covers the process mutual exclusion: with
+// the lock file held (another serve or rebuild-index process running),
+// serve refuses to start instead of opening the database underneath it.
+func TestRunServeLockedDatabase(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeControllerConfig(t, dir, "off", "")
+	if _, err := acquireLock(filepath.Join(dir, "varve.db.lock")); err != nil {
+		t.Fatalf("acquireLock: %v", err)
+	}
+	err := runServe([]string{"--config", cfgPath})
+	requireErrorContaining(t, err, "locked")
 }
 
 // TestRunServeSignerWiring pins the signer wiring contract: with

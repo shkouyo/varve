@@ -183,6 +183,15 @@ func runServe(args []string) error {
 		return err
 	}
 
+	// 1b. Process mutual exclusion with rebuild-index: the lock is held
+	// for the whole lifetime of serve, so a rebuild against a running
+	// controller is rejected up front instead of clearing its tasks.
+	release, err := acquireLock(cfg.Database.Path + ".lock")
+	if err != nil {
+		return fmt.Errorf("varve: database is locked by another varve process (serve or rebuild-index); cannot start: %w", err)
+	}
+	defer release()
+
 	// 2. Database with migrations (step 2).
 	store, err := db.Open(cfg.Database.Path)
 	if err != nil {

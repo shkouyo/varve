@@ -54,6 +54,11 @@ func runRebuildIndex(args []string) error {
 	if err != nil {
 		return err
 	}
+	release, err := acquireLock(cfg.Database.Path + ".lock")
+	if err != nil {
+		return fmt.Errorf("varve: rebuild-index: database is locked by a running controller; stop it first (varve rebuild-index must not run while serve is up): %w", err)
+	}
+	defer release()
 	store, err := db.Open(cfg.Database.Path)
 	if err != nil {
 		return err
