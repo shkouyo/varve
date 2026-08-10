@@ -22,9 +22,11 @@ import (
 	"database/sql"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -194,6 +196,45 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("condition not met within %v", timeout)
+}
+
+// serveViaGitDaemon starts a git daemon exporting dir (which must sit
+// directly below its parent directory) and returns its git:// URL. The
+// pkgbuild_source url whitelist admits only http/https/ssh/git and
+// scp-like addresses, so pipeline tests that clone a real external repo
+// serve it over the git protocol instead of file://. The daemon is
+// terminated when the test finishes.
+func serveViaGitDaemon(t *testing.T, dir string) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve daemon port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	cmd := exec.Command("git", "daemon", "--export-all",
+		"--base-path="+filepath.Dir(dir), "--listen=127.0.0.1",
+		"--port="+strconv.Itoa(port), "--reuseaddr",
+		"--log-destination=none")
+	cmd.Dir = filepath.Dir(dir)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start git daemon: %v", err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	})
+	addr := "127.0.0.1:" + strconv.Itoa(port)
+	waitFor(t, 5*time.Second, func() bool {
+		c, err := net.Dial("tcp", addr)
+		if err != nil {
+			return false
+		}
+		c.Close()
+		return true
+	})
+	return "git://" + addr + "/" + filepath.Base(dir)
 }
 
 // --- git helpers (tests use real git against local file:// repos only) ---

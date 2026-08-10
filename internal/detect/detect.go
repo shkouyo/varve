@@ -55,6 +55,12 @@ const sourceRoot = "/data/source"
 // within one poll round.
 const vcsQueryConcurrency = 4
 
+// upstreamQueryTimeout bounds one upstream VCS query (git ls-remote /
+// svn info) so a hung remote can never hold a query slot forever; with
+// all slots stuck, the whole poll round would stop. It is a variable so
+// tests can shorten it, mirroring mirrorTimeout.
+var upstreamQueryTimeout = 60 * time.Second
+
 // Change reasons. ReasonManual is used by the admin rebuild
 // path in dispatch, not by detect itself. ReasonSrcinfo is retained
 // for callers that classify legacy .SRCINFO-driven changes; detect now
@@ -371,11 +377,13 @@ func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 		go func(p *branchPlan) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			qctx, cancel := context.WithTimeout(ctx, upstreamQueryTimeout)
+			defer cancel()
 			switch p.kind {
 			case vcs.Git:
-				p.upstreamRef, p.upstreamErr = vcs.GitHead(ctx, p.upstreamURL)
+				p.upstreamRef, p.upstreamErr = vcs.GitHead(qctx, p.upstreamURL)
 			case vcs.SVN:
-				p.upstreamRef, p.upstreamErr = vcs.SVNRevision(ctx, p.upstreamURL)
+				p.upstreamRef, p.upstreamErr = vcs.SVNRevision(qctx, p.upstreamURL)
 			}
 		}(p)
 	}

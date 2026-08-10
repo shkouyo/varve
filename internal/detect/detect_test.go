@@ -29,6 +29,7 @@ import (
 
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
+	"git.0x0f.dev/varve/internal/detect/vcs"
 )
 
 // TestMirrorDir covers the mirror name derivation table: the URL path
@@ -642,5 +643,34 @@ submit = true
 	}
 	if changes[0].AUR.Name != "foo-aur-pkg" || !changes[0].AUR.Submit {
 		t.Errorf("AUR = %+v, want {Name:foo-aur-pkg Submit:true}", changes[0].AUR)
+	}
+}
+
+// TestQueryUpstreamTimeout asserts a hung upstream query is bounded by
+// upstreamQueryTimeout: the query returns an error around the deadline
+// instead of holding its slot (and the poll round) forever. The git
+// ls-remote subprocess is parked by the testdata PATH shim behind a
+// barrier that is never released; the deadline kill is what unblocks
+// the round.
+func TestQueryUpstreamTimeout(t *testing.T) {
+	old := upstreamQueryTimeout
+	upstreamQueryTimeout = 200 * time.Millisecond
+	defer func() { upstreamQueryTimeout = old }()
+
+	barrier := filepath.Join(t.TempDir(), "never-released")
+	t.Setenv("VARVE_TEST_GIT_BARRIER", barrier)
+	withShimPath(t)
+
+	store, _ := openStore(t)
+	d := newTestDetector(t, "git@git.example.org:pkgbuilds.git", store, &fakeSink{})
+
+	plans := []*branchPlan{{branch: "x", kind: vcs.Git, upstreamURL: "https://example.org/upstream.git"}}
+	start := time.Now()
+	d.queryUpstream(context.Background(), plans)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("queryUpstream took %v with a hung upstream, want the 200ms bound", elapsed)
+	}
+	if plans[0].upstreamErr == nil {
+		t.Error("hung upstream query succeeded, want a timeout error")
 	}
 }

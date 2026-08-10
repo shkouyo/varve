@@ -26,8 +26,10 @@ package vcs
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -98,25 +100,67 @@ func UpstreamURLs(source []string) []string {
 }
 
 // upstreamURL reports whether s is a VCS source and returns the usable
-// URL (with any git+/svn+ scheme prefix removed).
+// URL (with any git+/svn+ scheme prefix removed). URLs that fail
+// ValidateRepoURL are not extracted: an unqueryable or malicious value
+// is treated as "no upstream" instead of reaching a git/svn command
+// line.
 func upstreamURL(s string) (string, bool) {
+	var u string
 	switch {
 	case strings.HasPrefix(s, "git+"):
-		return strings.TrimPrefix(s, "git+"), true
+		u = strings.TrimPrefix(s, "git+")
 	case strings.HasPrefix(s, "svn+"):
-		return strings.TrimPrefix(s, "svn+"), true
+		u = strings.TrimPrefix(s, "svn+")
 	case strings.HasSuffix(s, ".git"):
-		return s, true
+		u = s
 	default:
 		return "", false
 	}
+	if ValidateRepoURL(u) != nil {
+		return "", false
+	}
+	return u, true
+}
+
+// scpLikeRE matches the scp-style user@host:path form git accepts
+// (e.g. "git@github.com:user/repo.git"), used when no scheme is
+// present.
+var scpLikeRE = regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+:`)
+
+// ValidateRepoURL reports whether url is safe to pass as a positional
+// argument to git or svn: it must not look like an option, must contain
+// no whitespace or control characters, and must carry one of the
+// whitelisted schemes (http, https, ssh, git) or the scp-like
+// user@host:path form. Anything else — file and bare local paths
+// included — is rejected.
+func ValidateRepoURL(url string) error {
+	if url == "" {
+		return errors.New("empty url")
+	}
+	if strings.HasPrefix(url, "-") {
+		return fmt.Errorf("url %q starts with '-'", url)
+	}
+	for i := 0; i < len(url); i++ {
+		if c := url[i]; c < 0x20 || c == ' ' {
+			return fmt.Errorf("url %q contains whitespace or control characters", url)
+		}
+	}
+	for _, scheme := range []string{"http://", "https://", "ssh://", "git://"} {
+		if strings.HasPrefix(url, scheme) {
+			return nil
+		}
+	}
+	if scpLikeRE.MatchString(url) {
+		return nil
+	}
+	return fmt.Errorf("url %q has no whitelisted scheme", url)
 }
 
 // GitHead returns the full HEAD hash of a git repository as reported by
 // "git ls-remote <url> HEAD". An empty repository (no HEAD) yields an
 // empty string, not an error.
 func GitHead(ctx context.Context, url string) (string, error) {
-	cmd := execCommand(ctx, "git", "ls-remote", url, "HEAD")
+	cmd := execCommand(ctx, "git", "ls-remote", "--", url, "HEAD")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("vcs: git ls-remote %s: %w: %s", url, err, strings.TrimSpace(string(out)))
@@ -148,7 +192,10 @@ type svnInfo struct {
 // SVNRevision returns the last-changed revision of an svn repository as
 // reported by "svn info --xml <url>".
 func SVNRevision(ctx context.Context, url string) (string, error) {
-	cmd := execCommand(ctx, "svn", "info", "--xml", url)
+	// --non-interactive keeps a hanging credential or certificate prompt
+	// from blocking the query; "--" keeps the URL from being parsed as
+	// an option.
+	cmd := execCommand(ctx, "svn", "info", "--non-interactive", "--xml", "--", url)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("vcs: svn info %s: %w: %s", url, err, strings.TrimSpace(string(out)))

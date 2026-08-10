@@ -19,11 +19,14 @@ package dispatch
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"git.0x0f.dev/varve/internal/detect"
 	"git.0x0f.dev/varve/internal/detect/srcinfo"
@@ -78,6 +81,46 @@ func makeGitRepo(t *testing.T, files map[string]string) string {
 	return dir
 }
 
+// serveExtRepo starts a git daemon exporting the external pkgbuild
+// repository dir (created by makeGitRepo below its temp parent) and
+// returns its git:// URL. The pkgbuild_source url whitelist rejects
+// file://, so the real-clone tests speak the git protocol instead.
+// The daemon is terminated when the test finishes.
+func serveExtRepo(t *testing.T, dir string) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve daemon port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	cmd := exec.Command("git", "daemon", "--export-all",
+		"--base-path="+filepath.Dir(dir), "--listen=127.0.0.1",
+		"--port="+strconv.Itoa(port), "--reuseaddr",
+		"--log-destination=none")
+	cmd.Dir = filepath.Dir(dir)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start git daemon: %v", err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	})
+	addr := "127.0.0.1:" + strconv.Itoa(port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.Dial("tcp", addr)
+		if err == nil {
+			c.Close()
+			return "git://" + addr + "/" + filepath.Base(dir)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("git daemon did not start listening")
+	return ""
+}
+
 // TestEnqueuePkgbuildSource asserts the enqueue path of a pkgbuild_source
 // change: the dispatch-time srcinfo hash comes from the external repository
 // and the build row snapshots the dispatched external head while keeping
@@ -88,7 +131,7 @@ func TestEnqueuePkgbuildSource(t *testing.T) {
 	state := &gitState{Commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"}
 	routeCloneExec(env, fakeGitFor(t, env.log, state))
 
-	c := pkgbuildChange("extpkg", "extpkg", "file://"+ext)
+	c := pkgbuildChange("extpkg", "extpkg", serveExtRepo(t, ext))
 	if err := env.o.Enqueue(context.Background(), c, false); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -129,7 +172,7 @@ func TestEnqueuePkgbuildSourceWithoutBranchSrcinfo(t *testing.T) {
 	state := &gitState{Commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", Fail: "show"}
 	routeCloneExec(env, fakeGitFor(t, env.log, state))
 
-	c := pkgbuildChange("extpkg", "extpkg", "file://"+ext)
+	c := pkgbuildChange("extpkg", "extpkg", serveExtRepo(t, ext))
 	if err := env.o.Enqueue(context.Background(), c, false); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -160,7 +203,7 @@ func TestEnqueuePkgbuildSourceMissingExternalSrcinfo(t *testing.T) {
 	state := &gitState{Commit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", Fail: "show"}
 	routeCloneExec(env, fakeGitFor(t, env.log, state))
 
-	c := pkgbuildChange("extpkg", "extpkg", "file://"+ext)
+	c := pkgbuildChange("extpkg", "extpkg", serveExtRepo(t, ext))
 	err := env.o.Enqueue(context.Background(), c, false)
 	if err == nil {
 		t.Fatalf("Enqueue with no external .SRCINFO = nil, want error")
@@ -177,14 +220,15 @@ func TestEnqueuePkgbuildSourceMissingExternalSrcinfo(t *testing.T) {
 // pkgbuild_ref.
 func TestIngestPkgbuildSourceRouting(t *testing.T) {
 	ext := makeGitRepo(t, map[string]string{".SRCINFO": srcinfoBody})
+	extURL := serveExtRepo(t, ext)
 	env := newTestEnv(t)
 	state := &gitState{
 		Commit:  "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
-		Dotfile: "[pkgbuild_source]\nurl = \"file://" + ext + "\"\n",
+		Dotfile: "[pkgbuild_source]\nurl = \"" + extURL + "\"\n",
 	}
 	routeCloneExec(env, fakeGitFor(t, env.log, state))
 
-	c := pkgbuildChange("extpkg", "extpkg", "file://"+ext)
+	c := pkgbuildChange("extpkg", "extpkg", serveExtRepo(t, ext))
 	if err := env.o.Enqueue(context.Background(), c, false); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}

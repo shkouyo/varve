@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"git.0x0f.dev/varve/internal/detect/vcs"
 )
 
 // ExecFn builds one external command. The detector and the dispatch module
@@ -50,9 +52,12 @@ func PkgbuildHead(ctx context.Context, execFn ExecFn, fetchKey string, src Pkgbu
 	if branch == "" {
 		branch = defaultPkgbuildBranch
 	}
+	if err := vcs.ValidateRepoURL(src.URL); err != nil {
+		return "", fmt.Errorf("detect: invalid pkgbuild source url %q: %w", src.URL, err)
+	}
 	cctx, cancel := context.WithTimeout(ctx, pkgbuildRepoTimeout)
 	defer cancel()
-	cmd := execFn(cctx, "git", "ls-remote", src.URL, "refs/heads/"+branch)
+	cmd := execFn(cctx, "git", "ls-remote", "--", src.URL, "refs/heads/"+branch)
 	if env := pkgbuildEnv(fetchKey); env != nil {
 		cmd.Env = env
 	}
@@ -73,6 +78,9 @@ func PkgbuildHead(ctx context.Context, execFn ExecFn, fetchKey string, src Pkgbu
 // returning. fetchKey, when it names an existing file, authenticates the
 // clone through GIT_SSH_COMMAND (the same identity the source mirror uses).
 func PkgbuildFile(ctx context.Context, execFn ExecFn, fetchKey string, src PkgbuildSource, name string) ([]byte, error) {
+	if err := vcs.ValidateRepoURL(src.URL); err != nil {
+		return nil, fmt.Errorf("detect: invalid pkgbuild source url %q: %w", src.URL, err)
+	}
 	dir, err := os.MkdirTemp("", "varve-pkgbuild-*")
 	if err != nil {
 		return nil, fmt.Errorf("detect: pkgbuild source temp dir: %w", err)
@@ -84,7 +92,7 @@ func PkgbuildFile(ctx context.Context, execFn ExecFn, fetchKey string, src Pkgbu
 	}
 	cctx, cancel := context.WithTimeout(ctx, pkgbuildRepoTimeout)
 	defer cancel()
-	cmd := execFn(cctx, "git", "clone", "--depth", "1", "--branch", branch, src.URL, dir)
+	cmd := execFn(cctx, "git", "clone", "--depth", "1", "--branch", branch, "--", src.URL, dir)
 	if env := pkgbuildEnv(fetchKey); env != nil {
 		cmd.Env = env
 	}

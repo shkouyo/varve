@@ -173,7 +173,7 @@ case "$1" in
     echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	HEAD"
     ;;
   svn)
-    [ "$2" = "info" ] && [ "$3" = "--xml" ] || { echo "bad svn args: $*" >&2; exit 1; }
+    [ "$2" = "info" ] && [ "$3" = "--non-interactive" ] && [ "$4" = "--xml" ] || { echo "bad svn args: $*" >&2; exit 1; }
     cat <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <info>
@@ -207,12 +207,64 @@ esac
 	}
 
 	want := []string{
-		"git ls-remote https://example.org/repo.git HEAD",
-		"svn info --xml https://example.org/repo",
+		"git ls-remote -- https://example.org/repo.git HEAD",
+		"svn info --non-interactive --xml -- https://example.org/repo",
 	}
 	got := readLines(t, record)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("recorded commands = %v, want %v", got, want)
+	}
+}
+
+// TestValidateRepoURL covers the scheme whitelist and the scp-like
+// form: http/https/ssh/git and user@host:path pass; option-like,
+// whitespace-bearing, control-character, scheme-less and file URLs are
+// rejected.
+func TestValidateRepoURL(t *testing.T) {
+	valid := []string{
+		"https://example.org/repo.git",
+		"http://example.org/repo",
+		"ssh://git@example.org/repo.git",
+		"git://example.org/repo.git",
+		"git@github.com:user/repo.git",
+		"user@host:path",
+	}
+	for _, u := range valid {
+		if err := ValidateRepoURL(u); err != nil {
+			t.Errorf("ValidateRepoURL(%q) = %v, want nil", u, err)
+		}
+	}
+	invalid := []string{
+		"",
+		"-evil",
+		"-u@h:p",
+		"javascript:alert(1)",
+		"a b",
+		"a\tb",
+		"a\x00b",
+		"file:///tmp/repo.git",
+		"/srv/git/repo.git",
+		"a@b",
+		"repo.git",
+	}
+	for _, u := range invalid {
+		if err := ValidateRepoURL(u); err == nil {
+			t.Errorf("ValidateRepoURL(%q) = nil, want error", u)
+		}
+	}
+}
+
+// TestUpstreamURLsRejectsInvalid asserts invalid extracted URLs no longer
+// surface as upstream candidates (the entry-point whitelist).
+func TestUpstreamURLsRejectsInvalid(t *testing.T) {
+	got := UpstreamURLs([]string{
+		"git+-evil",
+		"git+file:///srv/repo.git",
+		"https://ok.example.org/a.git",
+	})
+	want := []string{"https://ok.example.org/a.git"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("UpstreamURLs = %v, want %v", got, want)
 	}
 }
 

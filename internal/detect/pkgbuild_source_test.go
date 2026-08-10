@@ -19,6 +19,7 @@ package detect
 
 import (
 	"context"
+	"os/exec"
 	"testing"
 )
 
@@ -37,7 +38,7 @@ func TestPollOncePkgbuildSourceExternal(t *testing.T) {
 		"PKGBUILD": "# pkgbuild v1\n",
 	})
 	src := newSourceRepo(t, "extpkg", map[string]string{
-		".varve.toml": pkgbuildDotfile("file://" + ext),
+		".varve.toml": pkgbuildDotfile(serveViaGitDaemon(t, ext)),
 	})
 	store, _ := openStore(t)
 	sink := &fakeSink{}
@@ -73,7 +74,7 @@ func TestPollOncePkgbuildSourceTriggers(t *testing.T) {
 		"PKGBUILD": "# v1\n",
 	})
 	src := newSourceRepo(t, "extpkg", map[string]string{
-		".varve.toml": pkgbuildDotfile("file://" + ext),
+		".varve.toml": pkgbuildDotfile(serveViaGitDaemon(t, ext)),
 	})
 	store, dbPath := openStore(t)
 	sink := &fakeSink{}
@@ -108,7 +109,7 @@ func TestPollOncePkgbuildSourceTriggers(t *testing.T) {
 
 	// A dotfile edit moves the branch tip: the branch commit change
 	// triggers even though the external head is unchanged.
-	commitFiles(t, src, map[string]string{".varve.toml": pkgbuildDotfile("file://"+ext) + "\n# comment\n"}, "bump dotfile")
+	commitFiles(t, src, map[string]string{".varve.toml": pkgbuildDotfile(serveViaGitDaemon(t, ext)) + "\n# comment\n"}, "bump dotfile")
 	if err := d.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce #4: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestPollOncePkgbuildSourceDirectory(t *testing.T) {
 		"pkgs/extpkg/PKGBUILD": "# nested\n",
 	})
 	src := newSourceRepo(t, "extpkg", map[string]string{
-		".varve.toml": "[pkgbuild_source]\nurl = \"file://" + ext + "\"\ndirectory = \"pkgs/extpkg\"\n",
+		".varve.toml": "[pkgbuild_source]\nurl = \"" + serveViaGitDaemon(t, ext) + "\"\ndirectory = \"pkgs/extpkg\"\n",
 	})
 	store, _ := openStore(t)
 	sink := &fakeSink{}
@@ -149,7 +150,7 @@ func TestPollOncePkgbuildSourceSkips(t *testing.T) {
 		ext := newSourceRepo(t, "master", map[string]string{"PKGBUILD": "# no srcinfo\n"})
 		src := newMultiBranchRepo(t, []branchSpec{
 			{name: "extpkg", files: map[string]string{
-				".varve.toml": pkgbuildDotfile("file://" + ext),
+				".varve.toml": pkgbuildDotfile(serveViaGitDaemon(t, ext)),
 			}},
 			{name: "good", files: map[string]string{".SRCINFO": srcinfoBody("good", "1.0", "1")}},
 		})
@@ -171,7 +172,7 @@ func TestPollOncePkgbuildSourceSkips(t *testing.T) {
 			".SRCINFO": srcinfoBody("extpkg", "1.0", "1"),
 		})
 		src := newSourceRepo(t, "extpkg", map[string]string{
-			".varve.toml": "[pkgbuild_source]\nurl = \"file://" + ext + "\"\nbranch = \"dev\"\n",
+			".varve.toml": "[pkgbuild_source]\nurl = \"" + serveViaGitDaemon(t, ext) + "\"\nbranch = \"dev\"\n",
 		})
 		store, _ := openStore(t)
 		sink := &fakeSink{}
@@ -195,7 +196,7 @@ func TestPollOncePkgbuildSourceVCSUpstream(t *testing.T) {
 		".SRCINFO": srcinfoWithSource("extpkg-git", "1.0", "1", "git+https://example.org/upstream.git"),
 	})
 	src := newSourceRepo(t, "extpkg-git", map[string]string{
-		".varve.toml": pkgbuildDotfile("file://" + ext),
+		".varve.toml": pkgbuildDotfile(serveViaGitDaemon(t, ext)),
 	})
 	t.Setenv("VARVE_TEST_GIT_HEAD", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	store, _ := openStore(t)
@@ -239,5 +240,34 @@ func TestPkgbuildRel(t *testing.T) {
 		if _, err := pkgbuildRel(bad, ".SRCINFO"); err == nil {
 			t.Errorf("pkgbuildRel(%q) succeeded, want a traversal error", bad)
 		}
+	}
+}
+
+// TestPkgbuildURLValidation asserts the pkgbuild_source url whitelist is
+// enforced before any external command runs: option-like, scheme-less
+// and file URLs are rejected by both PkgbuildHead and PkgbuildFile.
+func TestPkgbuildURLValidation(t *testing.T) {
+	var execs int
+	execFn := func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		execs++
+		return exec.CommandContext(ctx, "true")
+	}
+	for _, url := range []string{
+		"-evil",
+		"-u@h:p",
+		"file:///srv/repo.git",
+		"/srv/git/repo.git",
+		"a b",
+		"javascript:alert(1)",
+	} {
+		if _, err := PkgbuildHead(context.Background(), execFn, "", PkgbuildSource{URL: url, Branch: "master"}); err == nil {
+			t.Errorf("PkgbuildHead(%q): want error", url)
+		}
+		if _, err := PkgbuildFile(context.Background(), execFn, "", PkgbuildSource{URL: url, Branch: "master"}, ".SRCINFO"); err == nil {
+			t.Errorf("PkgbuildFile(%q): want error", url)
+		}
+	}
+	if execs != 0 {
+		t.Errorf("ran %d external commands despite invalid urls", execs)
 	}
 }

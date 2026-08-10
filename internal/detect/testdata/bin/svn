@@ -1,12 +1,13 @@
 #!/bin/sh
 
 # svn PATH shim used by the vcs and detect pipeline tests.
-# It only accepts "svn info --xml" invocations -- anything else fails, so a
-# passing test implicitly asserts the --xml flag was passed. The emitted
-# last-changed-revision defaults to 41 and can be overridden for pipeline
-# "upstream changed" scenarios via VARVE_TEST_SVN_REV.
+# It only accepts "svn info --non-interactive --xml --" invocations --
+# anything else fails, so a passing test implicitly asserts the flags and
+# the "--" separator were passed. The emitted last-changed-revision
+# defaults to 41 and can be overridden for pipeline "upstream changed"
+# scenarios via VARVE_TEST_SVN_REV.
 
-if [ "$1" = "info" ] && [ "$2" = "--xml" ]; then
+if [ "$1" = "info" ] && [ "$2" = "--non-interactive" ] && [ "$3" = "--xml" ] && [ "$4" = "--" ]; then
     rev="${VARVE_TEST_SVN_REV:-41}"
     cat <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
