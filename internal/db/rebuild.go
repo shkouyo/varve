@@ -28,9 +28,10 @@ import (
 // RebuildPackage is one authoritative package record fed to RebuildIndex.
 // cmd/varve derives it from the storage side file of the package plus the
 // previous packages row: the side file carries the branch, the VCS kind, the
-// latest build metadata and the artifact manifest, while pkgdesc and
-// maintainers (detection metadata absent from the side file) are preserved
-// from the row being replaced.
+// latest build metadata and the artifact manifest, while the detection
+// metadata absent from the side file (pkgdesc, maintainers, url, licenses,
+// conflicts, provides, pkgname, source, pkgver, pkgrel, epoch, pkgbuild_ref
+// and the AUR record) is preserved from the row being replaced.
 type RebuildPackage struct {
 	Pkgbase         string
 	Branch          string
@@ -38,9 +39,28 @@ type RebuildPackage struct {
 	Arch            string
 	CurrentVersion  string
 	Pkgdesc         string
+	URL             string
+	Licenses        []string
+	Conflicts       []string
+	Provides        []string
+	Pkgname         []string
+	Source          []string
+	Pkgver          string
+	Pkgrel          string
+	Epoch           int
+	PkgbuildRef     string
+	LastFailedAt    *time.Time // rebuild-cooldown marker, preserved
 	LastSrcinfoHash string
 	LastUpstreamRef string
 	Maintainers     []Maintainer
+
+	// AUR publishing record (see Package); preserved across the rebuild
+	// so the package page keeps the last publish state.
+	AURName       string
+	AURSubmit     bool
+	LastAURPushAt *time.Time
+	LastAURCommit string
+	LastAURError  string
 
 	// Build metadata of the single (latest) build row to create.
 	WorkerID    int64  // 0 = unknown worker (builds.worker_id NULL)
@@ -60,23 +80,50 @@ type RebuildPackage struct {
 // build per package) and the workers table is left untouched. Any package not
 // represented in the records is dropped together with its build history.
 //
+// The returned list holds the build ids that were removed (every build row
+// that existed before the rebuild, including the ones of packages that
+// remain); the caller uses it to clean up on-disk artifacts such as the
+// orphaned log files. An empty record list still clears the index and
+// returns every removed build id.
+//
 // The records must carry distinct, non-empty Pkgbases; the caller (the
 // rebuild-index subcommand) is responsible for deduplicating side files. An
 // empty record list still clears the index: a repository without side files
 // must not retain stale packages.
-func (s *Store) RebuildIndex(ctx context.Context, pkgs []RebuildPackage) error {
+func (s *Store) RebuildIndex(ctx context.Context, pkgs []RebuildPackage) ([]string, error) {
 	seen := make(map[string]bool, len(pkgs))
 	for i := range pkgs {
 		p := &pkgs[i]
 		if p.Pkgbase == "" {
-			return errors.New("db: RebuildIndex: record with empty pkgbase")
+			return nil, errors.New("db: RebuildIndex: record with empty pkgbase")
 		}
 		if seen[p.Pkgbase] {
-			return fmt.Errorf("db: RebuildIndex: duplicate pkgbase %q", p.Pkgbase)
+			return nil, fmt.Errorf("db: RebuildIndex: duplicate pkgbase %q", p.Pkgbase)
 		}
 		seen[p.Pkgbase] = true
 	}
-	return s.withTx(ctx, func(tx *sql.Tx) error {
+	var removed []string
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		// Collect every build id before the clears so the caller can
+		// remove the on-disk logs of dropped builds.
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM builds`)
+		if err != nil {
+			return fmt.Errorf("db: rebuild index: collect build ids: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("db: rebuild index: scan build id: %w", err)
+			}
+			removed = append(removed, id)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("db: rebuild index: collect build ids: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("db: rebuild index: collect build ids: %w", err)
+		}
 		// Order matters for the foreign keys: tasks reference builds and
 		// packages, builds reference packages (and workers, untouched).
 		if _, err := tx.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
@@ -105,6 +152,7 @@ func (s *Store) RebuildIndex(ctx context.Context, pkgs []RebuildPackage) error {
 		}
 		return nil
 	})
+	return removed, err
 }
 
 // insertRebuiltPackage inserts one packages row from the record and returns
@@ -116,12 +164,36 @@ func (s *Store) insertRebuiltPackage(ctx context.Context, tx *sql.Tx, p *Rebuild
 	if err != nil {
 		return 0, fmt.Errorf("db: rebuild index: encode maintainers for package %q: %w", p.Pkgbase, err)
 	}
+	licenses, err := encodeJSON(p.Licenses)
+	if err != nil {
+		return 0, fmt.Errorf("db: rebuild index: encode licenses for package %q: %w", p.Pkgbase, err)
+	}
+	conflicts, err := encodeJSON(p.Conflicts)
+	if err != nil {
+		return 0, fmt.Errorf("db: rebuild index: encode conflicts for package %q: %w", p.Pkgbase, err)
+	}
+	provides, err := encodeJSON(p.Provides)
+	if err != nil {
+		return 0, fmt.Errorf("db: rebuild index: encode provides for package %q: %w", p.Pkgbase, err)
+	}
+	pkgname, err := encodeJSON(p.Pkgname)
+	if err != nil {
+		return 0, fmt.Errorf("db: rebuild index: encode pkgname for package %q: %w", p.Pkgbase, err)
+	}
+	source, err := encodeJSON(p.Source)
+	if err != nil {
+		return 0, fmt.Errorf("db: rebuild index: encode source for package %q: %w", p.Pkgbase, err)
+	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO packages
-		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc,
-		 last_commit, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, p.CurrentVersion, p.Pkgdesc,
-		p.Commit, p.LastSrcinfoHash, p.LastUpstreamRef, maintainers)
+		(pkgbase, branch, vcs_kind, arch, current_version, pkgdesc, url, licenses, conflicts, provides,
+		 pkgname, source, pkgver, pkgrel, epoch, pkgbuild_ref, last_failed_at,
+		 last_commit, last_srcinfo_hash, last_upstream_ref, last_build_id, maintainers,
+		 aur_name, aur_submit, last_aur_push_at, last_aur_commit, last_aur_error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+		p.Pkgbase, p.Branch, p.VCSKind, p.Arch, p.CurrentVersion, p.Pkgdesc, p.URL, licenses, conflicts, provides,
+		pkgname, source, p.Pkgver, p.Pkgrel, p.Epoch, p.PkgbuildRef, formatNullableTime(p.LastFailedAt),
+		p.Commit, p.LastSrcinfoHash, p.LastUpstreamRef, maintainers,
+		p.AURName, p.AURSubmit, formatNullableTime(p.LastAURPushAt), p.LastAURCommit, p.LastAURError)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return 0, fmt.Errorf("db: rebuild index: duplicate pkgbase %q", p.Pkgbase)
