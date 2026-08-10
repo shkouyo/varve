@@ -18,6 +18,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -217,24 +218,38 @@ func resourceViews(samples []db.Sample) []resourceView {
 }
 
 // loadBuildLog fills the merged log fields from the log store: the
-// truncated line tail plus the flags describing the missing or
-// truncated state.
+// truncated tail plus the flags describing the missing or truncated
+// state. Oversized logs are read as a bounded tail: the page renders at
+// most maxInlineLog bytes, so a multi-gigabyte log must not be slurped
+// whole into memory just to slice it.
 func (s *Server) loadBuildLog(ctx context.Context, b *db.Build, data *buildData) error {
 	id := b.ID
-	logData, err := s.logs.ReadLog(ctx, id)
+	size, err := s.logs.Size(ctx, id)
 	switch {
-	case err == nil && len(logData) > 0:
-		start := 0
-		if len(logData) > maxInlineLog {
-			start = len(logData) - maxInlineLog
+	case err == nil && size > 0:
+		if size > maxInlineLog {
+			// The truncation point is the same formula the SSE stream
+			// clamps resume offsets with (log.go): the most recent
+			// maxInlineLog bytes. The tail read carries the same limit,
+			// bounding memory at ~1 MiB.
+			var buf bytes.Buffer
+			if _, err := s.logs.TailLog(ctx, id, size-maxInlineLog, &buf, maxInlineLog); err != nil {
+				return fmt.Errorf("web: read build log: %w", err)
+			}
+			data.Log = buf.String()
 			data.Truncated = true
+		} else {
+			logData, err := s.logs.ReadLog(ctx, id)
+			if err != nil {
+				return fmt.Errorf("web: read build log: %w", err)
+			}
+			data.Log = string(logData)
 		}
-		data.Log = string(logData[start:])
 		data.HasLog = true
 		if data.Truncated {
 			data.TruncatedNote = fmt.Sprintf("Log truncated, showing the last %d bytes.", len(data.Log))
 		}
-		data.SSEURL += "?after=" + strconv.FormatInt(int64(len(logData)), 10)
+		data.SSEURL += "?after=" + strconv.FormatInt(size, 10)
 	case errors.Is(err, dispatch.ErrNotFound):
 		// No log file: the queued/not-started state renders a waiting
 		// message, a terminal build without a log a closing note.

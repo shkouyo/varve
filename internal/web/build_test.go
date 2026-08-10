@@ -216,7 +216,8 @@ func TestBuildLogData(t *testing.T) {
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
 	build := seedBuild(t, store, pkg, "succeeded", nil, nil) // terminal
 
-	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader("line1\nline2\n"))
+	logs := newFakeLogReader("line1\nline2\n")
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, logs)
 	data, err := s.buildData(newRequest(t, http.MethodGet, "/"), itoa(build.ID))
 	if err != nil {
 		t.Fatalf("buildData: %v", err)
@@ -230,6 +231,9 @@ func TestBuildLogData(t *testing.T) {
 	}
 	if data.SSEURL != "/builds/"+itoa(build.ID)+"/log/stream?after=12" {
 		t.Errorf("SSEURL = %q, want resume at the rendered length (12 bytes)", data.SSEURL)
+	}
+	if logs.readCalls != 1 || logs.tailCalls != 0 {
+		t.Errorf("read path = ReadLog %d / TailLog %d, want 1/0 for a small log", logs.readCalls, logs.tailCalls)
 	}
 	if data.PageActive {
 		t.Error("terminal build must not be marked active")
@@ -269,6 +273,9 @@ func TestBuildLogTruncation(t *testing.T) {
 	wantURL := "/builds/" + itoa(build.ID) + "/log/stream?after=" + itoa(int64(maxInlineLog+len(tail)))
 	if data.SSEURL != wantURL {
 		t.Errorf("SSEURL = %q, want %q", data.SSEURL, wantURL)
+	}
+	if logs.readCalls != 0 || logs.tailCalls != 1 {
+		t.Errorf("read path = ReadLog %d / TailLog %d, want 0/1 for an oversized log", logs.readCalls, logs.tailCalls)
 	}
 	if !data.PageActive {
 		t.Errorf("active build must stay marked active")

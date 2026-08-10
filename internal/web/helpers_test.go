@@ -143,6 +143,10 @@ type fakeLogReader struct {
 	content []byte
 	readErr error
 	tailErr error
+
+	// Call counters let tests assert which read path the server took.
+	readCalls int
+	tailCalls int
 }
 
 func newFakeLogReader(content string) *fakeLogReader {
@@ -153,6 +157,7 @@ func newFakeLogReader(content string) *fakeLogReader {
 func (f *fakeLogReader) ReadLog(ctx context.Context, buildID string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.readCalls++
 	if f.readErr != nil {
 		return nil, f.readErr
 	}
@@ -175,6 +180,7 @@ func (f *fakeLogReader) Size(ctx context.Context, buildID string) (int64, error)
 func (f *fakeLogReader) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.tailCalls++
 	if f.tailErr != nil {
 		err := f.tailErr
 		f.tailErr = nil
