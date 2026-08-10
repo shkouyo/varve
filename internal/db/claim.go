@@ -26,15 +26,18 @@ import (
 )
 
 // ClaimTask atomically claims the FIFO head task for a worker: the task
-// must be queued, match the worker's architecture, have no other active
-// task for the same package, and the worker must have spare capacity. The
-// architecture match covers every element of the package's arch set: an
-// "any" package (or an "any" worker) matches everything, otherwise the
-// worker's architecture must be one of the "|"-joined elements. The
-// task is moved to assigned and the mirrored build row to assigned with
-// the worker's plain-text name and started_at=now in the same BEGIN
-// IMMEDIATE transaction, which serializes concurrent polls (MarkRunning
-// later overwrites started_at idempotently).
+// must be queued, not already handed to a one-shot runner (dispatched_at
+// NULL — a dispatched task keeps its binding until it is claimed or
+// released, so a poll pool and GitHub Actions cannot fight over it),
+// match the worker's architecture, have no other active task for the same
+// package, and the worker must have spare capacity. The architecture
+// match covers every element of the package's arch set: an "any" package
+// (or an "any" worker) matches everything, otherwise the worker's
+// architecture must be one of the "|"-joined elements. The task is moved
+// to assigned and the mirrored build row to assigned with the worker's
+// plain-text name and started_at=now in the same BEGIN IMMEDIATE
+// transaction, which serializes concurrent polls (MarkRunning later
+// overwrites started_at idempotently).
 // ErrNoTask when nothing is claimable, ErrNotFound when the worker does
 // not exist.
 func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, token string) (*Task, error) {
@@ -65,6 +68,7 @@ func (s *Store) ClaimTask(ctx context.Context, workerID int64, capacity int, tok
 			FROM tasks t
 			JOIN packages p ON p.id = t.package_id
 			WHERE t.state = 'queued'
+			  AND t.dispatched_at IS NULL
 			  AND (p.arch = 'any'
 			       OR ? = 'any'
 			       OR instr('|' || p.arch || '|', '|' || ? || '|') > 0)

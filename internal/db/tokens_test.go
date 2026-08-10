@@ -111,9 +111,10 @@ func TestRequeueClearsDispatchBinding(t *testing.T) {
 	if err := s.SetDispatchBinding(testCtx, "requeue-1", "dispatch-token", at(time.Minute)); err != nil {
 		t.Fatalf("SetDispatchBinding: %v", err)
 	}
-	w := registerWorker(t, s, "requeue-node", 1)
-	if _, err := s.ClaimTask(testCtx, w.ID, 1, "worker-token"); err != nil {
-		t.Fatalf("ClaimTask: %v", err)
+	// A dispatched task is claimed by its one-shot runner, not by a pool
+	// worker.
+	if err := s.ClaimTaskToken(testCtx, "requeue-1", "worker-token", at(90*time.Second)); err != nil {
+		t.Fatalf("ClaimTaskToken: %v", err)
 	}
 	if err := s.RequeueTask(testCtx, "requeue-1"); err != nil {
 		t.Fatalf("RequeueTask: %v", err)
@@ -275,9 +276,8 @@ func TestClearDispatchBindingGuardsClaimed(t *testing.T) {
 	if err := s.SetDispatchBinding(testCtx, "clear-guard-1", "dispatch-tok", when); err != nil {
 		t.Fatalf("SetDispatchBinding: %v", err)
 	}
-	w := registerWorker(t, s, "clear-guard-node", 1)
-	if _, err := s.ClaimTask(testCtx, w.ID, 1, "worker-tok"); err != nil {
-		t.Fatalf("ClaimTask: %v", err)
+	if err := s.ClaimTaskToken(testCtx, "clear-guard-1", "worker-tok", at(90*time.Second)); err != nil {
+		t.Fatalf("ClaimTaskToken: %v", err)
 	}
 	if err := s.ClearDispatchBinding(testCtx, "clear-guard-1"); err != nil {
 		t.Fatalf("ClearDispatchBinding: %v", err)

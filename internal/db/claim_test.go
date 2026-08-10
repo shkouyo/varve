@@ -340,3 +340,43 @@ func TestClaimConcurrentFile(t *testing.T) {
 		t.Fatalf("successes = %d, want exactly 1", success)
 	}
 }
+
+// TestClaimSkipsDispatchedTask asserts a queued task that was handed to a
+// one-shot runner (dispatched_at set) is not claimable from the poll
+// pool: in a mixed deployment the pool must never steal a task that a
+// GitHub Actions run is about to claim by token. The task becomes
+// claimable again once its binding is released (dispatched_at cleared).
+func TestClaimSkipsDispatchedTask(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "dispatch-claim")
+	createTask(t, s, "dispatch-claim-1", "queued", pkg, at(0))
+	when := at(time.Minute)
+	if err := s.SetDispatchBinding(testCtx, "dispatch-claim-1", "dispatch-tok", when); err != nil {
+		t.Fatalf("SetDispatchBinding: %v", err)
+	}
+	w := registerWorker(t, s, "dispatch-claim-node", 1)
+	if _, err := s.ClaimTask(testCtx, w.ID, 1, "worker-tok"); !errors.Is(err, ErrNoTask) {
+		t.Fatalf("ClaimTask on dispatched task = %v, want ErrNoTask", err)
+	}
+
+	// The one-shot runner claims it by token instead.
+	if err := s.ClaimTaskToken(testCtx, "dispatch-claim-1", "dispatch-tok", at(2*time.Minute)); err != nil {
+		t.Fatalf("ClaimTaskToken: %v", err)
+	}
+
+	// A released binding (requeue path) restores pool claimability.
+	createTask(t, s, "dispatch-claim-2", "queued", mustSeedPackage(t, s, "dispatch-claim-b"), at(0))
+	if err := s.SetDispatchBinding(testCtx, "dispatch-claim-2", "tok", at(time.Minute)); err != nil {
+		t.Fatalf("SetDispatchBinding: %v", err)
+	}
+	if err := s.ClearDispatchBinding(testCtx, "dispatch-claim-2"); err != nil {
+		t.Fatalf("ClearDispatchBinding: %v", err)
+	}
+	claimed, err := s.ClaimTask(testCtx, w.ID, 1, "worker-tok-2")
+	if err != nil {
+		t.Fatalf("ClaimTask after release: %v", err)
+	}
+	if claimed == nil || claimed.ID != "dispatch-claim-2" {
+		t.Fatalf("claimed = %+v, want dispatch-claim-2", claimed)
+	}
+}
