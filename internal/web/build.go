@@ -23,19 +23,18 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
 )
 
 // buildData feeds build.html: the build summary, the merged live log
-// (rendered as a line array with SSE increments appended by the
-// template), and the cgroup resource samples rendered as a table
-// (newest first, capped at maxSamples). Lines holds the truncated log
-// tail split on newlines; the first line is the partial remainder when
-// the log was cut. SSEURL is the resumable event stream, with ?after=
-// resuming at the end of the rendered content. Wait marks a build that
+// (the raw tail text rendered verbatim, with SSE increments appended
+// by the client), and the cgroup resource samples rendered as a table
+// (newest first, capped at maxSamples). Log holds the truncated log
+// tail; it may start or end mid-line. SSEURL is the resumable event
+// stream, with ?after= resuming at the end of the rendered content.
+// Wait marks a build that
 // has no log yet but is still active; Note carries the closing message
 // for a terminal build that never produced a log. Admin marks an
 // authenticated request so the template renders the inline cancel and
@@ -47,7 +46,6 @@ type buildData struct {
 	Pkgbase       string
 	WorkerName    string
 	Log           string
-	Lines         []string
 	HasLog        bool
 	Truncated     bool
 	TruncatedNote string
@@ -225,7 +223,6 @@ func (s *Server) loadBuildLog(ctx context.Context, b *db.Build, data *buildData)
 			data.Truncated = true
 		}
 		data.Log = string(logData[start:])
-		data.Lines = strings.Split(data.Log, "\n")
 		data.HasLog = true
 		if data.Truncated {
 			data.TruncatedNote = fmt.Sprintf("Log truncated, showing the last %d bytes.", len(data.Log))

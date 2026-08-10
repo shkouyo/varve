@@ -82,10 +82,7 @@
       <h2 id="log" class="mb-3 scroll-mt-6 text-xl font-semibold">Command log</h2>
       <div id="log-pane" role="log" aria-label="Build log" tabindex="0"
            class="max-h-[70vh] overflow-auto whitespace-pre rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed text-slate-900 dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100">
-{{- if .HasLog}}<div id="log-lines">
-{{- range .Lines}}{{.}}
-{{end -}}
-</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-neutral-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
+{{- if .HasLog}}<div id="log-lines">{{.Log}}</div>{{- else}}<p id="log-empty" class="text-slate-500 dark:text-neutral-300">{{if .Note}}{{.Note}}{{else}}No log content yet. Follow the live log for streaming output.{{end}}</p>{{- end}}
 <div id="log-increments"></div>
       </div>
       {{if .Truncated}}
@@ -155,8 +152,8 @@
       pane.addEventListener("scroll", function () {
         pinned = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 48;
       });
-      function appendLine(text) {
-        inc.appendChild(document.createTextNode(text + "\n"));
+      function appendText(text, withNewline) {
+        inc.appendChild(document.createTextNode(withNewline ? text + "\n" : text));
         if (pinned) {
           pane.scrollTop = pane.scrollHeight;
         }
@@ -168,11 +165,18 @@
         if (empty) {
           empty.remove();
         }
+        // A segment is raw log text that may end mid-line. Every part
+        // before the last is a complete line (append with a newline);
+        // the last part is empty when the segment ended at a newline
+        // (append nothing) or a half line when it continues into the
+        // next segment (append verbatim, no newline yet).
         var parts = String(msg.data).split("\n");
-        for (var i = 0; i < parts.length; i++) {
-          if (i < parts.length - 1 || parts[i] !== "") {
-            appendLine(parts[i]);
-          }
+        var last = parts.length - 1;
+        for (var i = 0; i < last; i++) {
+          appendText(parts[i], true);
+        }
+        if (parts[last] !== "") {
+          appendText(parts[last], false);
         }
         status.textContent = "Connected. Live updates follow below.";
       });

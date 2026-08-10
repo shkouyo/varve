@@ -60,6 +60,28 @@ func TestBuildDetailRenders(t *testing.T) {
 		"512 MiB / peak 512 MiB",          // current vs run peak
 		"25.0 GiB used of 50.0 GiB (50%)", // humanized disk used/total
 	)
+	// The initial log pane must render the raw tail byte-for-byte (no
+	// trailing blank line, no added newline), so the resumable SSE
+	// stream can continue exactly where the rendered content ends.
+	if got := logLinesText(body); got != "making package: demo-pkg\nfinished\n" {
+		t.Errorf("log-lines content = %q, want the raw log byte-for-byte", got)
+	}
+}
+
+// logLinesText extracts the text rendered inside the initial log pane
+// (between the #log-lines div markers) from a rendered build page.
+func logLinesText(body string) string {
+	const open = `id="log-lines">`
+	i := strings.Index(body, open)
+	if i < 0 {
+		return ""
+	}
+	i += len(open)
+	j := strings.Index(body[i:], "</div>")
+	if j < 0 {
+		return ""
+	}
+	return body[i : i+j]
 }
 
 // TestBuildDetailMachineName resolves the executing node through
@@ -143,9 +165,8 @@ func TestBuildLogData(t *testing.T) {
 		t.Errorf("log flags = HasLog %v Truncated %v Wait %v Note %q, want only HasLog",
 			data.HasLog, data.Truncated, data.Wait, data.Note)
 	}
-	want := []string{"line1", "line2", ""}
-	if len(data.Lines) != len(want) || data.Lines[0] != want[0] || data.Lines[1] != want[1] || data.Lines[2] != want[2] {
-		t.Errorf("Lines = %q, want %q", data.Lines, want)
+	if data.Log != "line1\nline2\n" {
+		t.Errorf("Log = %q, want the raw log tail byte-for-byte", data.Log)
 	}
 	if data.SSEURL != "/builds/"+itoa(build.ID)+"/log/stream?after=12" {
 		t.Errorf("SSEURL = %q, want resume at the rendered length (12 bytes)", data.SSEURL)
@@ -159,9 +180,8 @@ func TestBuildLogData(t *testing.T) {
 }
 
 // TestBuildLogTruncation asserts oversized logs are cut to the most
-// recent maxInlineLog bytes with a truncation note: the first line is
-// the partial remainder of the cut line and the SSE URL resumes after
-// the rendered tail.
+// recent maxInlineLog bytes with a truncation note: the raw tail may
+// begin mid-line and the SSE URL resumes after the rendered tail.
 func TestBuildLogTruncation(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -182,9 +202,6 @@ func TestBuildLogTruncation(t *testing.T) {
 	}
 	if len(data.Log) != maxInlineLog || !strings.HasSuffix(data.Log, tail) {
 		t.Errorf("Log = %d bytes, want the %d-byte recent window ending %q", len(data.Log), maxInlineLog, tail)
-	}
-	if len(data.Lines) != 2 || !strings.HasSuffix(data.Lines[0], "tail-line") || data.Lines[1] != "" {
-		t.Errorf("Lines = %q, want the tail split into lines", data.Lines)
 	}
 	if !strings.Contains(data.TruncatedNote, "showing the last "+itoa(maxInlineLog)+" bytes") {
 		t.Errorf("TruncatedNote = %q, want a byte-count note", data.TruncatedNote)
