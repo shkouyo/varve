@@ -293,14 +293,17 @@ func (o *OrchestratorImpl) dispatchTask(ctx context.Context, task db.Task, ac co
 }
 
 // releaseDispatch unbinds a task from its run (requeue paths): the
-// binding and the one-shot token die so the task is dispatched again by
-// the next scan with a fresh token. The binding is cleared even when the
-// in-memory map has no entry (a binding dispatched before a controller
-// restart), so a requeued task is never held by a stale binding. No-op
-// for tasks that were never dispatched.
+// in-memory dispatch entry dies so the task is dispatched again by the
+// next scan with a fresh token. The entry is removed even when the map
+// has no entry (a binding dispatched before a controller restart), so a
+// requeued task is never held by a stale binding. No-op for tasks that
+// were never dispatched.
+//
+// The caller clears the token (and with it the persisted dispatch
+// binding) through clearToken before calling releaseDispatch, so the
+// database is written exactly once per release.
 func (o *OrchestratorImpl) releaseDispatch(ctx context.Context, taskID string) {
 	o.dispatchMu.Lock()
 	delete(o.dispatchMap, taskID)
 	o.dispatchMu.Unlock()
-	o.clearToken(ctx, taskID)
 }
