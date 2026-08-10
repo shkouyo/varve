@@ -29,10 +29,13 @@ import (
 	"git.0x0f.dev/varve/internal/storage"
 )
 
-// Remove removes a package from the repository: every artifact listed in
-// its side file (with detached signatures), the side file itself and the
-// pacman database entries. Missing files and entries are tolerated, so a
-// retry after a partial failure converges. The side file is the
+// Remove removes a package from the repository: the pacman database
+// entries first, then every artifact listed in its side file (with
+// detached signatures) and finally the side file itself. Missing files
+// and entries are tolerated, so a retry after a partial failure
+// converges: a crash after the database update but before the deletions
+// leaves the side file in place, and the retry's repo-remove of the
+// already-absent entry is tolerated as a no-op. The side file is the
 // authoritative manifest; a package without one has nothing to delete.
 func (u *updater) Remove(ctx context.Context, pkgbase string) error {
 	// The pkgbase names the side file and is not otherwise constrained
@@ -43,6 +46,33 @@ func (u *updater) Remove(ctx context.Context, pkgbase string) error {
 	}
 	sidecarName := pkgbase + ".meta.toml"
 	old, hadOld := u.readOldSidecar(ctx, sidecarName)
+
+	// 1. Update the pacman database first (db before side file, mirroring
+	// Ingest): a failure here leaves the artifacts and the side file
+	// untouched, so the retry still derives the full removal list.
+	var pkgnames []string
+	if hadOld {
+		for _, a := range old.Artifacts {
+			if a.Kind == "package" && a.Pkgname != "" {
+				pkgnames = append(pkgnames, a.Pkgname)
+			}
+		}
+	}
+	if len(pkgnames) > 0 {
+		var err error
+		if u.cfg.Storage.Backend == "s3" {
+			err = u.s3RepoRemove(ctx, pkgnames)
+		} else {
+			err = u.repoRemoveLocal(ctx, pkgnames)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	// 2. Delete the artifacts and their signatures, then the side file
+	// last: the removal list is derived from the side file, so it must
+	// survive until the database update succeeded.
 	if hadOld {
 		for _, a := range old.Artifacts {
 			for _, name := range []string{a.File, a.File + ".sig"} {
@@ -55,26 +85,12 @@ func (u *updater) Remove(ctx context.Context, pkgbase string) error {
 	if err := u.backend.Delete(ctx, sidecarName); err != nil && !errors.Is(err, storage.ErrNotFound) {
 		log.Printf("repo: remove %s: delete side file: %v", pkgbase, err)
 	}
-
-	var pkgnames []string
-	if hadOld {
-		for _, a := range old.Artifacts {
-			if a.Kind == "package" && a.Pkgname != "" {
-				pkgnames = append(pkgnames, a.Pkgname)
-			}
-		}
-	}
-	if len(pkgnames) == 0 {
-		return nil
-	}
-	if u.cfg.Storage.Backend == "s3" {
-		return u.s3RepoRemove(ctx, pkgnames)
-	}
-	return u.repoRemoveLocal(ctx, pkgnames)
+	return nil
 }
 
 // repoRemoveLocal runs repo-remove for every pkgname in the local
-// repository root. Removing an entry that is already absent is a no-op.
+// repository root. Removing an entry that is already absent is tolerated
+// as a no-op (see runRepoRemove).
 func (u *updater) repoRemoveLocal(ctx context.Context, pkgnames []string) error {
 	dir := u.cfg.Storage.Local.Root
 	for _, name := range pkgnames {

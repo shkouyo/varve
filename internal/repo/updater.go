@@ -59,7 +59,12 @@ type Updater interface {
 	//   - calls are serialized by the caller.
 	//
 	// Ingest is idempotent and safe to retry as a whole: every step is
-	// re-runnable, and staging is only ever consumed, never created.
+	// re-runnable, and staging is only ever consumed, never created. The
+	// pacman database update runs before the side file rewrite, so a
+	// partial failure converges: a retry that still sees the old side
+	// file re-runs the same repo-remove/repo-add (absent entries are
+	// tolerated), and one that sees the new side file has nothing left
+	// to remove.
 	Ingest(ctx context.Context, task *db.Task, build *db.Build, workerName string, manifest []Artifact) error
 
 	// Remove removes a package from the repository: every artifact listed
@@ -96,8 +101,9 @@ func NewUpdater(cfg *config.ControllerConfig, backend storage.Backend, signer in
 }
 
 // Ingest executes the ingest orchestration in the documented order:
-// pkgbase resolution, artifact move, old-version cleanup, side file write
-// and finally repo-add / repo-remove.
+// pkgbase resolution, artifact move, old-version cleanup, the pacman
+// database update (repo-remove / repo-add) and finally the side file
+// rewrite, so a partial failure leaves the retryable state consistent.
 func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, workerName string, manifest []Artifact) error {
 	if task == nil {
 		return errors.New("repo: ingest: nil task")
@@ -165,9 +171,28 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 		}
 	}
 
-	// 3. Atomically rewrite the side file. The backend's Put is atomic on
-	// local storage (temp file + fsync + rename); on s3 the ingest mutex
-	// provides the atomicity.
+	// 3. Update the pacman database: every replaced pkgname (old side file
+	// minus new manifest) is removed first, then all new packages are added
+	// (remove-before-add). This runs before the side file rewrite so the
+	// database always reflects the new manifest before the authoritative
+	// side file moves: a crash in between leaves the old side file in
+	// place, and the retry re-runs the same repo-remove/repo-add calls
+	// (absent entries are tolerated by runRepoRemove) instead of
+	// computing an empty removal list from an already-rewritten side file.
+	removed := removedPkgnames(old, pkgs)
+	if u.cfg.Storage.Backend == "s3" {
+		if err := u.s3RepoUpdate(ctx, removed, pkgs); err != nil {
+			return fmt.Errorf("repo: ingest: %w", err)
+		}
+	} else {
+		if err := u.repoUpdateLocal(ctx, removed, pkgs); err != nil {
+			return fmt.Errorf("repo: ingest: %w", err)
+		}
+	}
+
+	// 4. Atomically rewrite the side file last. The backend's Put is
+	// atomic on local storage (temp file + fsync + rename); on s3 the
+	// ingest mutex provides the atomicity.
 	vcs := ""
 	if hadOld {
 		vcs = old.VCS
@@ -193,20 +218,6 @@ func (u *updater) Ingest(ctx context.Context, task *db.Task, build *db.Build, wo
 	}
 	if err := u.backend.Put(ctx, sidecarName, bytes.NewReader(data), int64(len(data))); err != nil {
 		return fmt.Errorf("repo: ingest: write sidecar %q: %w", sidecarName, err)
-	}
-
-	// 4. Update the pacman database: every replaced pkgname (old side file
-	// minus new manifest) is removed first, then all new packages are added
-	// (remove-before-add).
-	removed := removedPkgnames(old, pkgs)
-	if u.cfg.Storage.Backend == "s3" {
-		if err := u.s3RepoUpdate(ctx, removed, pkgs); err != nil {
-			return fmt.Errorf("repo: ingest: %w", err)
-		}
-	} else {
-		if err := u.repoUpdateLocal(ctx, removed, pkgs); err != nil {
-			return fmt.Errorf("repo: ingest: %w", err)
-		}
 	}
 	return nil
 }
@@ -274,6 +285,8 @@ func (u *updater) readOldSidecar(ctx context.Context, name string) (*Sidecar, bo
 // removedPkgnames returns the pkgnames present in the old side file but
 // absent from the new manifest package entries; each of them is removed
 // from the repository database before the new packages are added.
+// Duplicate pkgname entries in the old side file collapse to one removal
+// (a second repo-remove of the same name would fail as "not found").
 func removedPkgnames(old *Sidecar, pkgs []Artifact) []string {
 	if old == nil {
 		return nil
@@ -283,6 +296,7 @@ func removedPkgnames(old *Sidecar, pkgs []Artifact) []string {
 		newSet[p.Pkgname] = struct{}{}
 	}
 	var out []string
+	seen := make(map[string]struct{})
 	for _, a := range old.Artifacts {
 		if a.Kind != "package" {
 			continue
@@ -290,6 +304,10 @@ func removedPkgnames(old *Sidecar, pkgs []Artifact) []string {
 		if _, ok := newSet[a.Pkgname]; ok {
 			continue
 		}
+		if _, ok := seen[a.Pkgname]; ok {
+			continue
+		}
+		seen[a.Pkgname] = struct{}{}
 		out = append(out, a.Pkgname)
 	}
 	return out

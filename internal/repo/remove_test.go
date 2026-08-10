@@ -22,6 +22,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestRemoveLocal covers the local cascade: the side file, the artifacts
@@ -96,5 +97,88 @@ func TestRemoveInvalidPkgbase(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	if err := e.upd.Remove(context.Background(), "a/b"); err == nil {
 		t.Fatal("Remove with multi-segment pkgbase succeeded, want error")
+	}
+}
+
+// TestRemoveRetryConverges covers the crash window of Remove: a failed
+// repo-remove must leave the artifacts and the side file untouched (the
+// removal list is derived from the side file), and the retry against the
+// same storage converges and removes everything.
+func TestRemoveRetryConverges(t *testing.T) {
+	e := newIngestEnv(t, "local", execCfg{exits: map[string]int{"repo-remove": 1}})
+	manifest := testManifest()
+	sidecarName := testPkgbase + ".meta.toml"
+	sidecarData, err := MarshalSidecar(&Sidecar{
+		Pkgbase:   testPkgbase,
+		Branch:    "foo",
+		Artifacts: manifest,
+		Build:     BuildInfo{Worker: "machine"},
+	})
+	if err != nil {
+		t.Fatalf("MarshalSidecar: %v", err)
+	}
+	if err := e.fs.Put(context.Background(), sidecarName, strings.NewReader(string(sidecarData)), int64(len(sidecarData))); err != nil {
+		t.Fatalf("seed sidecar: %v", err)
+	}
+	for _, a := range manifest {
+		if err := e.fs.Put(context.Background(), a.File, strings.NewReader("x"), 1); err != nil {
+			t.Fatalf("seed artifact %s: %v", a.File, err)
+		}
+	}
+
+	if err := e.upd.Remove(context.Background(), testPkgbase); err == nil {
+		t.Fatal("Remove with failing repo-remove: want error, got nil")
+	}
+	// Nothing may be deleted before the database update succeeded.
+	if err := e.fs.Get(context.Background(), sidecarName, io.Discard); err != nil {
+		t.Error("side file deleted although the db update failed")
+	}
+	for _, a := range manifest {
+		if a.Kind == "srcinfo" {
+			continue
+		}
+		if err := e.fs.Get(context.Background(), a.File, io.Discard); err != nil {
+			t.Errorf("artifact %s deleted although the db update failed", a.File)
+		}
+	}
+
+	// Retry with a healthy executor against the same storage: converges.
+	retry := NewUpdater(e.cfg, e.fs, fakeSigner{}, func() time.Time { return e.now })
+	retry.execCommand = fakeExecFor(e.log, execCfg{})
+	if err := retry.Remove(context.Background(), testPkgbase); err != nil {
+		t.Fatalf("retry Remove: %v", err)
+	}
+	if err := e.fs.Get(context.Background(), sidecarName, io.Discard); err == nil {
+		t.Error("side file still present after retry Remove")
+	}
+}
+
+// TestRemoveToleratesAbsentEntry asserts repo-remove's "not found" exit is
+// treated as a no-op on the retry path (the entry was already removed by a
+// previous attempt that crashed before the side file deletion).
+func TestRemoveToleratesAbsentEntry(t *testing.T) {
+	e := newIngestEnv(t, "local", execCfg{
+		exits:  map[string]int{"repo-remove": 1},
+		stderr: map[string]string{"repo-remove": "error: Package matching foo not found"},
+	})
+	manifest := testManifest()
+	sidecarName := testPkgbase + ".meta.toml"
+	sidecarData, err := MarshalSidecar(&Sidecar{
+		Pkgbase:   testPkgbase,
+		Branch:    "foo",
+		Artifacts: manifest,
+		Build:     BuildInfo{Worker: "machine"},
+	})
+	if err != nil {
+		t.Fatalf("MarshalSidecar: %v", err)
+	}
+	if err := e.fs.Put(context.Background(), sidecarName, strings.NewReader(string(sidecarData)), int64(len(sidecarData))); err != nil {
+		t.Fatalf("seed sidecar: %v", err)
+	}
+	if err := e.upd.Remove(context.Background(), testPkgbase); err != nil {
+		t.Fatalf("Remove with absent entry: %v", err)
+	}
+	if err := e.fs.Get(context.Background(), sidecarName, io.Discard); err == nil {
+		t.Error("side file still present after Remove")
 	}
 }

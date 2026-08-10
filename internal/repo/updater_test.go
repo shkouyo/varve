@@ -505,7 +505,9 @@ func TestIngestMoveSequence(t *testing.T) {
 		t.Error(".SRCINFO was moved out of staging; it must stay for the caller's staging cleanup")
 	}
 
-	// Relative order: pkgbase resolution -> moves -> sidecar -> repo-add.
+	// Relative order: pkgbase resolution -> moves -> repo-add -> sidecar.
+	// The pacman database update runs before the authoritative side file
+	// rewrite so a partial failure leaves the retryable state consistent.
 	if i := e.logIndex("get staging/" + testTaskID + "/" + testSrcinfo); i < 0 {
 		t.Error("missing staging .SRCINFO read (pkgbase resolution)")
 	}
@@ -517,8 +519,8 @@ func TestIngestMoveSequence(t *testing.T) {
 	}
 	side := e.logIndex("put " + testPkgbase + ".meta.toml")
 	exec := e.logIndex("exec repo-add " + e.root)
-	if side < 0 || exec < 0 || side > exec {
-		t.Errorf("sidecar write (idx %d) must precede repo-add (idx %d)", side, exec)
+	if side < 0 || exec < 0 || exec > side {
+		t.Errorf("repo-add (idx %d) must precede sidecar write (idx %d)", exec, side)
 	}
 	execs := e.execLines()
 	if len(execs) != 1 {
@@ -840,5 +842,101 @@ func TestExtractPkgbaseValidates(t *testing.T) {
 		if _, err := extractPkgbase(srcinfoText(bad)); err == nil {
 			t.Errorf("extractPkgbase(%q) succeeded, want error", bad)
 		}
+	}
+}
+
+// TestIngestRetryConvergesAfterDbFailure covers the crash window between
+// the pacman database update and the side file rewrite: a failed repo-add
+// must leave the old side file in place, and the retry (against the same
+// storage) re-runs the database update and converges.
+func TestIngestRetryConvergesAfterDbFailure(t *testing.T) {
+	e := newIngestEnv(t, "local", execCfg{exits: map[string]int{"repo-add": 1}})
+	m := testManifest()
+	e.stage(m)
+	if err := e.upd.Ingest(context.Background(), e.task, e.build, "w", m); err == nil {
+		t.Fatal("Ingest with failing repo-add: want error, got nil")
+	}
+	// The authoritative side file must not move before the database
+	// update succeeded: a retry still reads the old removal list.
+	if _, ok := e.fs.files[testPkgbase+".meta.toml"]; ok {
+		t.Error("sidecar written although the db update failed")
+	}
+	// Retry with a healthy executor against the same storage: converges.
+	retry := NewUpdater(e.cfg, e.fs, fakeSigner{}, func() time.Time { return e.now })
+	retry.execCommand = fakeExecFor(e.log, execCfg{})
+	if err := retry.Ingest(context.Background(), e.task, e.build, "w", m); err != nil {
+		t.Fatalf("retry Ingest: %v", err)
+	}
+	sc := e.storedSidecar(testPkgbase)
+	if sc.Pkgbase != testPkgbase || len(sc.Artifacts) != 3 {
+		t.Errorf("sidecar after retry = %+v", sc)
+	}
+	var adds int
+	for _, l := range e.execLines() {
+		if strings.Contains(l, "exec repo-add") {
+			adds++
+		}
+	}
+	if adds != 2 {
+		t.Errorf("repo-add executions = %d, want 2 (failed attempt + retry)", adds)
+	}
+}
+
+// TestIngestToleratesAbsentRepoRemove covers the retry path where the
+// database was already updated on a previous attempt: repo-remove of an
+// absent entry exits 1 with "not found", which is treated as a no-op so
+// the retry converges instead of failing forever.
+func TestIngestToleratesAbsentRepoRemove(t *testing.T) {
+	e := newIngestEnv(t, "local", execCfg{
+		exits:  map[string]int{"repo-remove": 1},
+		stderr: map[string]string{"repo-remove": "error: Package matching oldpkg not found"},
+	})
+	m := testManifest()
+	e.stage(m)
+	// Old side file lists a pkgname the new manifest does not carry.
+	e.seedSidecar(&Sidecar{
+		Pkgbase: testPkgbase,
+		Branch:  "foo",
+		VCS:     "git",
+		Artifacts: []Artifact{
+			{File: "oldpkg-1.0-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "oldpkg", Version: "1.0-1", Arch: "x86_64"},
+		},
+		Build: BuildInfo{Worker: "machine"},
+	})
+	if err := e.upd.Ingest(context.Background(), e.task, e.build, "w", m); err != nil {
+		t.Fatalf("Ingest with absent repo-remove: %v", err)
+	}
+	joined := strings.Join(e.execLines(), "\n")
+	if !strings.Contains(joined, "exec repo-remove") || !strings.Contains(joined, "exec repo-add") {
+		t.Errorf("expected both repo-remove and repo-add, got %v", e.execLines())
+	}
+}
+
+// TestIngestDedupsRemovedPkgnames asserts duplicate pkgname entries in the
+// old side file collapse to a single repo-remove invocation.
+func TestIngestDedupsRemovedPkgnames(t *testing.T) {
+	e := newIngestEnv(t, "local", execCfg{})
+	m := testManifest()
+	e.stage(m)
+	e.seedSidecar(&Sidecar{
+		Pkgbase: testPkgbase,
+		Branch:  "foo",
+		Artifacts: []Artifact{
+			{File: "dup-1.0-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "dup", Version: "1.0-1", Arch: "x86_64"},
+			{File: "dup-1.0-2-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "dup", Version: "1.0-2", Arch: "x86_64"},
+		},
+		Build: BuildInfo{Worker: "machine"},
+	})
+	if err := e.upd.Ingest(context.Background(), e.task, e.build, "w", m); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	var removes int
+	for _, l := range e.execLines() {
+		if strings.Contains(l, "exec repo-remove") {
+			removes++
+		}
+	}
+	if removes != 1 {
+		t.Errorf("repo-remove executions = %d, want 1 (duplicate pkgname collapses)", removes)
 	}
 }

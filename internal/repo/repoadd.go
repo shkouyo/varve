@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -80,8 +81,23 @@ func (u *updater) runRepoAdd(ctx context.Context, dir string, files []string) er
 }
 
 // runRepoRemove executes repo-remove <archive> <pkgname> in dir.
+//
+// pacman-contrib's repo-remove exits 1 with "Package matching ... not
+// found" when the entry is already absent from the database. The retry
+// paths hit that state by design (an ingest retry after the database was
+// already updated, a Remove retry after a crash between the database
+// update and the side file deletion), so an absent entry is tolerated as
+// a successful no-op instead of failing the whole operation.
 func (u *updater) runRepoRemove(ctx context.Context, dir, pkgname string) error {
-	return u.runRepoCmd(ctx, "repo-remove", dir, u.repoDBArchiveName(), pkgname)
+	err := u.runRepoCmd(ctx, "repo-remove", dir, u.repoDBArchiveName(), pkgname)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "not found") {
+		log.Printf("repo: warning: repo-remove %s: entry already absent: %v (treated as no-op)", pkgname, err)
+		return nil
+	}
+	return err
 }
 
 // repoCmdTimeout bounds one repo-add/repo-remove subprocess. The exec
