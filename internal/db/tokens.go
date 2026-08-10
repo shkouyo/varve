@@ -72,9 +72,17 @@ func (s *Store) SetDispatchBinding(ctx context.Context, id, token string, at tim
 // (token and dispatch time). It is idempotent: a task without a binding
 // is a no-op. The requeue paths and the claim-timeout expiry use it so a
 // re-dispatched task always carries a fresh token.
+//
+// The state guard makes the claim race atomic, mirroring
+// SetDispatchBinding: only a queued task is cleared, so a task
+// concurrently claimed by a poll keeps the fresh token written by the
+// claim transaction instead of having it clobbered. Requeued tasks had
+// their token and dispatched_at cleared inside the requeue transaction
+// and are back in 'queued', so the guard still matches (a second clear
+// is a harmless no-op).
 func (s *Store) ClearDispatchBinding(ctx context.Context, id string) error {
 	if _, err := s.write.ExecContext(ctx, `UPDATE tasks SET
-		claim_token = '', dispatched_at = NULL WHERE id = ?`, id); err != nil {
+		claim_token = '', dispatched_at = NULL WHERE id = ? AND state = 'queued'`, id); err != nil {
 		return fmt.Errorf("db: clear dispatch binding for task %s: %w", id, err)
 	}
 	return nil

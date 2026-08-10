@@ -226,3 +226,74 @@ func TestSetDispatchBindingConcurrentClaim(t *testing.T) {
 		t.Errorf("claimed task token = %q, want worker-tok", task.ClaimToken)
 	}
 }
+
+// TestClearDispatchBindingConcurrentClaim asserts the claim race is safe
+// for the clear path: an expiry that clears the dispatch binding of a
+// queued task never clobbers a concurrent worker claim. Whichever op
+// wins, the final claim token is the worker's token once the claim
+// happened.
+func TestClearDispatchBindingConcurrentClaim(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "clear-race")
+	createTask(t, s, "clear-race-1", "queued", pkg, at(0))
+	w := registerWorker(t, s, "clear-race-node", 1)
+
+	done := make(chan error, 2)
+	go func() {
+		_, err := s.ClaimTask(testCtx, w.ID, 1, "worker-tok")
+		done <- err
+	}()
+	go func() {
+		done <- s.ClearDispatchBinding(testCtx, "clear-race-1")
+	}()
+	for i := 0; i < 2; i++ {
+		if err := <-done; err != nil {
+			t.Fatalf("concurrent op: %v", err)
+		}
+	}
+	task, err := s.GetTask(testCtx, "clear-race-1")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.State != "assigned" {
+		t.Errorf("task state = %q, want assigned (a fresh worker always claims)", task.State)
+	}
+	if task.ClaimToken != "worker-tok" {
+		t.Errorf("claimed task token = %q, want worker-tok (expiry never clobbers a claim)", task.ClaimToken)
+	}
+}
+
+// TestClearDispatchBindingGuardsClaimed asserts the state guard: a task
+// claimed by a worker (state assigned) keeps its token and dispatched_at
+// even when the binding is cleared, because only the requeue primitives
+// may release a claimed task's token.
+func TestClearDispatchBindingGuardsClaimed(t *testing.T) {
+	s := newTestStore(t)
+	pkg := mustSeedPackage(t, s, "clear-guard")
+	createTask(t, s, "clear-guard-1", "queued", pkg, at(0))
+	when := at(time.Minute)
+	if err := s.SetDispatchBinding(testCtx, "clear-guard-1", "dispatch-tok", when); err != nil {
+		t.Fatalf("SetDispatchBinding: %v", err)
+	}
+	w := registerWorker(t, s, "clear-guard-node", 1)
+	if _, err := s.ClaimTask(testCtx, w.ID, 1, "worker-tok"); err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if err := s.ClearDispatchBinding(testCtx, "clear-guard-1"); err != nil {
+		t.Fatalf("ClearDispatchBinding: %v", err)
+	}
+	task, err := s.GetTask(testCtx, "clear-guard-1")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.ClaimToken != "worker-tok" {
+		t.Errorf("claim token after clear = %q, want worker-tok (assigned task is out of scope)", task.ClaimToken)
+	}
+	var dispatchedAt string
+	if err := s.read.QueryRow(`SELECT COALESCE(dispatched_at, '') FROM tasks WHERE id = ?`, "clear-guard-1").Scan(&dispatchedAt); err != nil {
+		t.Fatalf("read dispatched_at: %v", err)
+	}
+	if dispatchedAt != formatTime(when) {
+		t.Errorf("dispatched_at after clear = %q, want preserved %q", dispatchedAt, formatTime(when))
+	}
+}
