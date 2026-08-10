@@ -367,6 +367,11 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 	}
 	srcKey := b.resolve(src)
 	dstKey := b.resolve(dst)
+	if srcKey == dstKey {
+		// Self-move: nothing to do. Fetching the source, re-uploading it
+		// over the same key and deleting it would destroy the object.
+		return nil
+	}
 	obj, err := b.client.GetObject(ctx, b.bucket, srcKey)
 	if err != nil {
 		if isNotFound(err) {

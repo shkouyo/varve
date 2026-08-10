@@ -449,6 +449,28 @@ func TestS3MoveSequence(t *testing.T) {
 	}
 }
 
+// TestS3MoveSelfNoOp asserts a self-move (same source and destination key)
+// is a no-op: the object survives and no object-store call is issued.
+func TestS3MoveSelfNoOp(t *testing.T) {
+	b, f := mustFakeBackend(t)
+	ctx := context.Background()
+	putContent(t, b, "seg.pkg.tar.zst", "keep-me")
+
+	m, ok := any(b).(Mover)
+	if !ok {
+		t.Fatal("s3Backend does not implement Mover")
+	}
+	if err := m.Move(ctx, "seg.pkg.tar.zst", "seg.pkg.tar.zst"); err != nil {
+		t.Fatalf("Move(self): %v", err)
+	}
+	if len(f.calls) != 1 {
+		t.Fatalf("object-store calls = %d, want 1 (the seed Put only)", len(f.calls))
+	}
+	if got := getContent(t, b, "seg.pkg.tar.zst"); got != "keep-me" {
+		t.Errorf("object after self-move = %q, want %q", got, "keep-me")
+	}
+}
+
 // TestS3AppendMerge asserts the degraded Append: existing content is merged
 // with the chunk and re-uploaded.
 func TestS3AppendMerge(t *testing.T) {
