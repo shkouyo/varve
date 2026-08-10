@@ -201,3 +201,61 @@ func TestIssueSigningKeyOneShot(t *testing.T) {
 		t.Errorf("signer not cleared: %v", env.sig.cleared)
 	}
 }
+
+// TestUploadFileTotalCap asserts the authoritative total-size check: a
+// declared segment that would push the staged file past maxUploadTotal is
+// rejected with ErrPayloadTooLarge and nothing is appended, both on the
+// first segment and on a resumed one.
+func TestUploadFileTotalCap(t *testing.T) {
+	env := newTestEnv(t)
+	env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+	const name = "big.pkg.tar.zst"
+
+	if _, err := env.o.UploadFile(ctx(), claimed, token, name, strings.NewReader("x"), maxUploadTotal+1, 0); !errors.Is(err, ErrPayloadTooLarge) {
+		t.Fatalf("UploadFile over cap = %v, want ErrPayloadTooLarge", err)
+	}
+	if _, err := env.fs.Stat(ctx(), env.fs.StagingPath(claimed, name)); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("staged file after rejected upload = %v, want ErrNotFound", err)
+	}
+
+	// A resumed segment that crosses the cap is rejected the same way.
+	if _, err := env.o.UploadFile(ctx(), claimed, token, name, strings.NewReader("AAAA"), 4, 0); err != nil {
+		t.Fatalf("UploadFile first segment: %v", err)
+	}
+	if _, err := env.o.UploadFile(ctx(), claimed, token, name, strings.NewReader("x"), maxUploadTotal, 4); !errors.Is(err, ErrPayloadTooLarge) {
+		t.Fatalf("UploadFile resume over cap = %v, want ErrPayloadTooLarge", err)
+	}
+	// The first segment is untouched by the rejected resume.
+	fi, err := env.fs.Stat(ctx(), env.fs.StagingPath(claimed, name))
+	if err != nil {
+		t.Fatalf("Stat staged: %v", err)
+	}
+	if fi.Size != 4 {
+		t.Errorf("staged size = %d, want 4 (rejected resume must not append)", fi.Size)
+	}
+}
+
+// TestUploadFileTruncatedStream asserts the post-append verification: a
+// body shorter than its declared size leaves a corrupt staging file, which
+// is deleted so the client restarts from a clean slate instead of resuming
+// a half-product.
+func TestUploadFileTruncatedStream(t *testing.T) {
+	env := newTestEnv(t)
+	env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+	const name = "short.pkg.tar.zst"
+
+	_, err := env.o.UploadFile(ctx(), claimed, token, name, strings.NewReader("AA"), 4, 0)
+	if err == nil {
+		t.Fatal("UploadFile with truncated stream: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), name) {
+		t.Errorf("error must name the file, got %v", err)
+	}
+	if _, serr := env.fs.Stat(ctx(), env.fs.StagingPath(claimed, name)); !errors.Is(serr, storage.ErrNotFound) {
+		t.Errorf("truncated staging file not removed: %v", serr)
+	}
+}

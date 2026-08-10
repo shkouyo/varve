@@ -220,3 +220,21 @@ func TestUploadSizeLimits(t *testing.T) {
 		t.Errorf("ok upload = %d, want 200", rec.Code)
 	}
 }
+
+// TestUploadRejectsChunked asserts a request without a declared
+// Content-Length (chunked transfer) is refused up front with 411, so the
+// size caps cannot be bypassed by omitting the length.
+func TestUploadRejectsChunked(t *testing.T) {
+	f := newFake()
+	cfg := &config.ControllerConfig{API: config.APIConfig{Token: testToken}}
+	h := NewServer(cfg, f).Handler()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/tasks/"+testTaskID+"/files/ok.bin", strings.NewReader("x"))
+	req.ContentLength = -1 // what a chunked request looks like server-side
+	req.Header.Set(taskTokenHeader, testClaimTok)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusLengthRequired {
+		t.Errorf("chunked upload = %d, want 411", rec.Code)
+	}
+}

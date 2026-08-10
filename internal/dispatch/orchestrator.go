@@ -65,6 +65,9 @@ var (
 	// have no intersection with the architectures the deployment can
 	// build; the package is skipped instead of queuing forever.
 	ErrArchUnsupported = errors.New("dispatch: unsupported architecture")
+	// ErrPayloadTooLarge reports an upload whose declared size would
+	// exceed the total staging cap; the API layer maps it to 413.
+	ErrPayloadTooLarge = errors.New("dispatch: payload too large")
 )
 
 // OffsetError wraps ErrConflict with the current server-side offset so

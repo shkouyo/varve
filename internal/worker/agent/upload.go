@@ -71,6 +71,9 @@ func (r *Runner) uploadFiles(ctx context.Context, task *api.TaskDetail, token st
 
 // uploadWithResume streams one file with resumable offsets: a 409 conflict
 // carrying the server-side offset resumes from there, up to 3 attempts.
+// Each attempt sends the remainder of the file (size-offset bytes), so
+// the size passed to UploadFile is the byte length of the body in this
+// request, which also becomes its declared Content-Length.
 func (r *Runner) uploadWithResume(ctx context.Context, taskID, token, name, path string, size int64) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -83,7 +86,7 @@ func (r *Runner) uploadWithResume(ctx context.Context, taskID, token, name, path
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
 			return fmt.Errorf("seek %s: %w", name, err)
 		}
-		_, err := r.client.UploadFile(ctx, taskID, token, name, f, size, offset)
+		_, err := r.client.UploadFile(ctx, taskID, token, name, f, size-offset, offset)
 		if err == nil {
 			return nil
 		}

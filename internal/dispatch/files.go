@@ -20,17 +20,33 @@ package dispatch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/storage"
 )
 
+// maxUploadTotal mirrors the API layer's total staging cap
+// (internal/api/validate.go): one artifact must fit within it, and the
+// authoritative check lives here because the API precheck only sees the
+// current segment. The comment in validate.go cross-references this
+// constant; keep the two in sync.
+const maxUploadTotal = 8 << 30
+
 // UploadFile streams one artifact segment into the task staging area
-// (all artifacts pass through the controller). The client's offset must
-// equal the current staged size (ErrConflict carrying the current offset
-// otherwise, for resumable uploads). Claim-token protected. Concurrently
-// safe.
+// (all artifacts pass through the controller). size is the byte length
+// of the body in this request (the whole file on the first attempt, the
+// remainder on a resumed one). The client's offset must equal the
+// current staged size (ErrConflict carrying the current offset
+// otherwise, for resumable uploads), and the file size after this
+// segment (offset + size) must fit within maxUploadTotal
+// (ErrPayloadTooLarge otherwise). After the append the staged size is
+// verified against the declared segment: a short or truncated write
+// deletes the staging half-product and reports an error so the client
+// restarts the upload instead of resuming a corrupt file. Claim-token
+// protected. Concurrently safe.
 func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name string, r io.Reader, size, offset int64) (*FileMeta, error) {
 	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
@@ -49,12 +65,27 @@ func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name s
 	if current != offset {
 		return nil, &OffsetError{Current: current}
 	}
+	if size > 0 && offset+size > maxUploadTotal {
+		return nil, fmt.Errorf("%w: staged file would reach %d bytes (cap %d)", ErrPayloadTooLarge, offset+size, maxUploadTotal)
+	}
 	if err := o.appendStaged(ctx, staging, r, offset); err != nil {
 		return nil, err
 	}
 	fi, err := o.storage.Stat(ctx, staging)
 	if err != nil {
 		return nil, err
+	}
+	if size > 0 && fi.Size != offset+size {
+		// The stream was truncated (or overran) relative to the declared
+		// size: the staged file is corrupt at the client's offsets.
+		// Remove the half-product so a retry restarts from a clean slate;
+		// the deletion is best-effort (the staging sweep is the backstop).
+		if derr := o.storage.Delete(ctx, staging); derr != nil {
+			log.Printf("dispatch: upload %s: size mismatch %d != %d: cleanup staging %q: %v",
+				taskID, fi.Size, offset+size, name, derr)
+		}
+		return nil, fmt.Errorf("dispatch: upload %s: staged size %d != declared %d (truncated stream)",
+			name, fi.Size, offset+size)
 	}
 	return &FileMeta{Name: name, Offset: fi.Size}, nil
 }

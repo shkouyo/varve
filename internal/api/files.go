@@ -69,10 +69,13 @@ func parseOffset(r *http.Request) (int64, error) {
 // area (PUT /api/v1/tasks/{id}/files/{name}?offset=N): the request body
 // is forwarded to the orchestrator as an io.Reader without loading it
 // into memory. An offset mismatch surfaces as 409 carrying the current
-// server-side offset so the worker can resume. Size limits are enforced
-// here: one request must stay under maxUploadSegment and the final
-// artifact (offset + segment) under maxUploadTotal; a body that exceeds
-// the declared size mid-stream is cut off by the reader cap.
+// server-side offset so the worker can resume. The checks here are the
+// fast path only: the authoritative total-size enforcement lives in
+// dispatch.UploadFile (dispatch/files.go), which sees the declared total
+// size of the artifact. A request without a declared Content-Length
+// (chunked) is rejected outright so the caps cannot be bypassed, and a
+// body that exceeds the declared size mid-stream is cut off by the
+// reader cap and mapped to 413.
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	id, ok := validTaskPath(r)
 	if !ok {
@@ -88,6 +91,14 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	offset, err := parseOffset(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request: "+err.Error())
+		return
+	}
+	if r.ContentLength == -1 {
+		// Chunked bodies have no declared size: the per-request and
+		// total caps could not be enforced, so the upload is refused.
+		// The worker client always declares a Content-Length.
+		writeError(w, http.StatusLengthRequired, codeInvalidRequest,
+			"invalid request: upload must declare a Content-Length")
 		return
 	}
 	if r.ContentLength > maxUploadSegment {

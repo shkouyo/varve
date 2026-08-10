@@ -188,3 +188,35 @@ func TestBadUploadParams400(t *testing.T) {
 		t.Errorf("traversal reached the orchestrator: %d calls", f.calls["upload"])
 	}
 }
+
+// TestPayloadTooLargeMapping asserts oversized uploads map to 413 with
+// the payload_too_large code: both the mid-stream MaxBytesReader cutoff
+// and the authoritative total-size check in dispatch.
+func TestPayloadTooLargeMapping(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"max bytes reader cutoff", &http.MaxBytesError{Limit: maxUploadSegment}},
+		{"dispatch total cap", dispatch.ErrPayloadTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFake()
+			f.hookRegister = func(reg RegisterReq) (*RegisterResp, error) {
+				return nil, tc.err
+			}
+			srv := newTestServer(t, f)
+			status, body := rawRequest(t, srv, http.MethodPost, "/api/v1/register", bearer(), registerBody)
+			if status != http.StatusRequestEntityTooLarge {
+				t.Fatalf("status = %d, want 413 (body %s)", status, body)
+			}
+			var eb errorBody
+			if err := json.Unmarshal([]byte(body), &eb); err != nil {
+				t.Fatalf("body is not JSON: %v (%s)", err, body)
+			}
+			if eb.Error.Code != codePayloadTooLarge {
+				t.Errorf("code = %q, want %q", eb.Error.Code, codePayloadTooLarge)
+			}
+		})
+	}
+}

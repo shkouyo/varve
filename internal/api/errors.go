@@ -32,12 +32,13 @@ import (
 
 // Error codes carried by the wire error object.
 const (
-	codeInvalidRequest = "invalid_request"
-	codeUnauthorized   = "unauthorized"
-	codeForbidden      = "forbidden"
-	codeNotFound       = "not_found"
-	codeConflict       = "conflict"
-	codeInternal       = "internal"
+	codeInvalidRequest  = "invalid_request"
+	codeUnauthorized    = "unauthorized"
+	codeForbidden       = "forbidden"
+	codeNotFound        = "not_found"
+	codeConflict        = "conflict"
+	codePayloadTooLarge = "payload_too_large"
+	codeInternal        = "internal"
 )
 
 // errorDetail is the single error object of the wire error body.
@@ -134,8 +135,11 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 }
 
 // writeOrchError maps an orchestrator (or sign) error to the wire
-// contract: 404/403/409 for the sentinels, 500 for anything else. Unknown
-// errors are logged server-side without leaking internals to the client.
+// contract: 404/403/409 for the sentinels, 413 for payloads that exceed
+// the upload caps (both the mid-stream MaxBytesReader cutoff and the
+// authoritative total-size check in dispatch), 500 for anything else.
+// Unknown errors are logged server-side without leaking internals to the
+// client.
 func (s *Server) writeOrchError(w http.ResponseWriter, err error) {
 	var offErr *dispatch.OffsetError
 	if errors.As(err, &offErr) {
@@ -143,7 +147,15 @@ func (s *Server) writeOrchError(w http.ResponseWriter, err error) {
 		writeConflict(w, err.Error(), offErr.Current)
 		return
 	}
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		writeError(w, http.StatusRequestEntityTooLarge, codePayloadTooLarge,
+			fmt.Sprintf("upload segment exceeds the %d byte limit", maxErr.Limit))
+		return
+	}
 	switch {
+	case errors.Is(err, dispatch.ErrPayloadTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, codePayloadTooLarge, err.Error())
 	case errors.Is(err, dispatch.ErrForbidden):
 		writeError(w, http.StatusForbidden, codeForbidden, err.Error())
 	case errors.Is(err, dispatch.ErrConflict), errors.Is(err, sign.ErrAlreadyExported):
