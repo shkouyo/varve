@@ -161,7 +161,9 @@ func (b *LogBuffer) loop(interval time.Duration) {
 		case <-b.flushCh:
 			b.flush()
 		case <-t.C:
-			b.flush()
+			if !b.flush() {
+				b.flushHeartbeat()
+			}
 		}
 	}
 }
@@ -228,6 +230,41 @@ func (b *LogBuffer) flush() bool {
 	}
 	b.mu.Unlock()
 	return err == nil
+}
+
+// flushHeartbeat sends an empty segment carrying only a progress sample
+// when the buffer holds nothing to flush. A one-shot build that produces
+// no output would otherwise never reach the controller: no log segment
+// means no acknowledgement, so a cancellation could never arrive and the
+// server-side last_progress_at stamp would go stale (the scheduler reaps
+// tasks without progress). The empty segment is acknowledged like any
+// other (the controller appends zero bytes and answers with the
+// cancellation flag), so a silent build keeps a live cancellation
+// channel and a fresh progress stamp. Pool agents do not use this path
+// (their progress is nil): their heartbeats already carry the
+// cancellation signal.
+func (b *LogBuffer) flushHeartbeat() {
+	b.mu.Lock()
+	if b.progress == nil {
+		b.mu.Unlock()
+		return
+	}
+	progress := b.progress()
+	offset := b.offset
+	b.mu.Unlock()
+
+	ack, err := b.append(api.LogSegment{Offset: offset, Progress: progress})
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err != nil {
+		log.Printf("agent: log heartbeat (offset %d): %v", offset, err)
+		return
+	}
+	b.offset = ack.Offset
+	if ack.Cancelled {
+		b.once.Do(func() { close(b.cancel) })
+	}
 }
 
 // tailBuffer keeps the last max bytes written; it feeds failure summaries

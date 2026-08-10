@@ -178,3 +178,51 @@ func TestLateReportConflictIgnoredAfterCancel(t *testing.T) {
 		t.Fatalf("result = %+v, want cancelled (conflict ignored)", res)
 	}
 }
+
+// TestCancelSilentBuildViaHeartbeatAck is the L2 regression: a one-shot
+// build that produces no output still receives the controller
+// cancellation. The log buffer's empty heartbeat segments carry the ack
+// (no output used to mean no ack, so only the host's 30s kill could stop
+// the container); the Cancelled flag stops the build and reports
+// cancelled.
+func TestCancelSilentBuildViaHeartbeatAck(t *testing.T) {
+	record := t.TempDir() + "/signals"
+	f := &fakeClient{taskDetail: taskFor("t-1")}
+	f.cancelAfter = 1 // the first (heartbeat) ack carries Cancelled=true
+	r := runOneShotRunner(t, f)
+	// A completely silent makepkg: no stdout at all, so nothing ever
+	// reaches the byte threshold; only the interval heartbeat segments
+	// hit the controller.
+	silent := writeScript(t, fmt.Sprintf("trap 'echo TERM >> %s' TERM\nwhile :; do sleep 0.05; done", record))
+	exec := flowExec(t, r.workDir, "t-1", testSrcinfo, nil, map[string]string{
+		"makepkg -s --noconfirm": silent,
+	})
+	r.execCommand = exec.command
+	r.logThreshold = 1 << 20 // unreachable: no output to flush
+	r.logInterval = 20 * time.Millisecond
+	r.killGrace = 150 * time.Millisecond
+
+	r.executeTask(context.Background(), taskFor("t-1"), "tok")
+
+	res := f.lastResult()
+	if res == nil || res.Status != statusCancelled {
+		t.Fatalf("result = %+v, want cancelled", res)
+	}
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("read signal record: %v", err)
+	}
+	if !strings.Contains(string(data), "TERM") {
+		t.Errorf("makepkg never received SIGTERM (record=%q)", data)
+	}
+	// The cancellation travelled through an empty heartbeat segment.
+	sawEmpty := false
+	for _, seg := range f.segments {
+		if seg.Data == "" && seg.Progress != nil {
+			sawEmpty = true
+		}
+	}
+	if !sawEmpty {
+		t.Error("no empty heartbeat segment was sent to the controller")
+	}
+}

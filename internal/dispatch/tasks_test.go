@@ -230,6 +230,43 @@ func TestTaskDetailPackager(t *testing.T) {
 	}
 }
 
+// TestAppendLogEmptySegmentWithProgress covers the agent heartbeat path:
+// an empty log segment (no build output) carrying a progress sample is
+// accepted by the controller, appends zero bytes and still refreshes
+// last_progress_at, so a silent one-shot build neither stalls nor gets
+// reaped by the stalled-task scan.
+func TestAppendLogEmptySegmentWithProgress(t *testing.T) {
+	env := newTestEnv(t)
+	env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	taskID, token := env.claim(t, "w1")
+
+	env.advance(time.Minute)
+	ack, err := env.o.AppendLog(ctx(), taskID, token, LogSegment{
+		Offset: 0, // empty data: offset does not move
+		Progress: &TaskProgress{
+			TaskID:      taskID,
+			Stage:       "makepkg",
+			CPUTimeNS:   42,
+			MemoryBytes: 7,
+			At:          env.now,
+		},
+	})
+	if err != nil {
+		t.Fatalf("AppendLog: %v", err)
+	}
+	if ack.Offset != 0 {
+		t.Errorf("ack offset = %d, want 0 (no bytes appended)", ack.Offset)
+	}
+	task, err := env.store.GetTask(ctx(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !task.LastProgressAt.After(env.now.Add(-time.Minute)) {
+		t.Errorf("last_progress_at not refreshed by the empty segment: %v", task.LastProgressAt)
+	}
+}
+
 // TestAppendLogTerminalBudget covers the post-terminal log policy: the
 // task grants exactly one segment after becoming terminal (the final
 // drain of the normal flow), then rejects every further append with

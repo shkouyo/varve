@@ -389,3 +389,63 @@ func TestLogBufferResyncStillRetries(t *testing.T) {
 		t.Fatalf("retry after advancing 409 never happened")
 	}
 }
+
+// TestLogBufferHeartbeatOnEmptyInterval covers the one-shot heartbeat
+// path: a silent build (empty buffer at the interval tick) still reaches
+// the controller through an empty segment carrying a progress sample, and
+// a Cancelled acknowledgement on it closes the cancellation channel.
+func TestLogBufferHeartbeatOnEmptyInterval(t *testing.T) {
+	rec := &logRecorder{}
+	rec.acks = []api.LogAck{{Cancelled: true}}
+	prog := &api.TaskProgress{TaskID: "t-1", Stage: "makepkg", CPUTimeNS: 7}
+	b := NewLogBuffer(rec.append, 1<<20, 10*time.Millisecond, func() *api.TaskProgress { return prog })
+	defer b.Close()
+
+	select {
+	case <-b.Cancelled():
+	case <-time.After(time.Second):
+		t.Fatal("cancellation channel never closed: the heartbeat ack never arrived")
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.segments) == 0 {
+		t.Fatal("no heartbeat segment was appended")
+	}
+	seg := rec.segments[0]
+	if seg.Data != "" {
+		t.Errorf("heartbeat data = %q, want empty", seg.Data)
+	}
+	if seg.Progress == nil || seg.Progress.CPUTimeNS != 7 {
+		t.Errorf("heartbeat progress = %+v, want the sample", seg.Progress)
+	}
+}
+
+// TestLogBufferNoHeartbeatWithoutProgress asserts the heartbeat path is
+// one-shot only: a buffer without a progress function (pool agents) never
+// sends empty segments, because their heartbeats already carry the
+// cancellation signal.
+func TestLogBufferNoHeartbeatWithoutProgress(t *testing.T) {
+	rec := &logRecorder{}
+	b := NewLogBuffer(rec.append, 1<<20, 5*time.Millisecond, nil)
+	time.Sleep(40 * time.Millisecond) // several interval ticks
+	b.Close()
+	if rec.count() != 0 {
+		t.Errorf("appends = %d, want none without a progress function", rec.count())
+	}
+}
+
+// TestLogBufferHeartbeatCloseDoesNotLoop asserts an empty Close does not
+// turn the heartbeat path into an endless flush loop: the done-path drain
+// only ever sends real data segments.
+func TestLogBufferHeartbeatCloseDoesNotLoop(t *testing.T) {
+	rec := &logRecorder{}
+	prog := &api.TaskProgress{TaskID: "t-1"}
+	b := NewLogBuffer(rec.append, 1<<20, time.Hour, func() *api.TaskProgress { return prog })
+	time.Sleep(10 * time.Millisecond) // at least one tick with an empty buffer
+	b.Close()
+	for _, seg := range rec.segments {
+		if seg.Data == "" {
+			t.Errorf("done-path drain sent an empty segment: %+v", seg)
+		}
+	}
+}
