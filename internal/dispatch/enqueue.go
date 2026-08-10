@@ -99,6 +99,8 @@ func (o *OrchestratorImpl) Enqueue(ctx context.Context, c detect.Change, force b
 		Licenses:    c.Licenses,
 		Conflicts:   c.Conflicts,
 		Provides:    c.Provides,
+		Pkgname:     c.Pkgname,
+		Source:      c.Source,
 		Pkgver:      c.Pkgver,
 		Pkgrel:      c.Pkgrel,
 		Epoch:       c.Epoch,

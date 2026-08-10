@@ -19,6 +19,7 @@ package dispatch
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -73,6 +74,56 @@ func TestRebuildPackage(t *testing.T) {
 	if second == taskID {
 		t.Errorf("rebuild after success reused the finished task %s", taskID)
 	}
+}
+
+// TestRebuildPackagePreservesMetadata asserts the rebuild path carries the
+// full package metadata onto the enqueued change: the version fields
+// (pkgver/pkgrel/epoch), pkgname/source and the already-carried
+// url/licenses/... survive the enqueue upsert, and a rebuild whose build
+// later fails leaves the row intact instead of blanking the version
+// fields.
+func TestRebuildPackagePreservesMetadata(t *testing.T) {
+	env := newTestEnv(t)
+	seed := &db.Package{
+		Pkgbase: "meta", Branch: "main", VCSKind: "git", Arch: "x86_64",
+		URL: "https://example.org/meta", Licenses: []string{"MIT"}, Conflicts: []string{"meta-legacy"}, Provides: []string{"meta-lib"},
+		Pkgname: []string{"meta"}, Source: []string{"https://example.org/meta.tar.gz"},
+		Pkgver: "1.0", Pkgrel: "2", Epoch: 1,
+	}
+	if err := env.store.UpsertPackage(ctx(), seed); err != nil {
+		t.Fatalf("UpsertPackage: %v", err)
+	}
+	if err := env.o.RebuildPackage(ctx(), "meta"); err != nil {
+		t.Fatalf("RebuildPackage: %v", err)
+	}
+	taskID := env.activeTaskFor(t, "meta")
+
+	check := func(what string) {
+		t.Helper()
+		pkg, err := env.store.GetPackageByBase(ctx(), "meta")
+		if err != nil {
+			t.Fatalf("GetPackageByBase: %v", err)
+		}
+		if pkg.Pkgver != "1.0" || pkg.Pkgrel != "2" || pkg.Epoch != 1 {
+			t.Errorf("%s: version fields = %q/%q/%d, want 1.0/2/1", what, pkg.Pkgver, pkg.Pkgrel, pkg.Epoch)
+		}
+		if !reflect.DeepEqual(pkg.Pkgname, []string{"meta"}) ||
+			!reflect.DeepEqual(pkg.Source, []string{"https://example.org/meta.tar.gz"}) {
+			t.Errorf("%s: pkgname/source = %v/%v, want preserved", what, pkg.Pkgname, pkg.Source)
+		}
+		if pkg.URL != "https://example.org/meta" || !reflect.DeepEqual(pkg.Licenses, []string{"MIT"}) {
+			t.Errorf("%s: url/licenses = %q/%v, want preserved", what, pkg.URL, pkg.Licenses)
+		}
+	}
+	check("after rebuild enqueue")
+
+	// A failed rebuild must not blank the preserved metadata either.
+	if err := env.store.WithTx(ctx(), func(tx *db.Tx) error {
+		return tx.FinalizeFailed(ctx(), taskID, "test: boom", env.now.UTC(), nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize failed: %v", err)
+	}
+	check("after failed rebuild")
 }
 
 // TestRemoveWorker covers the admin node removal: active tasks block it,
