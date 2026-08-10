@@ -88,11 +88,15 @@ func (u *updater) s3RepoRemove(ctx context.Context, pkgnames []string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("s3 repo remove: create work dir %q: %w", dir, err)
 	}
-	db := u.repoDBName()
-	if err := u.downloadToWork(ctx, db, filepath.Join(dir, db)); err != nil {
+	// Download the current database archive (+ signature); the canonical
+	// <name>.db object is tried first, the <name>.db.tar.gz archive from
+	// older installs as a fallback. The work dir file keeps the archive
+	// name that repo-remove expects.
+	archive := u.repoDBArchiveName()
+	if err := u.downloadToWork(ctx, u.repoDBName(), archive, filepath.Join(dir, archive)); err != nil {
 		return err
 	}
-	if err := u.downloadToWork(ctx, db+".sig", filepath.Join(dir, db+".sig")); err != nil {
+	if err := u.downloadToWork(ctx, u.repoDBName()+".sig", archive+".sig", filepath.Join(dir, archive+".sig")); err != nil {
 		return err
 	}
 	for _, name := range pkgnames {
@@ -100,15 +104,13 @@ func (u *updater) s3RepoRemove(ctx context.Context, pkgnames []string) error {
 			return err
 		}
 	}
-	uploads := []string{db, db + ".sig", u.repoFilesDBName(), u.repoFilesDBName() + ".sig"}
-	for _, name := range uploads {
-		local := filepath.Join(dir, name)
-		if _, err := os.Stat(local); err != nil {
-			continue // not produced by repo-remove
-		}
-		if err := u.uploadFromWork(ctx, local, name); err != nil {
-			return err
-		}
+	// Upload the regenerated database and file database in both forms,
+	// mirroring s3RepoUpdate.
+	if err := u.uploadDualDB(ctx, dir, u.repoDBArchiveName(), u.repoDBName()); err != nil {
+		return err
+	}
+	if err := u.uploadDualDB(ctx, dir, u.repoFilesDBArchiveName(), u.repoFilesDBName()); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		log.Printf("repo: warning: clear work dir %q: %v", dir, err)

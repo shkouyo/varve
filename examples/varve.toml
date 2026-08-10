@@ -26,8 +26,8 @@ staging_dir = "" # staging upload directory (default "" = <root>/staging); an ab
 
 [storage.s3]
 endpoint = "https://s3.example.org" # S3-compatible endpoint URL
-bucket = "varve-repo" # S3 bucket; the repository area (packages, side files, db/files tarballs) lives under repo_prefix, the upload area under staging_prefix
-repo_prefix = "" # object-key prefix of the repository area (default "" = bucket root; e.g. "repo"); flat packages, side files and db.tar.gz/files.tar.gz live under it
+bucket = "varve-repo" # S3 bucket; the repository area (packages, side files, the <name>.db / <name>.files databases and their .tar.gz archives) lives under repo_prefix, the upload area under staging_prefix
+repo_prefix = "" # object-key prefix of the repository area (default "" = bucket root; e.g. "repo"); flat packages, side files and the <name>.db / <name>.files database objects (plus the internal .tar.gz archives) live under it
 staging_prefix = "" # object-key prefix of the staging upload area (default "" = "staging"; e.g. "uploads/tmp")
 region = "us-east-1" # S3 region
 access_key = "" # access key; overridable via VARVE_S3_ACCESS_KEY
@@ -35,7 +35,7 @@ secret_key = "" # secret key; overridable via VARVE_S3_SECRET_KEY
 path_style = true # use path-style addressing (usually required for MinIO and similar; default true)
 
 [repo]
-name = "varve" # repository name (default "varve"); produces <name>.db.tar.gz / <name>.files.tar.gz
+name = "varve" # repository name (default "varve"); produces <name>.db / <name>.files for pacman, backed by the <name>.db.tar.gz / <name>.files.tar.gz archives (local symlinks, s3 objects with identical bytes)
 work_dir = "/data/work" # repo-add working directory (default "/data/work"; used only with the S3 backend, on the controller machine)
 sign = "off" # signing mode (default "off"; "off" | "packages" | "packages+db")
 keep_versions = 1 # versions kept per package (default 1; currently only 1 = latest is supported)
