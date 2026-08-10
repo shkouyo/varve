@@ -546,3 +546,52 @@ func TestAddrArg(t *testing.T) {
 		}
 	}
 }
+
+// TestSendEachSkipsInvalidRecipient asserts the envelope-level defense: a
+// recipient that is not a valid addr-spec (here: carrying CRLF) is
+// skipped with an aggregate error and never reaches RCPT TO, while the
+// healthy recipient is still delivered on its own connection.
+func TestSendEachSkipsInvalidRecipient(t *testing.T) {
+	srv := newTestSMTP(t, false, nil)
+	m := testMailer(config.MailConfig{
+		Enabled: true, Host: srv.host(), Port: srv.port(),
+		From: "varve@example.org", TLS: "none",
+	}, nil)
+
+	err := m.SendFailure(context.Background(), []string{
+		"who@example.org",
+		"evil@example.org\r\nRCPT TO:<pwned@example.org>",
+	}, testInfo())
+	if err == nil {
+		t.Fatal("SendFailure with an invalid recipient: want an aggregate error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid recipient") {
+		t.Errorf("error = %v, want the invalid-recipient note", err)
+	}
+	msgs := srv.waitMessages(t, 1)
+	if got := msgs[0].rcpts; len(got) != 1 || got[0] != "who@example.org" {
+		t.Errorf("RCPT TO = %v, want only [who@example.org]", got)
+	}
+	for _, m := range srv.messages() {
+		if strings.Contains(strings.Join(m.rcpts, ","), "evil") {
+			t.Errorf("the malicious recipient reached the wire: %v", m.rcpts)
+		}
+	}
+}
+
+// TestSendInvalidFrom asserts a From address that is not a bare addr-spec
+// fails the send before any MAIL FROM is issued.
+func TestSendInvalidFrom(t *testing.T) {
+	srv := newTestSMTP(t, false, nil)
+	m := testMailer(config.MailConfig{
+		Enabled: true, Host: srv.host(), Port: srv.port(),
+		From: "Varve <varve@example.org>", TLS: "none",
+	}, nil)
+	err := m.send(context.Background(), "who@example.org", []byte(testMessage))
+	if err == nil || !strings.Contains(err.Error(), "From") {
+		t.Errorf("send with display-name From = %v, want an invalid-From error", err)
+	}
+	if got := len(srv.messages()); got != 0 {
+		t.Errorf("message queued despite invalid From: %d", got)
+	}
+}

@@ -26,6 +26,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/mail"
+	"strings"
 
 	"git.0x0f.dev/varve/internal/config"
 )
@@ -95,9 +97,28 @@ func (m *Mailer) SendAURFailure(ctx context.Context, to []string, info AURPushIn
 	})
 }
 
+// validRecipient reports whether addr is a bare RFC 5322 addr-spec: no
+// surrounding whitespace, no control characters, and the whole input
+// must be exactly the parsed address (display-name and comment forms
+// are rejected because the SMTP envelope needs the naked address).
+func validRecipient(addr string) bool {
+	if addr == "" || strings.TrimSpace(addr) != addr {
+		return false
+	}
+	if strings.ContainsFunc(addr, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return false
+	}
+	a, err := mail.ParseAddress(addr)
+	return err == nil && a.Address == addr
+}
+
 // sendEach delivers one message per recipient over its own SMTP
 // connection. It is a no-op when mail is disabled or no recipients are
-// given; send failures are aggregated into the returned error.
+// given; send failures are aggregated into the returned error. A
+// recipient that is not a valid addr-spec is skipped with an aggregate
+// error of its own, so one malformed maintainer address (a dotfile
+// input) can neither kill the other notifications nor inject SMTP
+// commands or headers.
 func (m *Mailer) sendEach(ctx context.Context, to []string, build func(rcpt string) []byte) error {
 	if m == nil || m.cfg == nil || !m.cfg.Enabled || len(to) == 0 {
 		return nil
@@ -105,6 +126,10 @@ func (m *Mailer) sendEach(ctx context.Context, to []string, build func(rcpt stri
 	var errs []error
 	for _, rcpt := range to {
 		if rcpt == "" {
+			continue
+		}
+		if !validRecipient(rcpt) {
+			errs = append(errs, fmt.Errorf("mail: invalid recipient %q skipped", rcpt))
 			continue
 		}
 		if err := ctx.Err(); err != nil {

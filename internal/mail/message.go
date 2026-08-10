@@ -36,7 +36,7 @@ func (m *Mailer) buildMessage(info FailureInfo, to []string) []byte {
 	var b strings.Builder
 	b.Grow(512)
 	fmt.Fprintf(&b, "From: %s%s", m.cfg.From, crlf)
-	fmt.Fprintf(&b, "To: %s%s", strings.Join(to, ", "), crlf)
+	fmt.Fprintf(&b, "To: %s%s", toHeader(to), crlf)
 	fmt.Fprintf(&b, "Date: %s%s", time.Now().Format(time.RFC1123Z), crlf)
 	fmt.Fprintf(&b, "Message-ID: %s%s", newMessageID(m.cfg.From), crlf)
 	fmt.Fprintf(&b, "Subject: %s%s", encodeSubject(info), crlf)
@@ -67,7 +67,7 @@ func (m *Mailer) buildAURMessage(info AURPushInfo, to []string) []byte {
 	var b strings.Builder
 	b.Grow(512)
 	fmt.Fprintf(&b, "From: %s%s", m.cfg.From, crlf)
-	fmt.Fprintf(&b, "To: %s%s", strings.Join(to, ", "), crlf)
+	fmt.Fprintf(&b, "To: %s%s", toHeader(to), crlf)
 	fmt.Fprintf(&b, "Date: %s%s", time.Now().Format(time.RFC1123Z), crlf)
 	fmt.Fprintf(&b, "Message-ID: %s%s", newMessageID(m.cfg.From), crlf)
 	fmt.Fprintf(&b, "Subject: %s%s", encodeAURSubject(info), crlf)
@@ -134,13 +134,29 @@ func newMessageID(from string) string {
 	return fmt.Sprintf("<%s.%d@%s>", hex.EncodeToString(b[:]), time.Now().UnixNano(), domain)
 }
 
-// sanitize strips line breaks from header/body fields so that untrusted
-// metadata cannot inject headers or corrupt the plain-text layout.
+// toHeader renders the To header value, running every recipient through
+// sanitize so a malformed address cannot inject header lines.
+func toHeader(to []string) string {
+	out := make([]string, len(to))
+	for i, r := range to {
+		out[i] = sanitize(r)
+	}
+	return strings.Join(out, ", ")
+}
+
+// sanitize strips control characters from header/body fields so that
+// untrusted metadata cannot inject headers or corrupt the plain-text
+// layout: CR and LF are replaced by a space (the field survives, folded
+// into one line), all other C0 controls are dropped.
 func sanitize(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '\r' || r == '\n' {
+		switch {
+		case r == '\r' || r == '\n':
 			return ' '
+		case r < 0x20:
+			return -1
+		default:
+			return r
 		}
-		return r
 	}, s)
 }

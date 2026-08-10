@@ -44,6 +44,11 @@ func (m *Mailer) send(ctx context.Context, rcpt string, msg []byte) error {
 			return fmt.Errorf("mail: auth: %w", err)
 		}
 	}
+	// The From address is admin configuration, but it lands in the MAIL
+	// FROM command verbatim: refuse a value that could smuggle commands.
+	if !validRecipient(m.cfg.From) {
+		return fmt.Errorf("mail: invalid From address %q", m.cfg.From)
+	}
 	if err := client.Mail(m.cfg.From); err != nil {
 		return fmt.Errorf("mail: MAIL FROM: %w", err)
 	}

@@ -287,3 +287,84 @@ func TestBuildAURMessageSanitize(t *testing.T) {
 		t.Error("sanitized content missing from the body")
 	}
 }
+
+// TestValidRecipient covers the bare addr-spec rule: plain and plus-
+// tagged addresses pass; whitespace, control characters, display-name
+// forms and unparseable strings are rejected.
+func TestValidRecipient(t *testing.T) {
+	valid := []string{
+		"a@b.c",
+		"a+b@example.org",
+		"user@sub.example.org",
+	}
+	for _, s := range valid {
+		if !validRecipient(s) {
+			t.Errorf("validRecipient(%q) = false, want true", s)
+		}
+	}
+	invalid := []string{
+		"",
+		"a@b c",
+		"a\r\nb@c",
+		"a\nb@c",
+		"<script>@x",
+		"Name <a@b>",
+		" a@b.c",
+		"a@b.c ",
+		"a\x00b@c",
+	}
+	for _, s := range invalid {
+		if validRecipient(s) {
+			t.Errorf("validRecipient(%q) = true, want false", s)
+		}
+	}
+}
+
+// TestToHeaderInjection asserts a recipient carrying CR/LF cannot inject
+// header lines into the To header of either message shape.
+func TestToHeaderInjection(t *testing.T) {
+	m := testMailer(config.MailConfig{From: "varve@example.org"}, nil)
+	payloads := []string{
+		"good@example.org\r\nBcc: evil@example.org",
+		"good@example.org\nCc: evil@example.org",
+		"good@example.org\x00X-Evil: 1",
+	}
+	for _, payload := range payloads {
+		msg := string(m.buildMessage(testInfo(), []string{payload, "real@example.org"}))
+		headers, _ := splitMessage(msg)
+		for _, name := range []string{"Bcc", "Cc", "X-Evil"} {
+			if v := headerValue(headers, name); v != "" {
+				t.Errorf("payload %q injected header %s: %q", payload, name, v)
+			}
+		}
+		if strings.ContainsAny(headers, "\r\n") && strings.Contains(headerBlock(headers, "To"), "\r\n") {
+			// A folded To block is legitimate; raw line breaks inside the
+			// value are not. headerValue strips nothing, so check the To
+			// value contains no bare CR/LF byte.
+			to := headerValue(headers, "To")
+			if strings.Contains(to, "\r") || strings.Contains(to, "\n") {
+				t.Errorf("payload %q left a raw line break in the To value: %q", payload, to)
+			}
+		}
+	}
+
+	aur := string(m.buildAURMessage(AURPushInfo{Pkgbase: "foo", Branch: "main"}, []string{"good@example.org\r\nBcc: evil@example.org"}))
+	headers, _ := splitMessage(aur)
+	if v := headerValue(headers, "Bcc"); v != "" {
+		t.Errorf("AUR message: Bcc header injected: %q", v)
+	}
+}
+
+// TestSanitizeC0 asserts the extended control-character handling: CR/LF
+// become spaces, other C0 controls are dropped.
+func TestSanitizeC0(t *testing.T) {
+	if got := sanitize("a\rb\nc"); got != "a b c" {
+		t.Errorf("sanitize CR/LF = %q, want %q", got, "a b c")
+	}
+	if got := sanitize("a\x00b\x1bc"); got != "abc" {
+		t.Errorf("sanitize C0 = %q, want %q", got, "abc")
+	}
+	if got := sanitize("\x07\x1b\x00"); got != "" {
+		t.Errorf("sanitize all-C0 = %q, want empty", got)
+	}
+}
