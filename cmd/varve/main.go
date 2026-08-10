@@ -36,12 +36,22 @@ import (
 	"os"
 )
 
+// version is the controller version reported by --version. Keep it in
+// sync with the worker binaries' version constants.
+const version = "0.1.0"
+
+// usage is the controller usage line, shared by the -h/--help output and
+// the usage errors.
+const usage = "usage: varve [serve] [--config <path>] | varve rebuild-index [--config <path>]"
+
 // main runs the controller and exits non-zero on any startup or fatal
 // runtime error, so that containers and process supervisors observe the
 // failure.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "varve: %v\n", err)
+		// cmd-layer errors carry their own "varve:" prefix; printing a
+		// second one here would produce "varve: varve: ...".
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
@@ -63,8 +73,14 @@ func run(args []string) error {
 		return runRebuildIndex(args[1:])
 	case "--config":
 		return runServe(args)
+	case "-h", "--help":
+		fmt.Println(usage)
+		return nil
+	case "--version":
+		fmt.Println("varve " + version)
+		return nil
 	default:
-		return fmt.Errorf("varve: unknown subcommand %q (usage: varve [serve] [--config <path>] | varve rebuild-index [--config <path>])", args[0])
+		return fmt.Errorf("varve: unknown subcommand %q (%s)", args[0], usage)
 	}
 }
 
@@ -80,5 +96,5 @@ func configPath(args []string) (string, error) {
 			return args[1], nil
 		}
 	}
-	return "", fmt.Errorf("varve: unexpected arguments %v (usage: varve [serve] [--config <path>] | varve rebuild-index [--config <path>])", args)
+	return "", fmt.Errorf("varve: unexpected arguments %v (%s)", args, usage)
 }

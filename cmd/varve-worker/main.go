@@ -35,7 +35,9 @@ import (
 // the failure.
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "varve-worker: %v\n", err)
+		// cmd-layer errors carry their own "varve-worker:" prefix; a
+		// second one here would produce "varve-worker: varve-worker: ...".
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }

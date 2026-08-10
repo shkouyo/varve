@@ -428,6 +428,40 @@ func TestRunServeSignerWiring(t *testing.T) {
 	})
 }
 
+// TestRunHelpAndVersion covers the -h/--help/--version flags: they print
+// the usage line or the version and exit nil instead of being rejected
+// as unknown subcommands.
+func TestRunHelpAndVersion(t *testing.T) {
+	for _, args := range [][]string{{"-h"}, {"--help"}} {
+		if err := run(args); err != nil {
+			t.Errorf("run(%v) = %v, want nil", args, err)
+		}
+	}
+	if err := run([]string{"--version"}); err != nil {
+		t.Errorf("run([--version]) = %v, want nil", err)
+	}
+}
+
+// TestErrorOutputSinglePrefix pins the error output contract: cmd-layer
+// errors already carry the "varve:" prefix, so the text must never start
+// with a doubled one ("varve: varve: ...").
+func TestErrorOutputSinglePrefix(t *testing.T) {
+	for _, err := range []error{
+		run([]string{"bogus"}),
+		runServe([]string{"--config"}),
+	} {
+		if err == nil {
+			t.Fatal("expected a command-line error, got nil")
+		}
+		if strings.HasPrefix(err.Error(), "varve: varve:") {
+			t.Errorf("doubled prefix in %q", err)
+		}
+		if !strings.HasPrefix(err.Error(), "varve: ") {
+			t.Errorf("missing single prefix in %q", err)
+		}
+	}
+}
+
 // TestRunDispatch covers the command-line dispatch: the rebuild-index
 // subcommand runs through the real config/db/storage stack, and unknown
 // subcommands are rejected.
