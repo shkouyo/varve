@@ -46,13 +46,14 @@ func (r *Runner) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	workers := effectiveConcurrency(r.cfg)
 	var loops sync.WaitGroup
-	loops.Add(1 + r.cfg.Concurrency)
+	loops.Add(1 + workers)
 	go func() {
 		defer loops.Done()
 		r.heartbeatLoop(runCtx)
 	}()
-	for i := 0; i < r.cfg.Concurrency; i++ {
+	for i := 0; i < workers; i++ {
 		go func() {
 			defer loops.Done()
 			r.pollWorker(runCtx)

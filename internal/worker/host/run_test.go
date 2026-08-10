@@ -20,6 +20,7 @@ package host
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -180,4 +181,45 @@ func TestRunShutdownDrainsHungContainer(t *testing.T) {
 		t.Errorf("kills = %v, want the drain cap to force-kill the container", rt.kills)
 	}
 	close(rt.blocked) // release the stray Wait goroutine
+}
+
+// TestRunConcurrencyZeroStillPolls asserts a node configured with
+// Concurrency=0 or negative (a misconfiguration) still runs one poll
+// worker and registers capacity 1 instead of silently idling forever
+// with a node that can never claim a task.
+func TestRunConcurrencyZeroStillPolls(t *testing.T) {
+	for _, conc := range []int{0, -1} {
+		t.Run("concurrency "+fmt.Sprint(conc), func(t *testing.T) {
+			cfg := testCfg()
+			cfg.Concurrency = conc
+			c := newFakeClient()
+			rt := newFakeRuntime()
+			r := testRunner(t, cfg, c, rt)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- r.Run(ctx) }()
+
+			// Registration carries the clamped capacity.
+			waitFor(t, 3*time.Second, func() bool { return c.registerCount() >= 1 })
+			if got := c.registerCall(0).Capacity; got != 1 {
+				t.Errorf("registered capacity = %d, want 1", got)
+			}
+			// A poll worker is alive: the poll count keeps growing.
+			waitFor(t, 3*time.Second, func() bool { return c.pollCount() >= 2 })
+			if cap(r.slots) != 1 {
+				t.Errorf("slots capacity = %d, want 1", cap(r.slots))
+			}
+
+			cancel()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Errorf("Run: %v, want nil", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("Run did not return")
+			}
+		})
+	}
 }

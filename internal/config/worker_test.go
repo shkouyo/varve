@@ -267,6 +267,26 @@ func TestLoadWorkerErrors(t *testing.T) {
 			want: "VARVE_WORKER_CONCURRENCY",
 		},
 		{
+			name: "host zero concurrency",
+			env: map[string]string{
+				"VARVE_CONTROLLER_URL":     "https://c",
+				"VARVE_TOKEN":              "tok",
+				"VARVE_WORKER_IMAGE":       "img",
+				"VARVE_WORKER_CONCURRENCY": "0",
+			},
+			want: "VARVE_WORKER_CONCURRENCY",
+		},
+		{
+			name: "host negative concurrency",
+			env: map[string]string{
+				"VARVE_CONTROLLER_URL":     "https://c",
+				"VARVE_TOKEN":              "tok",
+				"VARVE_WORKER_IMAGE":       "img",
+				"VARVE_WORKER_CONCURRENCY": "-1",
+			},
+			want: "VARVE_WORKER_CONCURRENCY",
+		},
+		{
 			name: "invalid pull image",
 			env: map[string]string{
 				"VARVE_CONTROLLER_URL": "https://c",

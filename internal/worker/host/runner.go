@@ -146,19 +146,26 @@ func NewRunner(cfg *config.WorkerConfig, client client) (*Runner, error) {
 	return newRunner(cfg, client, &containerRuntime{bin: bin}, name, cfg.DataDir), nil
 }
 
+// effectiveConcurrency returns the number of poll workers and capacity
+// slots for the node: at least one. A zero or negative configured
+// Concurrency would register a node that can never claim a task (no poll
+// workers, capacity 0) and silently idle forever.
+func effectiveConcurrency(cfg *config.WorkerConfig) int {
+	if cfg.Concurrency < 1 {
+		return 1
+	}
+	return cfg.Concurrency
+}
+
 // newRunner is the fully-wired constructor used by NewRunner and tests.
 func newRunner(cfg *config.WorkerConfig, client client, rt runtime, name, dataDir string) *Runner {
-	cap := cfg.Concurrency
-	if cap < 1 {
-		cap = 1
-	}
 	return &Runner{
 		cfg:                cfg,
 		client:             client,
 		rt:                 rt,
 		name:               name,
 		dataDir:            dataDir,
-		slots:              make(chan struct{}, cap),
+		slots:              make(chan struct{}, effectiveConcurrency(cfg)),
 		metrics:            newMetricsReader("/proc", dataDir),
 		now:                time.Now,
 		containers:         make(map[string]*containerRun),
@@ -198,7 +205,7 @@ func (r *Runner) registerReq() api.RegisterReq {
 		Role:     "host",
 		Mode:     "host",
 		Arch:     r.cfg.WorkerArch,
-		Capacity: r.cfg.Concurrency,
+		Capacity: effectiveConcurrency(r.cfg),
 		Version:  version,
 	}
 }

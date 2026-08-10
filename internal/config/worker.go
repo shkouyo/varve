@@ -129,6 +129,9 @@ func validateWorker(c *WorkerConfig) error {
 		if c.Image == "" {
 			return errors.New("config: VARVE_WORKER_IMAGE is required for role \"host\"")
 		}
+		if c.Concurrency < 1 {
+			return errors.New("config: VARVE_WORKER_CONCURRENCY must be at least 1 for role \"host\"")
+		}
 	}
 	if c.Role == "agent" {
 		if c.OneShot {
