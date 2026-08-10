@@ -73,12 +73,11 @@ func humanSize(n int64) string {
 	}
 }
 
-// absTime renders an optional timestamp as local wall-clock time with
-// second precision.
+// absTime renders a timestamp as local wall-clock time with second
+// precision. Templates call it only after a {{if .StartedAt}}-style nil
+// guard and render a "·" placeholder otherwise (aria-hidden, screen
+// reader friendly), so the nil case is unreachable from templates.
 func absTime(t *time.Time) string {
-	if t == nil {
-		return "never"
-	}
 	return t.Local().Format("2006-01-02 15:04:05")
 }
 

@@ -400,3 +400,28 @@ func TestResourceViews(t *testing.T) {
 		t.Error("oldest sample must not carry the disk row")
 	}
 }
+
+// TestBuildBadgeSingleSource pins the queued and running pills to their
+// single source (buildBadge): the running pill keeps its spinner markup
+// exactly once and every status renders its label.
+func TestBuildBadgeSingleSource(t *testing.T) {
+	store := newTestDB(t)
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(""))
+	for _, status := range []string{"queued", "running"} {
+		// A fresh package per status: non-terminal builds claim a task,
+		// and one package cannot hold two open tasks.
+		pkg := seedPackage(t, store, "demo-"+status, "A demo package")
+		build := seedBuild(t, store, pkg, status, nil, nil)
+		body := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID), nil).Body.String()
+		if !strings.Contains(body, ">"+status+"</span>") {
+			t.Errorf("page misses the %s status pill", status)
+		}
+		spins := strings.Count(body, `class="h-3.5 w-3.5 animate-spin"`)
+		if status == "running" && spins != 1 {
+			t.Errorf("running pill spinner occurrences = %d, want exactly 1", spins)
+		}
+		if status == "queued" && spins != 0 {
+			t.Errorf("queued pill must not carry the spinner, got %d", spins)
+		}
+	}
+}

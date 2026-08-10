@@ -48,11 +48,13 @@ func buildBadge(status string) template.HTML {
 	case "cancelled":
 		cls, icon = "bg-neutral-200 text-neutral-800", "M18 12H6"
 	case "queued":
-		cls, icon = "bg-amber-100 text-amber-900", "M12 6v6l4 2"
+		// Verbatim markup (single source of truth for the queued and
+		// running pills; the running spinner animation lives here).
+		return template.HTML(`<span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>queued</span>`)
 	case "assigned":
 		cls, icon = "bg-indigo-100 text-indigo-900", "M12 6v6l4 2"
 	case "running":
-		cls, icon = "bg-teal-100 text-teal-900", "M12 6v6l4 2"
+		return template.HTML(`<span class="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-900"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>running</span>`)
 	}
 	return template.HTML(`<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ` +
 		cls + `"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true" focusable="false"><path d="` +

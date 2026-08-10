@@ -93,13 +93,12 @@ func TestQueueWait(t *testing.T) {
 	}
 }
 
-// TestAbsTime pins the site-wide absolute timestamp layout: nil renders
-// "never", and a fixed instant renders as local wall-clock time with
-// second precision ("2006-01-02 15:04:05"), the unified site format.
+// TestAbsTime pins the site-wide absolute timestamp layout: a fixed
+// instant renders as local wall-clock time with second precision
+// ("2006-01-02 15:04:05"), the unified site format. Templates guard nil
+// timestamps with {{if}} and render a "·" placeholder, so the nil case
+// is unreachable.
 func TestAbsTime(t *testing.T) {
-	if got := absTime(nil); got != "never" {
-		t.Errorf("absTime(nil) = %q, want \"never\"", got)
-	}
 	when := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 	got := absTime(&when)
 	want := when.Local().Format("2006-01-02 15:04:05")
