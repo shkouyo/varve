@@ -115,7 +115,7 @@ var (
 		}
 		go func() {
 			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				errCh <- err
+				errCh <- fmt.Errorf("%s: %w", addr, err)
 			}
 		}()
 		return srv, nil
@@ -254,17 +254,12 @@ func runServe(args []string) error {
 	serveErr := make(chan error, 2)
 	apiSrv, err := startServer(cfg.Server.APIPort, apiHandler, serveErr)
 	if err != nil {
-		orch.Stop()
-		detCancel()
-		<-detDone
+		shutdown(orch, detCancel, detDone, false)
 		return fmt.Errorf("varve: api server on %s: %w", cfg.Server.APIPort, err)
 	}
 	webSrv, err := startServer(cfg.Server.WebPort, webHandler, serveErr)
 	if err != nil {
-		orch.Stop()
-		detCancel()
-		<-detDone
-		closeQuiet(apiSrv)
+		shutdown(orch, detCancel, detDone, false, apiSrv)
 		return fmt.Errorf("varve: web server on %s: %w", cfg.Server.WebPort, err)
 	}
 
@@ -273,19 +268,13 @@ func runServe(args []string) error {
 	go func() { signalErr <- waitSignal(sigCh) }()
 	select {
 	case serr := <-serveErr:
-		orch.Stop()
-		detCancel()
-		<-detDone
-		closeQuiet(apiSrv)
-		closeQuiet(webSrv)
+		shutdown(orch, detCancel, detDone, false, apiSrv, webSrv)
 		return fmt.Errorf("varve: http server: %w", serr)
 	case err := <-signalErr:
+		// waitSignal always returns nil in production; the error branch
+		// exists for the test injection seam.
 		if err != nil {
-			orch.Stop()
-			detCancel()
-			<-detDone
-			closeQuiet(apiSrv)
-			closeQuiet(webSrv)
+			shutdown(orch, detCancel, detDone, false, apiSrv, webSrv)
 			return err
 		}
 	}
@@ -307,10 +296,7 @@ func runServe(args []string) error {
 	// the process forever.
 	done := make(chan error, 1)
 	go func() {
-		orch.Stop()
-		detCancel()
-		<-detDone
-		done <- errors.Join(shutdownServer(apiSrv), shutdownServer(webSrv))
+		done <- shutdown(orch, detCancel, detDone, true, apiSrv, webSrv)
 	}()
 	select {
 	case err := <-done:
@@ -347,11 +333,27 @@ func openStorage(cfg *config.StorageConfig) (storage.Backend, error) {
 	return storage.OpenLocal(cfg.Local.Root, cfg.Local.StagingDir)
 }
 
-// closeQuiet closes a server during error-unwind paths, where the primary
-// serve failure is the report. Close errors are best-effort there.
-func closeQuiet(s httpServer) {
-	if s == nil {
-		return
+// shutdown stops the orchestrator, cancels detection, waits for the
+// detector to observe the cancellation and then closes the given HTTP
+// servers (nil skipped) in order. drain selects a graceful drain
+// (Shutdown within the shutdownTimeout budget) for the normal path or an
+// immediate Close for error unwinds, where the primary serve failure is
+// the report and close errors are best-effort. The order matches the
+// mandated shutdown sequence; tests assert it via the recorders.
+func shutdown(orch orchestrator, detCancel context.CancelFunc, detDone <-chan struct{}, drain bool, servers ...httpServer) error {
+	orch.Stop()
+	detCancel()
+	<-detDone
+	var errs []error
+	for _, s := range servers {
+		if s == nil {
+			continue
+		}
+		if drain {
+			errs = append(errs, shutdownServer(s))
+		} else {
+			errs = append(errs, s.Close())
+		}
 	}
-	_ = s.Close() // best-effort during error unwind
+	return errors.Join(errs...)
 }

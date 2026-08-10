@@ -462,6 +462,64 @@ func TestErrorOutputSinglePrefix(t *testing.T) {
 	}
 }
 
+// TestRunServeServeErrorCarriesPort covers the serveErr path: a fatal
+// server error from one port returns an error naming that port, after
+// the standard shutdown order.
+func TestRunServeServeErrorCarriesPort(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeControllerConfig(t, dir, "off", "")
+
+	rec := newRecorder()
+	replaceVar(t, &newOrchestrator, func(cfg *config.ControllerConfig, store *db.Store, backend storage.Backend,
+		signer signerSurface, updater repo.Updater, notifier mail.Notifier, logs *dispatch.Logs) orchestrator {
+		rec.record("orch.New")
+		return &fakeOrchestrator{rec: rec}
+	})
+	replaceVar(t, &newDetector, func(cfg *config.SourceConfig, store *db.Store, sink detect.Sink, cooldown time.Duration) (detector, error) {
+		rec.record("detect.New")
+		return &fakeDetector{rec: rec}, nil
+	})
+	replaceVar(t, &startServer, func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {
+		rec.record("server.start:" + addr)
+		if addr == testWebPort {
+			// A fatal runtime error on the web port after both
+			// servers are up. The production startServer tags the
+			// error with its address; the recorder mirrors that.
+			errCh <- fmt.Errorf("%s: %w", addr, errors.New("boom"))
+		}
+		return &fakeServer{rec: rec, name: addr}, nil
+	})
+	replaceVar(t, &waitSignal, func(<-chan os.Signal) error { return nil })
+
+	err := runServe([]string{"--config", cfgPath})
+	if err == nil {
+		t.Fatal("runServe must fail on a fatal serve error")
+	}
+	if !strings.Contains(err.Error(), testWebPort) {
+		t.Errorf("error = %q, want the failing port %s named", err, testWebPort)
+	}
+	got := rec.snapshot()
+	want := []string{
+		"orch.New",
+		"orch.ValidateConflicts",
+		"detect.New",
+		"server.start:" + testAPIPort,
+		"server.start:" + testWebPort,
+		"orch.Stop",
+		"detect.stopped",
+		"close:" + testAPIPort,
+		"close:" + testWebPort,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("events = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("event[%d] = %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 // TestRunDispatch covers the command-line dispatch: the rebuild-index
 // subcommand runs through the real config/db/storage stack, and unknown
 // subcommands are rejected.
