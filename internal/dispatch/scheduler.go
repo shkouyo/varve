@@ -163,8 +163,10 @@ func (o *OrchestratorImpl) hourlyMaintenance(ctx context.Context) error {
 }
 
 // sweepLogs deletes logs of succeeded builds that exceed the retention
-// window or the max_builds cap (newest kept); failed/cancelled logs are
-// permanent. Deletion is by build id; missing logs are tolerated.
+// window or the max_builds cap (newest kept), and trims each package's
+// succeeded logs to the newest keep_successful ones (0 disables the
+// per-package trim); failed/cancelled logs are permanent. Deletion is
+// by build id; missing logs are tolerated.
 func (o *OrchestratorImpl) sweepLogs(ctx context.Context) {
 	if o.logs == nil {
 		return
@@ -176,14 +178,17 @@ func (o *OrchestratorImpl) sweepLogs(ctx context.Context) {
 	}
 	now := o.now().UTC()
 	kept := 0
+	perPkg := make(map[int64]int)
 	for _, b := range all { // newest first
 		if b.Status != "succeeded" || b.FinishedAt == nil {
 			continue
 		}
 		kept++
+		perPkg[b.PackageID]++
 		tooOld := now.Sub(*b.FinishedAt) > o.cfg.Logs.Retention
 		tooMany := kept > o.cfg.Logs.MaxBuilds
-		if tooOld || tooMany {
+		tooManyForPkg := o.cfg.Logs.KeepSuccessful > 0 && perPkg[b.PackageID] > o.cfg.Logs.KeepSuccessful
+		if tooOld || tooMany || tooManyForPkg {
 			if err := o.logs.Delete(b.ID); err != nil {
 				log.Printf("dispatch: log sweep: delete build %s: %v", b.ID, err)
 			}

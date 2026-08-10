@@ -209,9 +209,10 @@ type rawAdmin struct {
 }
 
 type rawLogs struct {
-	Dir       string       `toml:"dir"`
-	Retention tomlDuration `toml:"retention"`
-	MaxBuilds int          `toml:"max_builds"`
+	Dir            string       `toml:"dir"`
+	Retention      tomlDuration `toml:"retention"`
+	MaxBuilds      int          `toml:"max_builds"`
+	KeepSuccessful int          `toml:"keep_successful"`
 }
 
 // rawAUR mirrors the [aur] section: the AUR SSH endpoint plus the private
@@ -269,9 +270,10 @@ func defaultRawConfig() rawConfig {
 			RecentBuilds:    20,
 		},
 		Logs: rawLogs{
-			Dir:       "/data/logs",
-			Retention: tomlDuration(90 * 24 * time.Hour),
-			MaxBuilds: 1000,
+			Dir:            "/data/logs",
+			Retention:      tomlDuration(90 * 24 * time.Hour),
+			MaxBuilds:      1000,
+			KeepSuccessful: 1,
 		},
 		AUR: rawAUR{
 			Server: "aur.archlinux.org",
@@ -445,9 +447,10 @@ func (r *rawConfig) export() *ControllerConfig {
 			Admins:          exportAdmins(r.Web.Admins),
 		},
 		Logs: LogsConfig{
-			Dir:       r.Logs.Dir,
-			Retention: time.Duration(r.Logs.Retention),
-			MaxBuilds: r.Logs.MaxBuilds,
+			Dir:            r.Logs.Dir,
+			Retention:      time.Duration(r.Logs.Retention),
+			MaxBuilds:      r.Logs.MaxBuilds,
+			KeepSuccessful: r.Logs.KeepSuccessful,
 		},
 		AUR: AURConfig{
 			Server:  r.AUR.Server,

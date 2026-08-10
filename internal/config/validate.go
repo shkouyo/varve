@@ -113,6 +113,9 @@ func validate(c *ControllerConfig) error {
 	if c.Logs.Dir == "" {
 		return errors.New("logs.dir: must not be empty")
 	}
+	if c.Logs.KeepSuccessful < 0 {
+		return fmt.Errorf("logs.keep_successful: must not be negative, got %d", c.Logs.KeepSuccessful)
+	}
 	// AUR publishing is enabled by an SSH key; the endpoint fields are
 	// required then (they have defaults, so only an explicit empty value
 	// trips this). With an empty key_file the whole section is inert.

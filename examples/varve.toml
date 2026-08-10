@@ -100,4 +100,5 @@ password = "change-me" # account password (required); written directly in this f
 dir = "/data/logs" # build log directory (default "/data/logs")
 retention = "90d" # retention of successful build logs (default "90d"; rolling)
 max_builds = 1000 # maximum number of successful logs kept (default 1000; rolling)
+keep_successful = 1 # successful logs kept per package, newest N (default 1); 0 disables the per-package trim
 # Failed build logs are kept forever, regardless of the settings above.

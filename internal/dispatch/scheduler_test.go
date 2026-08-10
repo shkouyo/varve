@@ -266,6 +266,84 @@ func TestSweepLogs(t *testing.T) {
 	}
 }
 
+// TestSweepLogsKeepSuccessful covers the per-package trim: with
+// keep_successful = 1 only the newest succeeded log of a package
+// survives the sweep, keep_successful = 0 disables the trim entirely,
+// and failed logs are never touched by it.
+func TestSweepLogsKeepSuccessful(t *testing.T) {
+	env := newTestEnv(t)
+	env.cfg.Logs.KeepSuccessful = 1
+	artifacts := testArtifacts("foo", "1.0-1")
+	env.registerWorker(t, "w1", "host", "host", 1)
+
+	// buildSucceeded runs one full successful cycle for the package and
+	// returns the build id with its log appended. The clock advances
+	// past the poll interval first so the round-set dedupe of the name
+	// conflict check lets the same pkgbase enqueue again.
+	buildSucceeded := func() string {
+		env.advance(env.cfg.Source.PollInterval + time.Minute)
+		taskID := env.enqueue(t, "foo", "foo")
+		for _, a := range artifacts {
+			env.stage(t, taskID, a.File)
+		}
+		claimed, token := env.claim(t, "w1")
+		if err := env.reportSucceeded(t, claimed, token, artifacts, ""); err != nil {
+			t.Fatalf("report succeeded: %v", err)
+		}
+		row, err := env.store.GetTask(context.Background(), claimed)
+		if err != nil {
+			t.Fatalf("GetTask: %v", err)
+		}
+		if err := env.logs.Append(row.BuildID, []byte("log "+row.BuildID)); err != nil {
+			t.Fatalf("append log: %v", err)
+		}
+		return row.BuildID
+	}
+
+	first := buildSucceeded()
+	second := buildSucceeded()
+	third := buildSucceeded()
+
+	// A failed build of the same package: its log must survive the trim.
+	env.advance(env.cfg.Source.PollInterval + time.Minute)
+	env.enqueue(t, "foo", "foo")
+	failClaimed, failToken := env.claim(t, "w1")
+	if err := env.o.ReportResult(context.Background(), failClaimed, failToken,
+		ResultReq{Status: "failed", Error: &ResultError{Stage: "makepkg", Summary: "boom"}}); err != nil {
+		t.Fatalf("report failed: %v", err)
+	}
+	failRow, _ := env.store.GetTask(context.Background(), failClaimed)
+	if err := env.logs.Append(failRow.BuildID, []byte("failed log")); err != nil {
+		t.Fatalf("append failed log: %v", err)
+	}
+
+	env.o.sweepLogs(context.Background())
+
+	// Newest succeeded log kept, the two older ones trimmed.
+	if _, err := env.logs.Read(third); err != nil {
+		t.Errorf("newest succeeded log deleted: %v", err)
+	}
+	for _, id := range []string{first, second} {
+		if _, err := env.logs.Read(id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("older succeeded log %s not trimmed: %v", id, err)
+		}
+	}
+	if _, err := env.logs.Read(failRow.BuildID); err != nil {
+		t.Errorf("failed log trimmed: %v", err)
+	}
+
+	// keep_successful = 0 disables the per-package trim entirely.
+	env.cfg.Logs.KeepSuccessful = 0
+	keepOne := buildSucceeded()
+	keepTwo := buildSucceeded()
+	env.o.sweepLogs(context.Background())
+	for _, id := range []string{keepOne, keepTwo} {
+		if _, err := env.logs.Read(id); err != nil {
+			t.Errorf("log trimmed with keep_successful = 0: %v", err)
+		}
+	}
+}
+
 // TestSweepWorkers covers the worker sweep: agents offline for more than
 // 24h are deleted, hosts never are, and disabled nodes are left alone.
 // Offline marking itself happens in the 30s scan (scanStalled); the sweep

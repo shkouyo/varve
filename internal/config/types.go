@@ -173,9 +173,10 @@ type WebAdmin struct {
 
 // LogsConfig configures build log retention.
 type LogsConfig struct {
-	Dir       string        // log directory, "/data/logs"
-	Retention time.Duration // retention for successful build logs, "90d"
-	MaxBuilds int           // maximum successful logs kept, 1000
+	Dir            string        // log directory, "/data/logs"
+	Retention      time.Duration // retention for successful build logs, "90d"
+	MaxBuilds      int           // maximum successful logs kept, 1000
+	KeepSuccessful int           // successful logs kept per package, newest N; 0 disables the per-package trim
 }
 
 // AURConfig configures the optional AUR publishing feature: after a

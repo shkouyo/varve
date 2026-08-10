@@ -137,6 +137,7 @@ password = "change-me"
 dir = "/data/logs"
 retention = "90d"
 max_builds = 1000
+keep_successful = 3
 `
 
 func writeConfig(t *testing.T, content string) string {
@@ -240,7 +241,7 @@ func TestLoadControllerFullExample(t *testing.T) {
 		cfg.Web.Admins[0].User != "admin" || cfg.Web.Admins[0].Password != "change-me" {
 		t.Errorf("Web = %+v", cfg.Web)
 	}
-	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 {
+	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 || cfg.Logs.KeepSuccessful != 3 {
 		t.Errorf("Logs = %+v", cfg.Logs)
 	}
 }
@@ -424,7 +425,7 @@ func TestLoadControllerDefaults(t *testing.T) {
 		len(cfg.Web.Admins) != 1 || cfg.Web.Admins[0].User != "admin" || cfg.Web.Admins[0].Password != "p" {
 		t.Errorf("Web defaults = %+v", cfg.Web)
 	}
-	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 {
+	if cfg.Logs.Dir != "/data/logs" || cfg.Logs.Retention != 90*24*time.Hour || cfg.Logs.MaxBuilds != 1000 || cfg.Logs.KeepSuccessful != 1 {
 		t.Errorf("Logs defaults = %+v", cfg.Logs)
 	}
 	if cfg.AUR.Server != "aur.archlinux.org" || cfg.AUR.KeyFile != "" || cfg.AUR.User != "aur" {

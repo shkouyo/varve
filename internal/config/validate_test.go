@@ -201,6 +201,11 @@ func TestValidateErrors(t *testing.T) {
 			want:   "logs.retention",
 		},
 		{
+			name:   "negative logs.keep_successful",
+			mutate: func(c *ControllerConfig) { c.Logs.KeepSuccessful = -1 },
+			want:   "logs.keep_successful",
+		},
+		{
 			name:   "negative poll_interval",
 			mutate: func(c *ControllerConfig) { c.Source.PollInterval = -time.Minute },
 			want:   "source.poll_interval",
