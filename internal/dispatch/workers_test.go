@@ -301,3 +301,84 @@ func TestDeregisterCovers(t *testing.T) {
 		t.Errorf("Deregister unknown = %v, want ErrNotFound", err)
 	}
 }
+
+// TestHeartbeatRejectsForeignProgress asserts progress reports are
+// attributed: a heartbeat from a worker that does not own the task cannot
+// refresh its last_progress_at or inject samples into its build.
+func TestHeartbeatRejectsForeignProgress(t *testing.T) {
+	env := newTestEnv(t)
+	taskID := env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, _ := env.claim(t, "w1")
+	if claimed != taskID {
+		t.Fatalf("claimed %s", claimed)
+	}
+	taskBefore, err := env.store.GetTask(ctx(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+
+	// A different worker reports progress on w1's task: rejected.
+	env.registerWorker(t, "w2", "host", "host", 1)
+	env.advance(time.Minute)
+	resp, err := env.o.Heartbeat(ctx(), HeartbeatReq{
+		Name: "w2",
+		Tasks: []TaskProgress{{
+			TaskID:    taskID,
+			Stage:     "makepkg",
+			CPUTimeNS: 999,
+			At:        env.now,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	if len(resp.CancelledTaskIDs) != 0 {
+		t.Errorf("unexpected cancels: %v", resp.CancelledTaskIDs)
+	}
+	task, err := env.store.GetTask(ctx(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !task.LastProgressAt.Equal(taskBefore.LastProgressAt) {
+		t.Errorf("last_progress_at was refreshed by a foreign worker: %v -> %v",
+			taskBefore.LastProgressAt, task.LastProgressAt)
+	}
+	build, err := env.store.GetBuild(ctx(), task.BuildID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if len(build.ResourceUsage) != 0 {
+		t.Errorf("resource samples = %+v, want none (foreign progress injected)", build.ResourceUsage)
+	}
+
+	// Progress on a terminal task is ignored as well.
+	if err := env.o.CancelTask(ctx(), taskID); err != nil {
+		t.Fatalf("CancelTask: %v", err)
+	}
+	if err := env.store.WithTx(ctx(), func(tx *db.Tx) error {
+		return tx.FinalizeTask(ctx(), taskID, "cancelled", "", env.now.UTC(), nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize cancelled: %v", err)
+	}
+	resp, err = env.o.Heartbeat(ctx(), HeartbeatReq{
+		Name: "w1",
+		Tasks: []TaskProgress{{
+			TaskID:    taskID,
+			Stage:     "makepkg",
+			CPUTimeNS: 1,
+			At:        env.now,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Heartbeat after cancel: %v", err)
+	}
+	task, err = env.store.GetTask(ctx(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if !task.LastProgressAt.Equal(taskBefore.LastProgressAt) {
+		t.Errorf("terminal task last_progress_at = %v, want untouched %v", task.LastProgressAt, taskBefore.LastProgressAt)
+	}
+	_ = resp
+}

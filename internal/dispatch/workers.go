@@ -71,6 +71,14 @@ func (o *OrchestratorImpl) Heartbeat(ctx context.Context, hb HeartbeatReq) (*Hea
 		}
 	}
 	for i := range hb.Tasks {
+		// Progress may only be reported by the worker that owns the
+		// task: otherwise any registered node could keep another
+		// worker's task alive (stall recovery never fires) and inject
+		// resource samples into its build.
+		if _, err := o.checkProgressOwner(ctx, w.ID, hb.Tasks[i].TaskID); err != nil {
+			log.Printf("dispatch: heartbeat %s: progress: %v", hb.Name, err)
+			continue
+		}
 		if err := o.processProgress(ctx, hb.Tasks[i]); err != nil {
 			log.Printf("dispatch: heartbeat %s: progress: %v", hb.Name, err)
 		}
@@ -161,16 +169,37 @@ func (o *OrchestratorImpl) Deregister(ctx context.Context, name string) error {
 	return o.store.DeleteWorker(ctx, name)
 }
 
+// checkProgressOwner resolves the task of a progress report and verifies
+// it belongs to the reporting worker. The heartbeat path passes its own
+// worker id; the log-segment progress path passes 0 because its identity
+// is the claim token, which already binds the caller to the task.
+func (o *OrchestratorImpl) checkProgressOwner(ctx context.Context, workerID int64, taskID string) (*db.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("dispatch: progress without task id")
+	}
+	task, err := o.store.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.WorkerID != workerID {
+		return nil, fmt.Errorf("dispatch: task %s belongs to worker %d, not %d", taskID, task.WorkerID, workerID)
+	}
+	return task, nil
+}
+
 // processProgress applies one heartbeat/log progress report: it refreshes
 // the task's last_progress_at and appends the cgroup sample to its build
-// (deduplicated by timestamp inside the store).
+// (deduplicated by timestamp inside the store). Only assigned/running
+// tasks accept progress: a report on a terminal or queued task is an
+// error and touches nothing (a terminal task's stall state is
+// intentionally not refreshable).
 func (o *OrchestratorImpl) processProgress(ctx context.Context, p TaskProgress) error {
-	if p.TaskID == "" {
-		return fmt.Errorf("dispatch: progress without task id")
-	}
 	task, err := o.store.GetTask(ctx, p.TaskID)
 	if err != nil {
 		return err
+	}
+	if task.State != "assigned" && task.State != "running" {
+		return fmt.Errorf("dispatch: progress on task %s in state %q ignored", p.TaskID, task.State)
 	}
 	if err := o.store.TouchTaskProgress(ctx, p.TaskID, o.now().UTC()); err != nil {
 		return err
