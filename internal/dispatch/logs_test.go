@@ -68,7 +68,7 @@ func TestLogsTailFrom(t *testing.T) {
 		t.Fatalf("Append: %v", err)
 	}
 	var buf bytes.Buffer
-	off, err := l.TailFrom("2", 4, &buf)
+	off, err := l.TailFrom("2", 4, &buf, 0)
 	if err != nil {
 		t.Fatalf("TailFrom: %v", err)
 	}
@@ -79,18 +79,76 @@ func TestLogsTailFrom(t *testing.T) {
 		t.Errorf("new offset = %d, want 10", off)
 	}
 	buf.Reset()
-	off, err = l.TailFrom("2", off, &buf)
+	off, err = l.TailFrom("2", off, &buf, 0)
 	if err != nil {
 		t.Fatalf("TailFrom: %v", err)
 	}
 	if buf.Len() != 0 || off != 10 {
 		t.Errorf("tail at end = %q/%d, want empty/10", buf.String(), off)
 	}
-	if _, err := l.TailFrom("2", -1, &buf); err == nil {
+	if _, err := l.TailFrom("2", -1, &buf, 0); err == nil {
 		t.Error("TailFrom(negative) succeeded, want error")
 	}
-	if _, err := l.TailFrom("nope", 0, &buf); !errors.Is(err, ErrNotFound) {
+	if _, err := l.TailFrom("nope", 0, &buf, 0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("TailFrom(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestLogsTailFromLimit covers the limit parameter: a positive limit stops
+// the read after that many bytes with the offset advanced accordingly, a
+// non-positive limit streams to the end, and both resume seamlessly.
+func TestLogsTailFromLimit(t *testing.T) {
+	l := NewLogs(t.TempDir())
+	if err := l.Append("3", []byte("0123456789")); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	var buf bytes.Buffer
+
+	// A limited read returns only the first limit bytes.
+	off, err := l.TailFrom("3", 0, &buf, 4)
+	if err != nil {
+		t.Fatalf("TailFrom(limit 4): %v", err)
+	}
+	if buf.String() != "0123" || off != 4 {
+		t.Errorf("TailFrom(limit 4) = %q/%d, want 0123/4", buf.String(), off)
+	}
+
+	// The next read resumes from the limited offset.
+	buf.Reset()
+	off, err = l.TailFrom("3", off, &buf, 4)
+	if err != nil {
+		t.Fatalf("TailFrom(resume, limit 4): %v", err)
+	}
+	if buf.String() != "4567" || off != 8 {
+		t.Errorf("TailFrom(resume, limit 4) = %q/%d, want 4567/8", buf.String(), off)
+	}
+
+	// A limit past the remainder clamps to the end.
+	buf.Reset()
+	off, err = l.TailFrom("3", off, &buf, 100)
+	if err != nil {
+		t.Fatalf("TailFrom(limit 100): %v", err)
+	}
+	if buf.String() != "89" || off != 10 {
+		t.Errorf("TailFrom(limit 100) = %q/%d, want 89/10", buf.String(), off)
+	}
+
+	// Non-positive limits stream the whole remainder.
+	buf.Reset()
+	off, err = l.TailFrom("3", 0, &buf, 0)
+	if err != nil {
+		t.Fatalf("TailFrom(limit 0): %v", err)
+	}
+	if buf.String() != "0123456789" || off != 10 {
+		t.Errorf("TailFrom(limit 0) = %q/%d, want the full log/10", buf.String(), off)
+	}
+	buf.Reset()
+	off, err = l.TailFrom("3", 0, &buf, -1)
+	if err != nil {
+		t.Fatalf("TailFrom(limit -1): %v", err)
+	}
+	if buf.String() != "0123456789" || off != 10 {
+		t.Errorf("TailFrom(limit -1) = %q/%d, want the full log/10", buf.String(), off)
 	}
 }
 

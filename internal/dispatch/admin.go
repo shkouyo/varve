@@ -218,11 +218,12 @@ func (o *OrchestratorImpl) ReadLog(ctx context.Context, buildID string) ([]byte,
 	return o.logs.Read(buildID)
 }
 
-// TailLog streams the incremental part of a build log from offset onwards
-// (SSE) and returns the new offset. ErrNotFound when the log does not
-// exist. Concurrently safe.
-func (o *OrchestratorImpl) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
-	return o.logs.TailFrom(buildID, offset, w)
+// TailLog streams up to limit bytes of the incremental part of a build
+// log from offset onwards (SSE; limit <= 0 streams to the end) and
+// returns the new offset. ErrNotFound when the log does not exist.
+// Concurrently safe.
+func (o *OrchestratorImpl) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
+	return o.logs.TailFrom(buildID, offset, w, limit)
 }
 
 // Size returns the current byte length of a build log (0 when the log

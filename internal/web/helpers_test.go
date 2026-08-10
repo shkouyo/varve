@@ -128,7 +128,7 @@ func (f *fakeOrchestrator) ValidateConflicts(ctx context.Context) error { return
 func (f *fakeOrchestrator) ReadLog(ctx context.Context, buildID string) ([]byte, error) {
 	return nil, dispatch.ErrNotFound
 }
-func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
+func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
 	return offset, nil
 }
 func (f *fakeOrchestrator) Size(ctx context.Context, buildID string) (int64, error) {
@@ -169,9 +169,10 @@ func (f *fakeLogReader) Size(ctx context.Context, buildID string) (int64, error)
 	return int64(len(f.content)), nil
 }
 
-// TailLog streams content[offset:] once; subsequent calls yield nothing.
-// tailErr is returned once and then cleared.
-func (f *fakeLogReader) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
+// TailLog streams content[offset:] up to limit bytes (limit <= 0 means
+// everything) once; subsequent calls yield nothing. tailErr is returned
+// once and then cleared.
+func (f *fakeLogReader) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.tailErr != nil {
@@ -183,8 +184,11 @@ func (f *fakeLogReader) TailLog(ctx context.Context, buildID string, offset int6
 		return offset, nil
 	}
 	chunk := f.content[offset:]
+	if limit > 0 && int64(len(chunk)) > limit {
+		chunk = chunk[:limit]
+	}
 	_, _ = w.Write(chunk)
-	return int64(len(f.content)), nil
+	return offset + int64(len(chunk)), nil
 }
 
 // testConfig returns a controller configuration with the web section

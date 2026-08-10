@@ -107,11 +107,11 @@ func (l *Logs) Read(buildID string) ([]byte, error) {
 	return data, nil
 }
 
-// TailFrom streams the log bytes from offset onwards into w (SSE
-// incremental reads) and returns the new offset. ErrNotFound when no log
-// exists. Offsets past the end are clamped to the end (nothing to read).
-// Concurrently safe.
-func (l *Logs) TailFrom(buildID string, offset int64, w io.Writer) (int64, error) {
+// TailFrom streams up to limit bytes of the log from offset onwards into
+// w (SSE incremental reads) and returns the new offset; a limit <= 0
+// streams to the end. ErrNotFound when no log exists. Offsets past the
+// end are clamped to the end (nothing to read). Concurrently safe.
+func (l *Logs) TailFrom(buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
 	if offset < 0 {
 		return 0, fmt.Errorf("dispatch: logs: tail %s: negative offset %d", buildID, offset)
 	}
@@ -128,7 +128,12 @@ func (l *Logs) TailFrom(buildID string, offset int64, w io.Writer) (int64, error
 			return 0, fmt.Errorf("dispatch: logs: tail %s: %w", buildID, err)
 		}
 	}
-	n, err := io.Copy(w, f)
+	var n int64
+	if limit > 0 {
+		n, err = io.Copy(w, io.LimitReader(f, limit))
+	} else {
+		n, err = io.Copy(w, f)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("dispatch: logs: tail %s: %w", buildID, err)
 	}

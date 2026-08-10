@@ -53,9 +53,10 @@ type LogReader interface {
 	// ReadLog returns the full log of a build. ErrNotFound when the log
 	// does not exist.
 	ReadLog(ctx context.Context, buildID string) ([]byte, error)
-	// TailLog streams the log bytes from offset onwards into w and
-	// returns the new offset. ErrNotFound when the log does not exist.
-	TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error)
+	// TailLog streams up to limit bytes of the log from offset onwards
+	// into w (limit <= 0 streams to the end) and returns the new offset.
+	// ErrNotFound when the log does not exist.
+	TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error)
 	// Size returns the current byte length of a build log (0 when the
 	// log does not exist).
 	Size(ctx context.Context, buildID string) (int64, error)

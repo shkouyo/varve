@@ -125,7 +125,7 @@ func (s *Server) handleLogDownload(w http.ResponseWriter, r *http.Request) {
 	// The log is streamed straight to the client from offset 0. A read
 	// error after the headers cannot change the status anymore; the
 	// partial body stands as is.
-	if _, err := s.logs.TailLog(ctx, id, 0, w); err != nil {
+	if _, err := s.logs.TailLog(ctx, id, 0, w, 0); err != nil {
 		// Headers are already sent, so nothing more can be done.
 	}
 }
@@ -172,7 +172,7 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 	ctx := r.Context()
 	for {
 		var chunk bytes.Buffer
-		newOffset, err := s.logs.TailLog(ctx, buildID, offset, &chunk)
+		newOffset, err := s.logs.TailLog(ctx, buildID, offset, &chunk, 0)
 		if err != nil {
 			if errors.Is(err, dispatch.ErrNotFound) {
 				// No log file yet: keep the stream open while the build is

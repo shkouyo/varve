@@ -347,7 +347,7 @@ func TestReadTailLog(t *testing.T) {
 		t.Errorf("ReadLog(missing) = %v, want ErrNotFound", err)
 	}
 	var buf strings.Builder
-	off, err := env.o.TailLog(ctx(), "42", 6, &buf)
+	off, err := env.o.TailLog(ctx(), "42", 6, &buf, 0)
 	if err != nil {
 		t.Fatalf("TailLog: %v", err)
 	}

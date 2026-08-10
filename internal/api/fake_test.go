@@ -313,7 +313,7 @@ func (f *fakeOrchestrator) ReadLog(ctx context.Context, buildID string) ([]byte,
 }
 
 // TailLog implements Orchestrator.
-func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
+func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
 	return 0, nil
 }
 

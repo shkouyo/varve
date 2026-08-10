@@ -576,7 +576,7 @@ func (f *fakeOrchestrator) ValidateConflicts(ctx context.Context) error {
 func (f *fakeOrchestrator) ReadLog(ctx context.Context, buildID string) ([]byte, error) {
 	return nil, nil
 }
-func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error) {
+func (f *fakeOrchestrator) TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error) {
 	return 0, nil
 }
 func (f *fakeOrchestrator) Size(ctx context.Context, buildID string) (int64, error) {

@@ -141,7 +141,7 @@ type Orchestrator interface {
 	Stats(ctx context.Context) (*Stats, error)
 	ValidateConflicts(ctx context.Context) error
 	ReadLog(ctx context.Context, buildID string) ([]byte, error)
-	TailLog(ctx context.Context, buildID string, offset int64, w io.Writer) (int64, error)
+	TailLog(ctx context.Context, buildID string, offset int64, w io.Writer, limit int64) (int64, error)
 	Size(ctx context.Context, buildID string) (int64, error)
 }
 
