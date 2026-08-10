@@ -638,3 +638,78 @@ func TestOneShotZeroExitOnAcknowledgedReport(t *testing.T) {
 		})
 	}
 }
+
+// TestTaskLogAppendFailureRetries asserts the log buffer's retry semantics
+// end to end: a failed AppendLog keeps the data buffered and a later retry
+// delivers every segment, while the build still succeeds.
+func TestTaskLogAppendFailureRetries(t *testing.T) {
+	f := &fakeClient{taskDetail: taskFor("t-1")}
+	r := runOneShotRunner(t, f)
+	// The build must outlive the first flush tick: the close drain stops
+	// on a failed append, so the retry has to happen on a tick instead.
+	exec := flowExec(t, r.workDir, "t-1", testSrcinfo, []string{"foo-1.0-1-x86_64.pkg.tar.zst"}, map[string]string{
+		"makepkg -s --noconfirm": writeScript(t, "echo 'building'\nsleep 0.05\ntouch foo-1.0-1-x86_64.pkg.tar.zst"),
+	})
+	r.execCommand = exec.command
+	r.logInterval = 10 * time.Millisecond
+	r.logThreshold = 1 << 20
+
+	// Fail the first append, then clear the error once it was observed
+	// (the fake records the call before consulting the error, so the
+	// first AppendLog deterministically sees the failure).
+	f.logAckErr = errors.New("boom")
+	go func() {
+		for {
+			if f.callCount("AppendLog") > 0 {
+				f.mu.Lock()
+				f.logAckErr = nil
+				f.mu.Unlock()
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	res := f.lastResult()
+	if res == nil || res.Status != statusSucceeded {
+		t.Fatalf("result = %+v, want succeeded", res)
+	}
+	if n := f.callCount("AppendLog"); n < 2 {
+		t.Errorf("AppendLog calls = %d, want at least 2 (a failed retry)", n)
+	}
+	var got strings.Builder
+	for _, seg := range f.segments {
+		got.WriteString(seg.Data)
+	}
+	if !strings.Contains(got.String(), "building") {
+		t.Errorf("delivered log = %q, want the build output to arrive despite the failed append", got.String())
+	}
+}
+
+// TestTaskDownloadArchiveErrorFails asserts a failed source archive
+// download fails the task with a prepare-stage summary naming the cause.
+func TestTaskDownloadArchiveErrorFails(t *testing.T) {
+	f := &fakeClient{taskDetail: taskFor("t-1")}
+	f.downloadErr = errors.New("boom")
+	r := runOneShotRunner(t, f)
+
+	task := taskFor("t-1")
+	task.Source.Mode = "archive"
+	task.Source.Archive = "src.tar.zst"
+	r.executeTask(context.Background(), task, "tok")
+
+	res := f.lastResult()
+	if res == nil || res.Status != statusFailed {
+		t.Fatalf("result = %+v, want failed", res)
+	}
+	if res.Error == nil || res.Error.Stage != stagePrepare {
+		t.Errorf("error = %+v, want stage %q", res.Error, stagePrepare)
+	}
+	if res.Error == nil || !strings.Contains(res.Error.Summary, "download source archive") {
+		t.Errorf("summary = %+v, want a download source archive cause", res.Error)
+	}
+}

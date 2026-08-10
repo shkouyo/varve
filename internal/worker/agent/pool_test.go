@@ -191,3 +191,114 @@ func TestPoolPollCancellationDelivered(t *testing.T) {
 		t.Error("cancelTask for a non-running task should be ignored")
 	}
 }
+
+// TestPoolHeartbeatErrorKeepsRunning asserts a failed heartbeat is only
+// logged: the node keeps polling and still deregisters when it idles out.
+func TestPoolHeartbeatErrorKeepsRunning(t *testing.T) {
+	f := &fakeClient{hbErr: errors.New("boom")}
+	cfg := configForTest(t, false)
+	cfg.TaskID, cfg.TaskToken = "", ""
+	r := NewRunner(cfg, f)
+	clock := newFakeClock(time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC))
+	r.now = clock.now
+	r.pollInterval = time.Millisecond
+	r.heartbeatInterval = time.Millisecond
+	r.registerBackoff = func(int) time.Duration { return time.Millisecond }
+	r.procDir = t.TempDir()
+
+	done := make(chan error, 1)
+	go func() { done <- r.runPool(context.Background()) }()
+
+	if !waitFor(t, 5*time.Second, func() bool { return f.regCount() > 0 }) {
+		t.Fatal("node never registered")
+	}
+	// The heartbeat error path must run, and polling must continue.
+	if !waitFor(t, 5*time.Second, func() bool { return len(f.heartbeats) > 0 }) {
+		t.Fatal("no heartbeat was attempted")
+	}
+	if !waitFor(t, 5*time.Second, func() bool { return len(f.polls) >= 2 }) {
+		t.Fatal("polling stopped after heartbeat errors")
+	}
+
+	clock.advance(cfg.PoolIdleTimeout + time.Second)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runPool: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pool never idled out")
+	}
+	if f.regCount() != 1 {
+		t.Errorf("register calls = %d, want 1", f.regCount())
+	}
+	if len(f.deregNames) != 1 {
+		t.Errorf("deregisters = %v, want 1 despite heartbeat errors", f.deregNames)
+	}
+}
+
+// TestPoolPollErrorKeepsPolling asserts a failed poll is only logged: the
+// poll loop retries forever (the idle-out check happens after a successful
+// poll) and still deregisters when the context is cancelled.
+func TestPoolPollErrorKeepsPolling(t *testing.T) {
+	f := &fakeClient{pollErr: errors.New("boom")}
+	cfg := configForTest(t, false)
+	cfg.TaskID, cfg.TaskToken = "", ""
+	r := NewRunner(cfg, f)
+	r.pollInterval = time.Millisecond
+	r.registerBackoff = func(int) time.Duration { return time.Millisecond }
+	r.procDir = t.TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.runPool(ctx) }()
+
+	if !waitFor(t, 5*time.Second, func() bool { return len(f.polls) >= 3 }) {
+		t.Fatal("polling stopped after poll errors")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runPool: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pool did not stop on context cancellation")
+	}
+	if len(f.deregNames) != 1 {
+		t.Errorf("deregisters = %v, want 1", f.deregNames)
+	}
+}
+
+// TestPoolDeregisterErrorStillExits asserts a failed deregister does not
+// change the exit semantics: the pool still returns nil after idling out.
+func TestPoolDeregisterErrorStillExits(t *testing.T) {
+	f := &fakeClient{deregErr: errors.New("boom")}
+	cfg := configForTest(t, false)
+	cfg.TaskID, cfg.TaskToken = "", ""
+	r := NewRunner(cfg, f)
+	clock := newFakeClock(time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC))
+	r.now = clock.now
+	r.pollInterval = time.Millisecond
+	r.registerBackoff = func(int) time.Duration { return time.Millisecond }
+	r.procDir = t.TempDir()
+
+	done := make(chan error, 1)
+	go func() { done <- r.runPool(context.Background()) }()
+
+	if !waitFor(t, 5*time.Second, func() bool { return f.regCount() > 0 }) {
+		t.Fatal("node never registered")
+	}
+	clock.advance(cfg.PoolIdleTimeout + time.Second)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runPool: %v, want nil despite the deregister error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pool never idled out")
+	}
+	if len(f.deregNames) != 1 {
+		t.Errorf("deregisters = %v, want 1 attempted", f.deregNames)
+	}
+}
