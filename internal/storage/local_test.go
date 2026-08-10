@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -335,4 +336,103 @@ func modeOf(t *testing.T, path string) os.FileMode {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 	return fi.Mode() & 0o777
+}
+
+// TestLocalMoveCrossDeviceFallback covers the EXDEV degradation: when
+// rename fails with a cross-device error, Move copies the file to the
+// destination (published 0644), deletes the source and leaves no temp
+// files behind.
+func TestLocalMoveCrossDeviceFallback(t *testing.T) {
+	b := mustLocal(t)
+	ctx := context.Background()
+
+	src := "staging/t-1/x.pkg.tar.zst"
+	dst := "x.pkg.tar.zst"
+	if err := b.Put(ctx, src, strings.NewReader("content"), 7); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	srcPath := filepath.Join(b.stagingDir, "t-1", "x.pkg.tar.zst")
+
+	origRename := rename
+	// Fail only the actual src→dst rename (the temp→dst rename inside
+	// the fallback must keep working).
+	rename = func(s, d string) error {
+		if s == srcPath {
+			return syscall.EXDEV
+		}
+		return os.Rename(s, d)
+	}
+	defer func() { rename = origRename }()
+
+	if err := b.Move(ctx, src, dst); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+
+	// The source is gone, the destination carries the content at 0644.
+	if _, err := os.Stat(srcPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("source still present after the degraded move: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(b.root, dst))
+	if err != nil {
+		t.Fatalf("read dst: %v", err)
+	}
+	if string(data) != "content" {
+		t.Errorf("dst = %q, want the source content", data)
+	}
+	if got := modeOf(t, filepath.Join(b.root, dst)); got != 0o644 {
+		t.Errorf("degraded move published mode = %o, want 644", got)
+	}
+	// No temp residue anywhere under the root or the staging tree.
+	for _, dir := range []string{b.root, b.stagingDir} {
+		err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.Contains(d.Name(), ".tmp.") {
+				t.Errorf("leftover temp file after the degraded move: %s", p)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", dir, err)
+		}
+	}
+}
+
+// TestLocalMoveCrossDeviceOverwriteExisting asserts the degraded move
+// keeps the rename overwrite semantics: a destination that already
+// exists is replaced, which the updater's idempotent re-ingest relies on.
+func TestLocalMoveCrossDeviceOverwriteExisting(t *testing.T) {
+	b := mustLocal(t)
+	ctx := context.Background()
+
+	src := "staging/t-1/x.pkg.tar.zst"
+	dst := "x.pkg.tar.zst"
+	if err := b.Put(ctx, src, strings.NewReader("new"), 3); err != nil {
+		t.Fatalf("Put src: %v", err)
+	}
+	if err := b.Put(ctx, dst, strings.NewReader("old"), 3); err != nil {
+		t.Fatalf("Put dst: %v", err)
+	}
+	srcPath := filepath.Join(b.stagingDir, "t-1", "x.pkg.tar.zst")
+
+	origRename := rename
+	rename = func(s, d string) error {
+		if s == srcPath {
+			return syscall.EXDEV
+		}
+		return os.Rename(s, d)
+	}
+	defer func() { rename = origRename }()
+
+	if err := b.Move(ctx, src, dst); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(b.root, dst))
+	if err != nil {
+		t.Fatalf("read dst: %v", err)
+	}
+	if string(data) != "new" {
+		t.Errorf("dst = %q, want the moved content over the old one", data)
+	}
 }

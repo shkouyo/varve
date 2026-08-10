@@ -27,6 +27,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // copyBufSize bounds the per-call read/write buffer used by the streaming
@@ -271,11 +272,13 @@ func (b *localBackend) Stat(ctx context.Context, name string) (FileInfo, error) 
 }
 
 // Move renames src onto dst. rename is atomic on the same filesystem and
-// the source disappears afterwards (Mover capability). The published
-// object is forced to the 0o644 mode of Put, so staging files that
-// arrived 0600 (or were placed from outside) never leak restrictive
-// permissions into the public tree; the destination directory is fsynced
-// afterwards as best effort.
+// the source disappears afterwards (Mover capability); when the two paths
+// live on different filesystems (the staging tree may be configured on a
+// separate device), the move degrades to a file-level copy + delete like
+// the s3 backend does. The published object is forced to the 0o644 mode
+// of Put, so staging files that arrived 0600 (or were placed from
+// outside) never leak restrictive permissions into the public tree; the
+// destination directory is fsynced afterwards as best effort.
 func (b *localBackend) Move(ctx context.Context, src, dst string) error {
 	srcPath, err := b.resolve(src)
 	if err != nil {
@@ -292,10 +295,41 @@ func (b *localBackend) Move(ctx context.Context, src, dst string) error {
 		return fmt.Errorf("storage: move %q -> %q: create parent: %w", src, dst, err)
 	}
 	if err := rename(srcPath, dstPath); err != nil {
-		return fmt.Errorf("storage: move %q -> %q: %w", src, dst, err)
+		if errors.Is(err, syscall.EXDEV) {
+			// Cross-device: os.Rename cannot move between mounts.
+			// Fall back to a copy, published exactly like Put, and
+			// delete the source afterwards.
+			if err := b.moveCrossDevice(ctx, srcPath, dstPath); err != nil {
+				return fmt.Errorf("storage: move %q -> %q: %w", src, dst, err)
+			}
+		} else {
+			return fmt.Errorf("storage: move %q -> %q: %w", src, dst, err)
+		}
 	}
 	_ = syncDir(filepath.Dir(dstPath)) // best effort, see syncDir
 	return nil
+}
+
+// moveCrossDevice copies srcPath onto dstPath and removes the source, the
+// degraded Move used when the two paths are on different filesystems.
+// The copy is published with the same temp + sync + chmod + rename shape
+// as Put, so the result matches a same-filesystem move in content, mode
+// and durability. Unlike rename the fallback is not atomic: a crash
+// between the copy and the source removal leaves both files, which the
+// caller's single-writer contract tolerates (the updater ingests under a
+// mutex, and the s3 backend degrades the same way). Overwriting an
+// existing dst keeps the rename semantics the updater's idempotent
+// re-ingest relies on.
+func (b *localBackend) moveCrossDevice(ctx context.Context, srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	if err := writeFileAtomic(ctx, dstPath, src); err != nil {
+		return err
+	}
+	return os.Remove(srcPath)
 }
 
 // Append appends the content of r at the end of name (Appender capability).
