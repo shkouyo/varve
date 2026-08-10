@@ -86,8 +86,8 @@ func (m *tomlMemory) UnmarshalText(text []byte) error {
 }
 
 // The raw* structs mirror the TOML schema with decode-layer types. They
-// types. They are prefilled with defaults so that omitted sections and keys
-// keep their documented values, then exported into ControllerConfig.
+// are prefilled with defaults so that omitted sections and keys keep
+// their documented values, then exported into ControllerConfig.
 type rawConfig struct {
 	Server   rawServer
 	API      rawAPI

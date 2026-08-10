@@ -183,11 +183,15 @@ func validKeyPrefix(prefix string) error {
 	if strings.HasSuffix(prefix, "/") {
 		return fmt.Errorf("%q must not end with a slash", prefix)
 	}
+	// path.Clean above already rejects every prefix with an empty or "."
+	// segment (Clean normalizes them away). A leading ".." survives
+	// Clean though (".." and "../x" are clean paths), so the explicit
+	// ".." rejection below is reachable and kept.
 	if path.Clean(prefix) != prefix {
 		return fmt.Errorf("%q must be a clean path", prefix)
 	}
 	for _, seg := range strings.Split(prefix, "/") {
-		if seg == "" || seg == "." || seg == ".." {
+		if seg == ".." {
 			return fmt.Errorf("%q must not contain a %q segment", prefix, seg)
 		}
 		if !validPrefixSegment(seg) {
