@@ -19,6 +19,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,6 +28,29 @@ import (
 
 	"git.0x0f.dev/varve/internal/dispatch"
 )
+
+// sseLogEvents extracts the JSON payload of every event: log frame in an
+// SSE body, in order.
+func sseLogEvents(t *testing.T, body string) []logEvent {
+	t.Helper()
+	var events []logEvent
+	for _, frame := range strings.Split(body, "\n\n") {
+		if !strings.Contains(frame, "event: log") {
+			continue
+		}
+		for _, line := range strings.Split(frame, "\n") {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var ev logEvent
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil {
+				t.Fatalf("bad SSE data line %q: %v", line, err)
+			}
+			events = append(events, ev)
+		}
+	}
+	return events
+}
 
 // TestLogRedirect asserts the legacy log URL redirects to the merged
 // build page anchor, keeping 404/400 semantics for unknown or malformed
@@ -125,6 +149,55 @@ func TestSSEStream(t *testing.T) {
 		`"data":"line1\nline2\n"`, // JSON-encoded payload
 		"event: done",
 	)
+	// The id line follows the data line: a half-received frame then only
+	// shifts the reconnection window by the id line.
+	body := rec.Body.String()
+	dataAt := strings.Index(body, `data: {"offset":12`)
+	idAt := strings.Index(body, "id: 12")
+	if dataAt < 0 || idAt < 0 || dataAt > idAt {
+		t.Errorf("frame order: data at %d, id at %d, want data before id", dataAt, idAt)
+	}
+}
+
+// TestSSEStreamChunked asserts high-output logs stream in bounded chunks:
+// every event carries at most maxEventBytes of log text, offsets increase
+// strictly, the bytes are conserved and a full chunk is followed by a
+// short backoff instead of a tight read loop.
+func TestSSEStreamChunked(t *testing.T) {
+	store := newTestDB(t)
+	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
+	build := seedBuild(t, store, pkg, "succeeded", nil, nil) // terminal
+
+	content := strings.Repeat("x", 4*maxEventBytes) // exactly four chunks
+	s := newTestServer(t, testConfig(), &fakeOrchestrator{}, store, newFakeLogReader(content))
+
+	start := time.Now()
+	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream", nil)
+	elapsed := time.Since(start)
+
+	events := sseLogEvents(t, rec.Body.String())
+	if len(events) != 4 {
+		t.Fatalf("log events = %d, want 4 chunks of %d bytes", len(events), maxEventBytes)
+	}
+	var joined string
+	for i, ev := range events {
+		if len(ev.Data) > maxEventBytes {
+			t.Errorf("event %d payload = %d bytes, exceeds %d", i, len(ev.Data), maxEventBytes)
+		}
+		if i > 0 && ev.Offset <= events[i-1].Offset {
+			t.Errorf("offset sequence not strictly increasing at %d: %d <= %d", i, ev.Offset, events[i-1].Offset)
+		}
+		joined += ev.Data
+	}
+	if joined != content {
+		t.Error("chunked stream does not conserve the log bytes")
+	}
+	if want := int64(len(content)); events[len(events)-1].Offset != want {
+		t.Errorf("final offset = %d, want %d", events[len(events)-1].Offset, want)
+	}
+	if elapsed < 3*sseChunkBackoff {
+		t.Errorf("stream completed in %v, want at least %v of backoff after full chunks", elapsed, 3*sseChunkBackoff)
+	}
 }
 
 // TestSSEResumeMatrix drives the ?after= and Last-Event-ID resume
@@ -177,7 +250,8 @@ func TestSSEResumeMatrix(t *testing.T) {
 
 // TestSSETruncationCap asserts the stream never serves history older
 // than the most recent maxInlineLog bytes: a client resuming from 0 on
-// an oversized log is clamped to the truncation point.
+// an oversized log is clamped to the truncation point. The 1 MiB tail
+// arrives as bounded chunks with a strictly increasing offset sequence.
 func TestSSETruncationCap(t *testing.T) {
 	store := newTestDB(t)
 	pkg := seedPackage(t, store, "demo-pkg", "A demo package")
@@ -189,9 +263,28 @@ func TestSSETruncationCap(t *testing.T) {
 
 	rec := get(t, s, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream?after=0", nil)
 	body := rec.Body.String()
-	mustContain(t, body, `"data":"`+tail+`"`, "id: "+itoa(int64(len(head)+len(tail))))
 	if strings.Contains(body, "A") {
 		t.Error("stream must not serve history older than the truncation point")
+	}
+	events := sseLogEvents(t, body)
+	if len(events) != maxInlineLog/maxEventBytes {
+		t.Fatalf("log events = %d, want %d bounded chunks", len(events), maxInlineLog/maxEventBytes)
+	}
+	var joined string
+	for i, ev := range events {
+		if len(ev.Data) > maxEventBytes {
+			t.Errorf("event %d payload = %d bytes, exceeds %d", i, len(ev.Data), maxEventBytes)
+		}
+		if i > 0 && ev.Offset <= events[i-1].Offset {
+			t.Errorf("offset sequence not strictly increasing at %d", i)
+		}
+		joined += ev.Data
+	}
+	if joined != tail {
+		t.Error("chunked tail does not conserve the log bytes")
+	}
+	if want := int64(len(head) + len(tail)); events[len(events)-1].Offset != want {
+		t.Errorf("final offset = %d, want %d", events[len(events)-1].Offset, want)
 	}
 }
 

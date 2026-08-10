@@ -37,6 +37,16 @@ import (
 // cannot pull unbounded history into the page.
 const maxInlineLog = 1 << 20
 
+// maxEventBytes caps one SSE log event at 64 KiB: a single read can
+// never grow past two ping intervals of output, bounding the memory per
+// event and giving every event a resumable byte offset.
+const maxEventBytes = 64 << 10
+
+// sseChunkBackoff is the pause after a full 64 KiB event. A high-output
+// build otherwise turns the stream into a tight read-write-flush loop;
+// 10 ms caps the per-connection write rate at ~6.4 MiB/s.
+var sseChunkBackoff = 10 * time.Millisecond
+
 // logEvent is the JSON payload of an SSE "log" event (JSON so multi-line
 // log chunks survive). Offset is the byte offset the chunk ends at: the
 // position the next ?after=/Last-Event-ID resume starts from. Data is
@@ -172,7 +182,7 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 	ctx := r.Context()
 	for {
 		var chunk bytes.Buffer
-		newOffset, err := s.logs.TailLog(ctx, buildID, offset, &chunk, 0)
+		newOffset, err := s.logs.TailLog(ctx, buildID, offset, &chunk, maxEventBytes)
 		if err != nil {
 			if errors.Is(err, dispatch.ErrNotFound) {
 				// No log file yet: keep the stream open while the build is
@@ -194,6 +204,15 @@ func (s *Server) serveSSE(w http.ResponseWriter, r *http.Request, buildID string
 			offset = newOffset
 			writeSSELog(w, offset, chunk.String())
 			flusher.Flush()
+			if chunk.Len() == maxEventBytes {
+				// A full chunk: the log outgrew one event. Pause briefly
+				// so a high-output build cannot spin the read loop.
+				select {
+				case <-time.After(sseChunkBackoff):
+				case <-ctx.Done():
+					return // client disconnected
+				}
+			}
 			continue
 		}
 
@@ -247,10 +266,12 @@ func (s *Server) isTerminalBuild(ctx context.Context, buildID string) bool {
 
 // writeSSELog emits one event: log with the JSON payload. The event id
 // carries the byte offset the next resume starts from, so Last-Event-ID
-// reconnection continues exactly where the client left off.
+// reconnection continues exactly where the client left off. The id line
+// comes after the data line: a half-received frame then only shifts the
+// reconnection window by the id line instead of the whole payload.
 func writeSSELog(w http.ResponseWriter, offset int64, data string) {
 	payload, _ := json.Marshal(logEvent{Offset: offset, Data: data})
-	_, _ = fmt.Fprintf(w, "id: %d\nevent: log\ndata: %s\n\n", offset, payload)
+	_, _ = fmt.Fprintf(w, "event: log\ndata: %s\nid: %d\n\n", payload, offset)
 }
 
 // writeSSEDone emits the terminal event: done.
