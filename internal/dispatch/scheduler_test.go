@@ -594,3 +594,48 @@ func TestSweepStagingCustomDir(t *testing.T) {
 		t.Errorf("non-staging dir removed: %v", err)
 	}
 }
+
+// TestSweepStagingKeepsActiveTasks asserts the staging sweep never removes
+// the directory of an active task: a task that has been queued or running
+// for more than 24h (queue backlog, long build) must keep its staged
+// source archive and early artifacts.
+func TestSweepStagingKeepsActiveTasks(t *testing.T) {
+	env := newTestEnv(t)
+	backend, err := storage.OpenLocal(env.cfg.Storage.Local.Root, "")
+	if err != nil {
+		t.Fatalf("OpenLocal: %v", err)
+	}
+	env.o.storage = backend
+	stagingRoot := backend.StagingDir()
+
+	// A queued task whose staging dir is well past the 24h mark.
+	taskID := env.enqueue(t, "foo", "foo")
+	liveDir := filepath.Join(stagingRoot, taskID)
+	if err := os.MkdirAll(liveDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(liveDir, "source.tar.zst"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	backdate := time.Now().Add(-25 * time.Hour)
+	if err := os.Chtimes(liveDir, backdate, backdate); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	// An unrelated stale directory (no task) is still swept.
+	staleDir := filepath.Join(stagingRoot, "no-such-task")
+	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Chtimes(staleDir, backdate, backdate); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	env.o.sweepStaging(context.Background())
+
+	if _, err := os.Stat(liveDir); err != nil {
+		t.Errorf("active task staging dir removed: %v", err)
+	}
+	if _, err := os.Stat(staleDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stale dir not swept: %v", err)
+	}
+}

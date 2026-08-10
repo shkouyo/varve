@@ -246,13 +246,25 @@ func (o *OrchestratorImpl) sweepWorkers(ctx context.Context) {
 
 // sweepStaging removes staging directories older than 24h (residue from
 // failed ingests and crashes; the ingest path preserves staging on purpose
-// but only until a retry or this sweep). The local backend is enumerated
+// but only until a retry or this sweep). Directories of active tasks
+// (queued/assigned/running) are never touched: a task that waited in the
+// queue for more than 24h or ran longer than 24h must keep its staged
+// source archive and early artifacts. The local backend is enumerated
 // through the filesystem; on s3 the sweep is skipped, because object-store
 // residue is bounded by operator-side lifecycle rules.
 func (o *OrchestratorImpl) sweepStaging(ctx context.Context) {
 	if o.cfg.Storage.Backend != "local" {
 		log.Printf("dispatch: staging sweep skipped for backend %q", o.cfg.Storage.Backend)
 		return
+	}
+	active, err := o.store.ListActiveTasks(ctx)
+	if err != nil {
+		log.Printf("dispatch: staging sweep: list active tasks: %v", err)
+		return
+	}
+	activeIDs := make(map[string]struct{}, len(active))
+	for i := range active {
+		activeIDs[active[i].ID] = struct{}{}
 	}
 	stagingRoot := o.storage.StagingDir()
 	entries, err := os.ReadDir(stagingRoot)
@@ -276,6 +288,9 @@ func (o *OrchestratorImpl) sweepStaging(ctx context.Context) {
 			continue
 		}
 		taskID := e.Name()
+		if _, ok := activeIDs[taskID]; ok {
+			continue // the task is queued, assigned or running: staging is live
+		}
 		dir := filepath.Join(stagingRoot, taskID)
 		files, err := os.ReadDir(dir)
 		if err != nil {
