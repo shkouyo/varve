@@ -198,6 +198,7 @@ func TestBuildPageSSEClient(t *testing.T) {
 		`id="log"`,
 		`id="log-increments"`,
 		`new EventSource("\/builds\/`+itoa(active.ID)+`\/log\/stream?after=6")`, // resume at the rendered tail
+		`lastOffset`, // reconnect dedup guard (W7): offset <= lastOffset events are dropped
 	)
 
 	rec = get(t, s, http.MethodGet, "/builds/"+itoa(term.ID), nil)

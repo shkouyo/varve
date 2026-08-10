@@ -173,8 +173,22 @@
         }
       }
       var es = new EventSource("{{.SSEURL}}");
+      // SSE is at-least-once: a reconnect may re-deliver an event whose
+      // frame was only half received. Byte offsets are strictly
+      // increasing, so anything at or below the last seen offset is a
+      // duplicate and must not be appended again. The initial value is
+      // the rendered tail's end (?after=), which the server never re-sends.
+      var lastOffset = 0;
+      var after = /[?&]after=(\d+)/.exec(es.url);
+      if (after) {
+        lastOffset = parseInt(after[1], 10);
+      }
       es.addEventListener("log", function (e) {
         var msg = JSON.parse(e.data);
+        if (msg.offset <= lastOffset) {
+          return;
+        }
+        lastOffset = msg.offset;
         var empty = document.getElementById("log-empty");
         if (empty) {
           empty.remove();
