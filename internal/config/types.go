@@ -88,6 +88,7 @@ type S3Config struct {
 	SecretKey     string // secret key; overridable via VARVE_S3_SECRET_KEY
 	PathStyle     bool   // use path-style addressing (default true)
 	StagingPrefix string // object-key prefix of the staging upload area, "staging"
+	RepoPrefix    string // object-key prefix of the repository area (packages, side files, db/files tarballs), "" = bucket root
 }
 
 // RepoConfig configures the generated pacman repository.

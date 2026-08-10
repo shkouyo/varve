@@ -124,20 +124,23 @@ func (s *s3Client) StatObject(ctx context.Context, bucket, key string) (objectIn
 }
 
 // s3Backend implements Backend over an S3-compatible object store. Object
-// keys are the virtual paths; the bucket root corresponds to the repository
-// root. Staging keys carry the configured staging prefix instead of the
-// default "staging".
+// keys are the virtual paths. Repository names map onto keys under the
+// configured repository prefix (the bucket root when it is empty); staging
+// names carry the configured staging prefix instead of the default
+// "staging".
 type s3Backend struct {
 	client        objectAPI
 	bucket        string
 	stagingPrefix string
+	repoPrefix    string
 }
 
 // OpenS3 returns a Backend backed by an S3-compatible object store
 // (MinIO / SeaweedFS / Ceph RGW / Cloudflare R2). The client is constructed
 // from the controller's S3 configuration; no network I/O happens until the
 // first operation. Multipart uploads are handled automatically by
-// minio-go. An empty staging prefix keeps the default "staging".
+// minio-go. An empty staging prefix keeps the default "staging"; an empty
+// repository prefix keeps the bucket root as the repository area.
 func OpenS3(cfg config.S3Config) (Backend, error) {
 	if cfg.Endpoint == "" || cfg.Bucket == "" {
 		return nil, errors.New("storage: s3 endpoint and bucket are required")
@@ -148,6 +151,9 @@ func OpenS3(cfg config.S3Config) (Backend, error) {
 	}
 	if !validName(stagingPrefix) {
 		return nil, fmt.Errorf("storage: invalid s3 staging prefix %q", stagingPrefix)
+	}
+	if cfg.RepoPrefix != "" && !validName(cfg.RepoPrefix) {
+		return nil, fmt.Errorf("storage: invalid s3 repo prefix %q", cfg.RepoPrefix)
 	}
 	lookup := minio.BucketLookupPath
 	if !cfg.PathStyle {
@@ -166,7 +172,7 @@ func OpenS3(cfg config.S3Config) (Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("storage: open s3 client: %w", err)
 	}
-	return &s3Backend{client: &s3Client{c: c}, bucket: cfg.Bucket, stagingPrefix: stagingPrefix}, nil
+	return &s3Backend{client: &s3Client{c: c}, bucket: cfg.Bucket, stagingPrefix: stagingPrefix, repoPrefix: cfg.RepoPrefix}, nil
 }
 
 // StagingPath returns the object key of a task artifact in the staging
@@ -179,13 +185,35 @@ func (b *s3Backend) StagingPath(taskID, fileName string) string {
 // physical staging directory.
 func (b *s3Backend) StagingDir() string { return "" }
 
+// repoKey maps a flat repository name onto its object key: repository
+// names are prefixed with the configured repo prefix, which is the bucket
+// root when empty.
+func (b *s3Backend) repoKey(name string) string {
+	if b.repoPrefix == "" {
+		return name
+	}
+	return b.repoPrefix + "/" + name
+}
+
+// resolve maps a caller-visible name onto its object key. Names under the
+// staging prefix namespace (produced by StagingPath) are staging keys and
+// are used as-is; every other name is a repository name mapped through
+// repoKey.
+func (b *s3Backend) resolve(name string) string {
+	if strings.HasPrefix(name, b.stagingPrefix+"/") {
+		return name
+	}
+	return b.repoKey(name)
+}
+
 // Put stores the content of r under name. size is passed through to the
 // object store (unknown when negative).
 func (b *s3Backend) Put(ctx context.Context, name string, r io.Reader, size int64) error {
 	if !validName(name) {
 		return fmt.Errorf("storage: invalid name %q", name)
 	}
-	if err := b.client.PutObject(ctx, b.bucket, name, r, size); err != nil {
+	key := b.resolve(name)
+	if err := b.client.PutObject(ctx, b.bucket, key, r, size); err != nil {
 		return fmt.Errorf("storage: put %q in bucket %q: %w", name, b.bucket, err)
 	}
 	return nil
@@ -197,7 +225,8 @@ func (b *s3Backend) Get(ctx context.Context, name string, w io.Writer) error {
 	if !validName(name) {
 		return fmt.Errorf("storage: invalid name %q", name)
 	}
-	obj, err := b.client.GetObject(ctx, b.bucket, name)
+	key := b.resolve(name)
+	obj, err := b.client.GetObject(ctx, b.bucket, key)
 	if err != nil {
 		if isNotFound(err) {
 			return fmt.Errorf("storage: get %q: %w", name, ErrNotFound)
@@ -219,23 +248,33 @@ func (b *s3Backend) Delete(ctx context.Context, name string) error {
 	if !validName(name) {
 		return fmt.Errorf("storage: invalid name %q", name)
 	}
-	if err := b.client.DeleteObject(ctx, b.bucket, name); err != nil {
+	key := b.resolve(name)
+	if err := b.client.DeleteObject(ctx, b.bucket, key); err != nil {
 		return fmt.Errorf("storage: delete %q in bucket %q: %w", name, b.bucket, err)
 	}
 	return nil
 }
 
-// List returns the flat-root names matching the glob prefix: the server
-// lists objects under the literal prefix extracted from the glob, results
-// are filtered client-side with path.Match, and staging entries (keys under
-// the configured staging prefix) are never returned. Pagination follows the
-// continuation token until the last page.
+// List returns the repository names matching the glob prefix: the server
+// lists objects under the repository prefix joined with the literal prefix
+// extracted from the glob, results are filtered client-side with
+// path.Match against the name relative to the repository prefix, and
+// staging entries (keys under the configured staging prefix) are never
+// returned. The staging area may lie inside or outside the repository
+// prefix; the exclusion applies to the full object key, so nested staging
+// trees are hidden as well. A repository prefix that equals or contains
+// the staging prefix leaves nothing to list under it. Pagination follows
+// the continuation token until the last page.
 func (b *s3Backend) List(ctx context.Context, prefix string) ([]string, error) {
 	literal := globLiteralPrefix(prefix)
+	repoLiteral := literal
+	if b.repoPrefix != "" {
+		repoLiteral = b.repoPrefix + "/" + literal
+	}
 	var names []string
 	token := ""
 	for {
-		page, err := b.client.ListObjects(ctx, b.bucket, literal, token)
+		page, err := b.client.ListObjects(ctx, b.bucket, repoLiteral, token)
 		if err != nil {
 			return nil, fmt.Errorf("storage: list %q in bucket %q: %w", prefix, b.bucket, err)
 		}
@@ -243,12 +282,16 @@ func (b *s3Backend) List(ctx context.Context, prefix string) ([]string, error) {
 			if strings.HasPrefix(obj.key, b.stagingPrefix+"/") {
 				continue // the staging tree is never listed
 			}
-			ok, err := path.Match(prefix, obj.key)
+			rel := obj.key
+			if b.repoPrefix != "" {
+				rel = strings.TrimPrefix(rel, b.repoPrefix+"/")
+			}
+			ok, err := path.Match(prefix, rel)
 			if err != nil {
 				return nil, fmt.Errorf("storage: list %q: bad glob: %w", prefix, err)
 			}
 			if ok {
-				names = append(names, obj.key)
+				names = append(names, rel)
 			}
 		}
 		if page.nextToken == "" {
@@ -264,7 +307,8 @@ func (b *s3Backend) Stat(ctx context.Context, name string) (FileInfo, error) {
 	if !validName(name) {
 		return FileInfo{}, fmt.Errorf("storage: invalid name %q", name)
 	}
-	info, err := b.client.StatObject(ctx, b.bucket, name)
+	key := b.resolve(name)
+	info, err := b.client.StatObject(ctx, b.bucket, key)
 	if err != nil {
 		if isNotFound(err) {
 			return FileInfo{}, fmt.Errorf("storage: stat %q: %w", name, ErrNotFound)
@@ -283,7 +327,9 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 	if !validName(src) || !validName(dst) {
 		return fmt.Errorf("storage: invalid move %q -> %q", src, dst)
 	}
-	obj, err := b.client.GetObject(ctx, b.bucket, src)
+	srcKey := b.resolve(src)
+	dstKey := b.resolve(dst)
+	obj, err := b.client.GetObject(ctx, b.bucket, srcKey)
 	if err != nil {
 		if isNotFound(err) {
 			return fmt.Errorf("storage: move %q -> %q: %w", src, dst, ErrNotFound)
@@ -299,7 +345,7 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 		pw.CloseWithError(err) // nil is a clean close
 		errCh <- err
 	}()
-	putErr := b.client.PutObject(ctx, b.bucket, dst, pr, -1)
+	putErr := b.client.PutObject(ctx, b.bucket, dstKey, pr, -1)
 	pr.Close()
 	copyErr := <-errCh
 	if copyErr != nil && isNotFound(copyErr) {
@@ -311,7 +357,7 @@ func (b *s3Backend) Move(ctx context.Context, src, dst string) error {
 	if copyErr != nil {
 		return fmt.Errorf("storage: move %q -> %q: get: %w", src, dst, copyErr)
 	}
-	return b.client.DeleteObject(ctx, b.bucket, src)
+	return b.client.DeleteObject(ctx, b.bucket, srcKey)
 }
 
 // Append merges the stored object with r and re-uploads it under name

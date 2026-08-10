@@ -321,6 +321,39 @@ func TestValidateStagingPrefix(t *testing.T) {
 	}
 }
 
+// TestValidateRepoPrefix asserts the S3 repository prefix contract: an
+// empty value keeps the bucket root (valid), valid prefixes (including
+// multi-segment keys) pass, and unsafe prefixes are rejected with the
+// field name.
+func TestValidateRepoPrefix(t *testing.T) {
+	valid := []string{"", "repo", "artifacts", "artifacts/repo", "tmp-2026/repo.area"}
+	for _, prefix := range valid {
+		cfg := validController()
+		cfg.Storage.S3.RepoPrefix = prefix
+		if err := validate(cfg); err != nil {
+			t.Errorf("validate() with repo prefix %q: %v", prefix, err)
+			continue
+		}
+		if cfg.Storage.S3.RepoPrefix != prefix {
+			t.Errorf("RepoPrefix = %q, want %q", cfg.Storage.S3.RepoPrefix, prefix)
+		}
+	}
+
+	invalid := []string{"/repo", "repo/", "a//b", "a/./b", "a/../b", "rep o", "repo@2026", ".."}
+	for _, prefix := range invalid {
+		cfg := validController()
+		cfg.Storage.S3.RepoPrefix = prefix
+		err := validate(cfg)
+		if err == nil {
+			t.Errorf("validate() with repo prefix %q: want error", prefix)
+			continue
+		}
+		if !strings.Contains(err.Error(), "storage.s3.repo_prefix") {
+			t.Errorf("error %q does not mention storage.s3.repo_prefix", err)
+		}
+	}
+}
+
 func TestValidatePackagerOK(t *testing.T) {
 	for _, packager := range []string{
 		"", // unset: no PACKAGER injected

@@ -26,7 +26,8 @@ staging_dir = "" # staging upload directory (default "" = <root>/staging); an ab
 
 [storage.s3]
 endpoint = "https://s3.example.org" # S3-compatible endpoint URL
-bucket = "varve-repo" # bucket root holding flat repo files; the configured staging_prefix is the upload area
+bucket = "varve-repo" # S3 bucket; the repository area (packages, side files, db/files tarballs) lives under repo_prefix, the upload area under staging_prefix
+repo_prefix = "" # object-key prefix of the repository area (default "" = bucket root; e.g. "repo"); flat packages, side files and db.tar.gz/files.tar.gz live under it
 staging_prefix = "" # object-key prefix of the staging upload area (default "" = "staging"; e.g. "uploads/tmp")
 region = "us-east-1" # S3 region
 access_key = "" # access key; overridable via VARVE_S3_ACCESS_KEY

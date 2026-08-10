@@ -29,15 +29,20 @@ import (
 // validate checks a resolved ControllerConfig against the validation rules.
 // The first failing rule is reported with the concrete field name. The
 // staging settings are normalized in place: the local staging directory is
-// resolved to a clean absolute path and the S3 staging prefix is validated
-// as a safe object-key prefix.
+// resolved to a clean absolute path and the S3 staging and repository
+// prefixes are validated as safe object-key prefixes.
 func validate(c *ControllerConfig) error {
 	c.Storage.Local.StagingDir = resolveLocalStagingDir(c.Storage.Local.Root, c.Storage.Local.StagingDir)
 	if c.Storage.S3.StagingPrefix == "" {
 		c.Storage.S3.StagingPrefix = "staging"
 	}
-	if err := validStagingPrefix(c.Storage.S3.StagingPrefix); err != nil {
+	if err := validKeyPrefix(c.Storage.S3.StagingPrefix); err != nil {
 		return fmt.Errorf("storage.s3.staging_prefix: %w", err)
+	}
+	if c.Storage.S3.RepoPrefix != "" {
+		if err := validKeyPrefix(c.Storage.S3.RepoPrefix); err != nil {
+			return fmt.Errorf("storage.s3.repo_prefix: %w", err)
+		}
 	}
 	switch c.Storage.Backend {
 	case "local", "s3":
@@ -159,13 +164,13 @@ func resolveLocalStagingDir(root, dir string) string {
 	return dir
 }
 
-// validStagingPrefix checks that prefix is a usable staging object-key
-// prefix: a normalized virtual path whose segments consist of whitelisted
-// characters. Every staged name is built as "<prefix>/<taskID>/<file>", so
-// the prefix must keep the composed name safe for both backends (no
-// leading or trailing slash, no "." or ".." segments, no characters
-// outside [A-Za-z0-9._+-]).
-func validStagingPrefix(prefix string) error {
+// validKeyPrefix checks that prefix is a usable object-key prefix: a
+// normalized virtual path whose segments consist of whitelisted
+// characters. Staged names are built as "<stagingPrefix>/<taskID>/<file>"
+// and repository names as "<repoPrefix>/<name>", so either prefix must
+// keep the composed name safe for both backends (no leading or trailing
+// slash, no "." or ".." segments, no characters outside [A-Za-z0-9._+-]).
+func validKeyPrefix(prefix string) error {
 	if prefix == "" {
 		return errors.New("must not be empty")
 	}

@@ -175,8 +175,9 @@ func TestLoadControllerFullExample(t *testing.T) {
 	if cfg.Storage.Local.Root != "/data/repo" {
 		t.Errorf("Storage.Local.Root = %q", cfg.Storage.Local.Root)
 	}
-	if cfg.Storage.Local.StagingDir != "/data/repo/staging" || cfg.Storage.S3.StagingPrefix != "staging" {
-		t.Errorf("staging defaults = %q/%q, want /data/repo/staging/staging", cfg.Storage.Local.StagingDir, cfg.Storage.S3.StagingPrefix)
+	if cfg.Storage.Local.StagingDir != "/data/repo/staging" || cfg.Storage.S3.StagingPrefix != "staging" ||
+		cfg.Storage.S3.RepoPrefix != "" {
+		t.Errorf("staging defaults = %q/%q, repo prefix = %q, want /data/repo/staging/staging and empty", cfg.Storage.Local.StagingDir, cfg.Storage.S3.StagingPrefix, cfg.Storage.S3.RepoPrefix)
 	}
 	if cfg.Storage.S3.Endpoint != "https://s3.example.org" ||
 		cfg.Storage.S3.Bucket != "varve-repo" ||
@@ -294,6 +295,69 @@ staging_prefix = "/abs/prefix"
 	}
 }
 
+// TestLoadControllerRepoPrefix covers the configurable repository area
+// prefix: a multi-segment repo_prefix is carried through to the resolved
+// configuration, and an omitted key keeps the bucket root (empty).
+func TestLoadControllerRepoPrefix(t *testing.T) {
+	content := minimalConfig + `
+[storage]
+backend = "s3"
+
+[storage.s3]
+endpoint = "https://s3.example.org"
+bucket = "varve-repo"
+repo_prefix = "artifacts/repo"
+staging_prefix = "uploads/tmp"
+`
+	cfg, err := LoadController(writeConfig(t, content))
+	if err != nil {
+		t.Fatalf("LoadController: %v", err)
+	}
+	if cfg.Storage.S3.RepoPrefix != "artifacts/repo" {
+		t.Errorf("S3.RepoPrefix = %q, want artifacts/repo", cfg.Storage.S3.RepoPrefix)
+	}
+	if cfg.Storage.S3.StagingPrefix != "uploads/tmp" {
+		t.Errorf("S3.StagingPrefix = %q, want uploads/tmp", cfg.Storage.S3.StagingPrefix)
+	}
+
+	plain := minimalConfig + `
+[storage]
+backend = "s3"
+
+[storage.s3]
+endpoint = "https://s3.example.org"
+bucket = "varve-repo"
+`
+	cfg, err = LoadController(writeConfig(t, plain))
+	if err != nil {
+		t.Fatalf("LoadController without repo_prefix: %v", err)
+	}
+	if cfg.Storage.S3.RepoPrefix != "" {
+		t.Errorf("default S3.RepoPrefix = %q, want empty (bucket root)", cfg.Storage.S3.RepoPrefix)
+	}
+}
+
+// TestLoadControllerRepoPrefixInvalid rejects unsafe S3 repository
+// prefixes at load time.
+func TestLoadControllerRepoPrefixInvalid(t *testing.T) {
+	content := minimalConfig + `
+[storage]
+backend = "s3"
+
+[storage.s3]
+endpoint = "https://s3.example.org"
+bucket = "varve-repo"
+repo_prefix = "/abs/prefix"
+`
+	_, err := LoadController(writeConfig(t, content))
+	if err == nil {
+		t.Fatal("LoadController with invalid repo_prefix: want error")
+	}
+	if !strings.Contains(err.Error(), "storage.s3.repo_prefix") {
+		t.Errorf("error %q does not mention storage.s3.repo_prefix", err)
+	}
+}
+
 func TestLoadControllerMemoryLimitString(t *testing.T) {
 	content := minimalConfig + `
 [worker]
@@ -325,8 +389,9 @@ func TestLoadControllerDefaults(t *testing.T) {
 	if cfg.Storage.Backend != "local" || cfg.Storage.Local.Root != "/data/repo" || !cfg.Storage.S3.PathStyle {
 		t.Errorf("Storage defaults = %+v", cfg.Storage)
 	}
-	if cfg.Storage.Local.StagingDir != "/data/repo/staging" || cfg.Storage.S3.StagingPrefix != "staging" {
-		t.Errorf("staging defaults = %q/%q, want /data/repo/staging/staging", cfg.Storage.Local.StagingDir, cfg.Storage.S3.StagingPrefix)
+	if cfg.Storage.Local.StagingDir != "/data/repo/staging" || cfg.Storage.S3.StagingPrefix != "staging" ||
+		cfg.Storage.S3.RepoPrefix != "" {
+		t.Errorf("staging defaults = %q/%q, repo prefix = %q, want /data/repo/staging/staging and empty", cfg.Storage.Local.StagingDir, cfg.Storage.S3.StagingPrefix, cfg.Storage.S3.RepoPrefix)
 	}
 	if cfg.Repo.Name != "varve" || cfg.Repo.WorkDir != "/data/work" ||
 		cfg.Repo.Sign != "off" || cfg.Repo.KeepVersions != 1 {

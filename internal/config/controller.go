@@ -137,6 +137,7 @@ type rawS3 struct {
 	SecretKey     string `toml:"secret_key"`
 	PathStyle     bool   `toml:"path_style"`
 	StagingPrefix string `toml:"staging_prefix"`
+	RepoPrefix    string `toml:"repo_prefix"`
 }
 
 type rawRepo struct {
@@ -389,6 +390,7 @@ func (r *rawConfig) export() *ControllerConfig {
 				SecretKey:     r.Storage.S3.SecretKey,
 				PathStyle:     r.Storage.S3.PathStyle,
 				StagingPrefix: r.Storage.S3.StagingPrefix,
+				RepoPrefix:    r.Storage.S3.RepoPrefix,
 			},
 		},
 		Repo: RepoConfig{

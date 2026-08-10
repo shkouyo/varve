@@ -48,7 +48,10 @@ type FileInfo struct {
 // Backend is the object-level file interface shared by both storage
 // implementations. Names are virtual paths relative to the backend root:
 // the root is flat for repository files ("<name>") and staging files live
-// under "<stagingPrefix>/<taskID>/<name>" (see StagingPath).
+// under "<stagingPrefix>/<taskID>/<name>" (see StagingPath). The s3
+// backend maps repository names onto object keys under its configured
+// repository prefix (the bucket root when empty); List returns the names
+// relative to that prefix, so callers behave the same for both backends.
 //
 // All methods are safe for concurrent use. Writes to the same name must be
 // serialized by the caller (dispatch's single-writer mutex); the backend

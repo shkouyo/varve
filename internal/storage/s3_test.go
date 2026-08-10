@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -162,6 +163,12 @@ func (f *fakeObjectAPI) StatObject(ctx context.Context, bucket, key string) (obj
 // newFakeBackend wires a fake object store into an s3Backend.
 func newFakeBackend(f *fakeObjectAPI) *s3Backend {
 	return &s3Backend{client: f, bucket: fakeBucket, stagingPrefix: "staging"}
+}
+
+// newFakeRepoBackend wires a fake object store into an s3Backend with the
+// given repository prefix.
+func newFakeRepoBackend(f *fakeObjectAPI, repoPrefix string) *s3Backend {
+	return &s3Backend{client: f, bucket: fakeBucket, stagingPrefix: "staging", repoPrefix: repoPrefix}
 }
 
 func mustFakeBackend(t *testing.T) (*s3Backend, *fakeObjectAPI) {
@@ -427,6 +434,9 @@ func TestOpenS3Validation(t *testing.T) {
 		{Endpoint: "http://127.0.0.1:9000", Bucket: ""},
 		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", StagingPrefix: "bad prefix"},
 		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", StagingPrefix: "/abs"},
+		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", RepoPrefix: "bad prefix"},
+		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", RepoPrefix: "/abs"},
+		{Endpoint: "http://127.0.0.1:9000", Bucket: "b", RepoPrefix: "a//b"},
 	}
 	for _, cfg := range bad {
 		if _, err := OpenS3(cfg); err == nil {
@@ -453,14 +463,161 @@ func TestOpenS3Validation(t *testing.T) {
 	if sb.stagingPrefix != "staging" {
 		t.Errorf("default stagingPrefix = %q, want %q", sb.stagingPrefix, "staging")
 	}
+	if sb.repoPrefix != "" {
+		t.Errorf("default repoPrefix = %q, want empty (bucket root)", sb.repoPrefix)
+	}
 
 	custom := good
 	custom.StagingPrefix = "uploads/tmp"
+	custom.RepoPrefix = "artifacts/repo"
 	backend, err = OpenS3(custom)
 	if err != nil {
-		t.Fatalf("OpenS3(custom prefix): %v", err)
+		t.Fatalf("OpenS3(custom prefixes): %v", err)
 	}
-	if sb, ok := backend.(*s3Backend); !ok || sb.stagingPrefix != "uploads/tmp" {
-		t.Errorf("custom stagingPrefix = %+v, want uploads/tmp", backend)
+	if sb, ok := backend.(*s3Backend); !ok || sb.stagingPrefix != "uploads/tmp" || sb.repoPrefix != "artifacts/repo" {
+		t.Errorf("custom prefixes = %+v, want staging uploads/tmp and repo artifacts/repo", backend)
+	}
+}
+
+// TestS3CustomRepoPrefix asserts a multi-segment repository object-key
+// prefix: flat repository names map onto keys under the prefix, staging
+// keys keep the staging prefix untouched, List returns names relative to
+// the repository prefix and never exposes staging entries, and
+// Stat/Delete resolve through the prefix.
+func TestS3CustomRepoPrefix(t *testing.T) {
+	f := newFakeObjectAPI()
+	b := &s3Backend{client: f, bucket: fakeBucket, stagingPrefix: "uploads/tmp", repoPrefix: "artifacts/repo"}
+	ctx := context.Background()
+
+	if err := b.Put(ctx, "foo-1.0-1-x86_64.pkg.tar.zst", strings.NewReader("flat"), 4); err != nil {
+		t.Fatalf("Put flat: %v", err)
+	}
+	staged := b.StagingPath("t-7", "foo-1.0-1-x86_64.pkg.tar.zst")
+	if want := "uploads/tmp/t-7/foo-1.0-1-x86_64.pkg.tar.zst"; staged != want {
+		t.Errorf("StagingPath = %q, want %q", staged, want)
+	}
+	if err := b.Put(ctx, staged, strings.NewReader("staged"), 6); err != nil {
+		t.Fatalf("Put staged: %v", err)
+	}
+
+	// Caller-visible names round-trip regardless of the prefix.
+	if got := getContent(t, b, "foo-1.0-1-x86_64.pkg.tar.zst"); got != "flat" {
+		t.Errorf("flat Get = %q, want %q", got, "flat")
+	}
+	if got := getContent(t, b, staged); got != "staged" {
+		t.Errorf("staged Get = %q, want %q", got, "staged")
+	}
+
+	// The object store holds the prefixed keys.
+	keys := make([]string, 0, len(f.objects))
+	for k := range f.objects {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	wantKeys := []string{
+		"artifacts/repo/foo-1.0-1-x86_64.pkg.tar.zst",
+		"uploads/tmp/t-7/foo-1.0-1-x86_64.pkg.tar.zst",
+	}
+	if !slices.Equal(keys, wantKeys) {
+		t.Errorf("stored keys = %v, want %v", keys, wantKeys)
+	}
+
+	// List returns names relative to the repository prefix, never staging,
+	// and the server-side listing is narrowed to the repository area.
+	got, err := b.List(ctx, "*")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if !slices.Equal(got, []string{"foo-1.0-1-x86_64.pkg.tar.zst"}) {
+		t.Errorf("List = %v, want only the flat file", got)
+	}
+	lists := f.callsOf("ListObjects")
+	if len(lists) == 0 || lists[0].prefix != "artifacts/repo/" {
+		t.Errorf("ListObjects prefix = %+v, want artifacts/repo/", lists)
+	}
+
+	// Stat and Delete resolve through the repository prefix.
+	fi, err := b.Stat(ctx, "foo-1.0-1-x86_64.pkg.tar.zst")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if fi.Size != 4 {
+		t.Errorf("Stat Size = %d, want 4", fi.Size)
+	}
+	if err := b.Delete(ctx, "foo-1.0-1-x86_64.pkg.tar.zst"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := b.Stat(ctx, "foo-1.0-1-x86_64.pkg.tar.zst"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Stat after Delete = %v, want ErrNotFound", err)
+	}
+}
+
+// TestS3CustomRepoPrefixNestedStaging asserts the staging exclusion when
+// the staging prefix lies inside the repository prefix: staged keys are
+// hidden from List even though they are physically part of the enumerated
+// area.
+func TestS3CustomRepoPrefixNestedStaging(t *testing.T) {
+	b := &s3Backend{client: newFakeObjectAPI(), bucket: fakeBucket, stagingPrefix: "repo/uploads", repoPrefix: "repo"}
+	ctx := context.Background()
+
+	putContent(t, b, "libfoo-1.0-1-x86_64.pkg.tar.zst", "flat")
+	putContent(t, b, b.StagingPath("t-1", "libfoo-1.0-1-x86_64.pkg.tar.zst"), "staged")
+
+	got, err := b.List(ctx, "*")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if !slices.Equal(got, []string{"libfoo-1.0-1-x86_64.pkg.tar.zst"}) {
+		t.Errorf("List = %v, want only the flat file (nested staging hidden)", got)
+	}
+}
+
+// TestS3IngestKeyMapping simulates the ingest flow against the s3 backend:
+// the agent stages artifacts, Ingest moves them into the repository area
+// and the repo-add work flow downloads/upload-back the database tarballs.
+// All repository names land under the configured prefix while staging keys
+// are untouched.
+func TestS3IngestKeyMapping(t *testing.T) {
+	f := newFakeObjectAPI()
+	b := newFakeRepoBackend(f, "repo")
+	ctx := context.Background()
+
+	pkg := "foo-1.2.3-1-x86_64.pkg.tar.zst"
+	staged := b.StagingPath("task-9", pkg)
+	putContent(t, b, staged, "pkg-bytes")
+
+	m, ok := any(b).(Mover)
+	if !ok {
+		t.Fatal("s3Backend does not implement Mover")
+	}
+	if err := m.Move(ctx, staged, pkg); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+
+	// The move fetched the staging source and deleted it afterwards.
+	if got := f.callsOf("GetObject")[0].key; got != "staging/task-9/"+pkg {
+		t.Errorf("Move source key = %q, want the staging key", got)
+	}
+	if got := f.callsOf("DeleteObject")[0].key; got != "staging/task-9/"+pkg {
+		t.Errorf("Move delete key = %q, want the staging key", got)
+	}
+
+	// The s3 work flow downloads and uploads the database under the prefix.
+	putContent(t, b, "varve.db.tar.gz", "db-bytes")
+	if got := getContent(t, b, "varve.db.tar.gz"); got != "db-bytes" {
+		t.Errorf("db Get = %q, want %q", got, "db-bytes")
+	}
+	if _, err := b.Stat(ctx, "varve.db.tar.gz"); err != nil {
+		t.Fatalf("Stat db: %v", err)
+	}
+
+	// List sees only the repository area, with relative names.
+	got, err := b.List(ctx, "*")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	sort.Strings(got)
+	if !slices.Equal(got, []string{"foo-1.2.3-1-x86_64.pkg.tar.zst", "varve.db.tar.gz"}) {
+		t.Errorf("List = %v, want the two repository files", got)
 	}
 }
