@@ -109,7 +109,7 @@ type GPGConfig struct {
 // SourceConfig configures the upstream PKGBUILD repository polling.
 type SourceConfig struct {
 	URL             string        // source repository URL (required)
-	FetchKey        string        // optional SSH key path or token; overridable via VARVE_SOURCE_FETCH_KEY
+	FetchKey        string        // optional SSH private key path for private source repos; overridable via VARVE_SOURCE_FETCH_KEY
 	PollInterval    time.Duration // polling interval, "5m"
 	ExcludeBranches []string      // branches excluded from polling, ["main"]
 }

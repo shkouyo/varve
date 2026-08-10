@@ -24,7 +24,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,7 +57,7 @@ func PkgbuildHead(ctx context.Context, execFn ExecFn, fetchKey string, src Pkgbu
 	cctx, cancel := context.WithTimeout(ctx, pkgbuildRepoTimeout)
 	defer cancel()
 	cmd := execFn(cctx, "git", "ls-remote", "--", src.URL, "refs/heads/"+branch)
-	if env := pkgbuildEnv(fetchKey); env != nil {
+	if env := fetchKeyEnv(fetchKey); env != nil {
 		cmd.Env = env
 	}
 	out, err := cmd.CombinedOutput()
@@ -93,7 +92,7 @@ func PkgbuildFile(ctx context.Context, execFn ExecFn, fetchKey string, src Pkgbu
 	cctx, cancel := context.WithTimeout(ctx, pkgbuildRepoTimeout)
 	defer cancel()
 	cmd := execFn(cctx, "git", "clone", "--depth", "1", "--branch", branch, "--", src.URL, dir)
-	if env := pkgbuildEnv(fetchKey); env != nil {
+	if env := fetchKeyEnv(fetchKey); env != nil {
 		cmd.Env = env
 	}
 	out, err := cmd.CombinedOutput()
@@ -128,21 +127,27 @@ func pkgbuildRel(directory, name string) (string, error) {
 	return path.Join(dir, name), nil
 }
 
-// pkgbuildEnv returns the environment for external pkgbuild_source
-// commands: when fetchKey names an existing file it pins the SSH identity
-// through GIT_SSH_COMMAND. Empty or non-file values leave the command
-// environment alone (https/file transports or externally managed
-// credentials).
-func pkgbuildEnv(fetchKey string) []string {
+// fetchKeyEnv returns the environment for external commands that fetch
+// from private source repositories (the source mirror, pkgbuild_source
+// clones and upstream VCS queries): when fetchKey names an existing file
+// it pins the SSH identity through GIT_SSH_COMMAND and SVN_SSH. Empty or
+// non-file values leave the command environment alone (https transports
+// or externally managed credentials). The key path is shell-escaped with
+// single quotes so a path containing $, backticks or quotes cannot
+// inject into the sh-invoked command line.
+func fetchKeyEnv(fetchKey string) []string {
 	if fetchKey == "" {
 		return nil
 	}
 	if _, err := os.Stat(fetchKey); err != nil {
 		return nil
 	}
-	sshCmd := "ssh -i " + strconv.Quote(fetchKey) +
+	quoted := "'" + strings.ReplaceAll(fetchKey, "'", `'\''`) + "'"
+	sshCmd := "ssh -i " + quoted +
 		" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-	return append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
+	return append(os.Environ(),
+		"GIT_SSH_COMMAND="+sshCmd,
+		"SVN_SSH="+sshCmd)
 }
 
 // pkgbuildHead resolves the head commit of the branch's external

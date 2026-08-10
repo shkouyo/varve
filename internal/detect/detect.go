@@ -366,6 +366,9 @@ func (d *Detector) parseDotfile(ctx context.Context, branch string) (*Dotfile, e
 // Query errors are kept per plan so submitChange can skip the branch
 // without a false positive.
 func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
+	// The fetch_key identity is shared by every upstream query; it is
+	// resolved once per round (fetchKeyEnv stats the key file).
+	env := fetchKeyEnv(d.cfg.FetchKey)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, vcsQueryConcurrency)
 	for _, p := range plans {
@@ -381,9 +384,9 @@ func (d *Detector) queryUpstream(ctx context.Context, plans []*branchPlan) {
 			defer cancel()
 			switch p.kind {
 			case vcs.Git:
-				p.upstreamRef, p.upstreamErr = vcs.GitHead(qctx, p.upstreamURL)
+				p.upstreamRef, p.upstreamErr = vcs.GitHead(qctx, p.upstreamURL, env)
 			case vcs.SVN:
-				p.upstreamRef, p.upstreamErr = vcs.SVNRevision(qctx, p.upstreamURL)
+				p.upstreamRef, p.upstreamErr = vcs.SVNRevision(qctx, p.upstreamURL, env)
 			}
 		}(p)
 	}

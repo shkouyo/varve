@@ -47,6 +47,9 @@ func (d *Detector) cloneMirror(ctx context.Context) error {
 	cctx, cancel := context.WithTimeout(ctx, mirrorTimeout)
 	defer cancel()
 	cmd := d.execCommand(cctx, "git", "clone", "--mirror", d.cfg.URL, d.mirrorDir)
+	if env := fetchKeyEnv(d.cfg.FetchKey); env != nil {
+		cmd.Env = env
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("detect: clone mirror %s: %w: %s", d.cfg.URL, err, strings.TrimSpace(string(out)))
@@ -61,6 +64,9 @@ func (d *Detector) fetchMirror(ctx context.Context) error {
 	defer cancel()
 	cmd := d.execCommand(cctx, "git", "-C", d.mirrorDir,
 		"fetch", "origin", "+refs/heads/*:refs/heads/*", "--prune")
+	if env := fetchKeyEnv(d.cfg.FetchKey); env != nil {
+		cmd.Env = env
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("detect: fetch mirror: %w: %s", err, strings.TrimSpace(string(out)))

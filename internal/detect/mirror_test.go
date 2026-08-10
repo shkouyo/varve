@@ -20,8 +20,10 @@ package detect
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,5 +101,69 @@ func TestMirrorTimeout(t *testing.T) {
 
 	if err := d.ensureMirror(context.Background()); err == nil {
 		t.Fatal("ensureMirror with hung clone succeeded, want timeout error")
+	}
+}
+
+// TestMirrorFetchKeyEnv asserts the fetch_key identity is injected into
+// the mirror maintenance commands: when FetchKey names an existing file,
+// clone and fetch carry GIT_SSH_COMMAND in cmd.Env; without a usable
+// key the environment stays untouched.
+func TestMirrorFetchKeyEnv(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "id_rsa")
+	writeFile(t, key, "key material")
+
+	// With a fetch key: both commands must carry the identity. The
+	// constructor only records the command; the env field is inspected
+	// after the run because the mirror code injects it between
+	// construction and start.
+	store, _ := openStore(t)
+	d := newTestDetector(t, "git@git.example.org:pkgbuilds.git", store, &fakeSink{})
+	d.cfg.FetchKey = key
+	var cmds []*exec.Cmd
+	d.execCommand = func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, "true")
+		cmds = append(cmds, cmd)
+		return cmd
+	}
+	if err := d.ensureMirror(context.Background()); err != nil {
+		t.Fatalf("ensureMirror (clone): %v", err)
+	}
+	if err := os.MkdirAll(d.mirrorDir, 0o755); err != nil {
+		t.Fatalf("mkdir mirror: %v", err)
+	}
+	if err := d.ensureMirror(context.Background()); err != nil {
+		t.Fatalf("ensureMirror (fetch): %v", err)
+	}
+	if len(cmds) != 2 {
+		t.Fatalf("recorded %d commands, want clone + fetch", len(cmds))
+	}
+	for i, cmd := range cmds {
+		found := false
+		for _, kv := range cmd.Env {
+			if strings.HasPrefix(kv, "GIT_SSH_COMMAND=ssh -i '") && strings.Contains(kv, key) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("command %d env = %v, want the fetch key in GIT_SSH_COMMAND", i, cmd.Env)
+		}
+	}
+
+	// Without a fetch key: env stays nil on both commands.
+	store2, _ := openStore(t)
+	d2 := newTestDetector(t, "git@git.example.org:pkgbuilds.git", store2, &fakeSink{})
+	var cmds2 []*exec.Cmd
+	d2.execCommand = func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, "true")
+		cmds2 = append(cmds2, cmd)
+		return cmd
+	}
+	if err := d2.ensureMirror(context.Background()); err != nil {
+		t.Fatalf("ensureMirror without key: %v", err)
+	}
+	for i, cmd := range cmds2 {
+		if cmd.Env != nil {
+			t.Errorf("command %d env = %v, want nil without a fetch key", i, cmd.Env)
+		}
 	}
 }

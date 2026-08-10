@@ -20,6 +20,8 @@ package detect
 import (
 	"context"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -269,5 +271,29 @@ func TestPkgbuildURLValidation(t *testing.T) {
 	}
 	if execs != 0 {
 		t.Errorf("ran %d external commands despite invalid urls", execs)
+	}
+}
+
+// TestFetchKeyEnvQuoting asserts the fetch_key path is shell-escaped
+// with single quotes in both GIT_SSH_COMMAND and SVN_SSH, so a path
+// containing quotes, $ or backticks cannot inject into the sh-invoked
+// command line, and that empty or missing keys yield no environment.
+func TestFetchKeyEnvQuoting(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "key'`$(x)`.pem")
+	writeFile(t, key, "k")
+	env := fetchKeyEnv(key)
+	joined := strings.Join(env, "\n")
+	want := "ssh -i '" + strings.ReplaceAll(key, "'", `'\''`) + "' -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+	if !strings.Contains(joined, "GIT_SSH_COMMAND="+want) {
+		t.Errorf("GIT_SSH_COMMAND not single-quote escaped:\n%v\nwant fragment %q", env, "GIT_SSH_COMMAND="+want)
+	}
+	if !strings.Contains(joined, "SVN_SSH="+want) {
+		t.Errorf("SVN_SSH missing or not escaped: %v", env)
+	}
+	if env2 := fetchKeyEnv(""); env2 != nil {
+		t.Errorf("fetchKeyEnv(\"\") = %v, want nil", env2)
+	}
+	if env3 := fetchKeyEnv(filepath.Join(t.TempDir(), "missing")); env3 != nil {
+		t.Errorf("fetchKeyEnv(missing) = %v, want nil", env3)
 	}
 }

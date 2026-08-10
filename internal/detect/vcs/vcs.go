@@ -158,9 +158,13 @@ func ValidateRepoURL(url string) error {
 
 // GitHead returns the full HEAD hash of a git repository as reported by
 // "git ls-remote <url> HEAD". An empty repository (no HEAD) yields an
-// empty string, not an error.
-func GitHead(ctx context.Context, url string) (string, error) {
+// empty string, not an error. env, when non-nil, is set as the command
+// environment (the caller injects the fetch_key identity here).
+func GitHead(ctx context.Context, url string, env []string) (string, error) {
 	cmd := execCommand(ctx, "git", "ls-remote", "--", url, "HEAD")
+	if env != nil {
+		cmd.Env = env
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("vcs: git ls-remote %s: %w: %s", url, err, strings.TrimSpace(string(out)))
@@ -191,11 +195,17 @@ type svnInfo struct {
 
 // SVNRevision returns the last-changed revision of an svn repository as
 // reported by "svn info --xml <url>".
-func SVNRevision(ctx context.Context, url string) (string, error) {
-	// --non-interactive keeps a hanging credential or certificate prompt
-	// from blocking the query; "--" keeps the URL from being parsed as
-	// an option.
+// SVNRevision returns the last-changed revision of an svn repository as
+// reported by "svn info --xml <url>". --non-interactive keeps a hanging
+// credential or certificate prompt from blocking the query and "--" keeps
+// the URL from being parsed as an option. env, when non-nil, is set as
+// the command environment (the caller injects the fetch_key identity
+// through SVN_SSH here).
+func SVNRevision(ctx context.Context, url string, env []string) (string, error) {
 	cmd := execCommand(ctx, "svn", "info", "--non-interactive", "--xml", "--", url)
+	if env != nil {
+		cmd.Env = env
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("vcs: svn info %s: %w: %s", url, err, strings.TrimSpace(string(out)))

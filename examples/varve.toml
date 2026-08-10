@@ -47,7 +47,7 @@ passphrase = "" # private key passphrase; written directly in this file, so file
 
 [source]
 url = "git@git.example.org:pkgbuilds.git" # source repository URL (required; each branch is one package)
-fetch_key = "" # optional: SSH private key path or token (for private source repos); overridable via VARVE_SOURCE_FETCH_KEY
+fetch_key = "" # optional: SSH private key path (for private source repos); overridable via VARVE_SOURCE_FETCH_KEY
 poll_interval = "5m" # change-detection polling interval (default "5m")
 exclude_branches = ["main", "wip/*"] # branches excluded from polling (default excludes main)
 

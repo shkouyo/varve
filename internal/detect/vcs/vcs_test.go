@@ -113,7 +113,7 @@ func TestGitHeadLocalRepo(t *testing.T) {
 	dir := initGitRepo(t, "one")
 	head1 := gitHeadOf(t, dir)
 
-	got, err := GitHead(context.Background(), "file://"+dir)
+	got, err := GitHead(context.Background(), "file://"+dir, nil)
 	if err != nil {
 		t.Fatalf("GitHead: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestGitHeadLocalRepo(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "two")
 	head2 := gitHeadOf(t, dir)
 
-	got2, err := GitHead(context.Background(), "file://"+dir)
+	got2, err := GitHead(context.Background(), "file://"+dir, nil)
 	if err != nil {
 		t.Fatalf("GitHead after commit: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestGitHeadEmptyRepo(t *testing.T) {
 	}
 	runGit(t, dir, "init", "--bare")
 
-	got, err := GitHead(context.Background(), "file://"+dir)
+	got, err := GitHead(context.Background(), "file://"+dir, nil)
 	if err != nil {
 		t.Fatalf("GitHead on empty repo: %v", err)
 	}
@@ -190,7 +190,7 @@ esac
 	execCommand = fakeExecScript(t, body)
 
 	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	head, err := GitHead(context.Background(), "https://example.org/repo.git")
+	head, err := GitHead(context.Background(), "https://example.org/repo.git", nil)
 	if err != nil {
 		t.Fatalf("GitHead: %v", err)
 	}
@@ -198,7 +198,7 @@ esac
 		t.Errorf("GitHead = %q, want %q", head, hash)
 	}
 
-	rev, err := SVNRevision(context.Background(), "https://example.org/repo")
+	rev, err := SVNRevision(context.Background(), "https://example.org/repo", nil)
 	if err != nil {
 		t.Fatalf("SVNRevision: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestSVNRevisionPathShim(t *testing.T) {
 	}
 	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	rev, err := SVNRevision(context.Background(), "https://example.org/repo")
+	rev, err := SVNRevision(context.Background(), "https://example.org/repo", nil)
 	if err != nil {
 		t.Fatalf("SVNRevision via shim: %v", err)
 	}
@@ -353,4 +353,31 @@ func initGitRepo(t *testing.T, content string) string {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "one")
 	return dir
+}
+
+// TestGitHeadEnv asserts the env parameter lands on the command: a
+// non-nil slice is set as cmd.Env, nil leaves it untouched (the caller
+// decides when an identity is injected).
+func TestGitHeadEnv(t *testing.T) {
+	old := execCommand
+	defer func() { execCommand = old }()
+	var cmds []*exec.Cmd
+	execCommand = func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, "true")
+		cmds = append(cmds, cmd)
+		return cmd
+	}
+	env := []string{"GIT_SSH_COMMAND=ssh -i /keys/id"}
+	if _, err := GitHead(context.Background(), "https://example.org/repo.git", env); err != nil {
+		t.Fatalf("GitHead: %v", err)
+	}
+	if got := cmds[0].Env; len(got) != 1 || got[0] != env[0] {
+		t.Errorf("cmd.Env = %v, want the injected env", got)
+	}
+	if _, err := GitHead(context.Background(), "https://example.org/repo.git", nil); err != nil {
+		t.Fatalf("GitHead: %v", err)
+	}
+	if got := cmds[1].Env; got != nil {
+		t.Errorf("cmd.Env = %v, want nil when env is nil", got)
+	}
 }
