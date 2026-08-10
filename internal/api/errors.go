@@ -75,14 +75,16 @@ func writeConflict(w http.ResponseWriter, message string, offset int64) {
 	})
 }
 
-// writeJSON encodes v as the response body. Marshal errors are logged and
-// dropped: headers were already committed, so the client sees a truncated
-// body rather than a clean failure. json.Marshal is used (not the encoder)
-// so the body is byte-exact without a trailing newline.
+// writeJSON encodes v as the response body. A marshal failure is answered
+// with a 500 before any header is written (a silent empty 200 would make
+// the worker client decode "unexpected end of JSON input" instead of a
+// clean error). json.Marshal is used (not the encoder) so the body is
+// byte-exact without a trailing newline.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		log.Printf("api: encode response: %v", err)
+		http.Error(w, "api: encode response", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

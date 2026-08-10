@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -218,5 +219,20 @@ func TestPayloadTooLargeMapping(t *testing.T) {
 				t.Errorf("code = %q, want %q", eb.Error.Code, codePayloadTooLarge)
 			}
 		})
+	}
+}
+
+// TestWriteJSONMarshalFailure asserts a marshal failure answers 500 with a
+// JSON error body instead of a silent empty 200 (no handler can produce an
+// unmarshalable response today, but the contract must not degrade to a
+// fake success).
+func TestWriteJSONMarshalFailure(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeJSON(rec, http.StatusOK, func() {}) // funcs cannot be marshaled
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "encode response") {
+		t.Errorf("body = %q, want an encode-response error", rec.Body.String())
 	}
 }

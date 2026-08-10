@@ -196,6 +196,24 @@ func TestValidateResultReq(t *testing.T) {
 	}
 }
 
+// TestValidateResultStatusEnum asserts the result status is enumerated at
+// the HTTP boundary: anything outside succeeded/failed/cancelled is a 400
+// earlier than the dispatch layer's unknown-status 500.
+func TestValidateResultStatusEnum(t *testing.T) {
+	for _, status := range []string{"bogus", "", "Succeeded", "SUCCEEDED", "succeeded "} {
+		r := ResultReq{Status: status}
+		if err := validateResultReq(&r); err == nil {
+			t.Errorf("status %q accepted, want error", status)
+		}
+	}
+	for _, status := range []string{"succeeded", "failed", "cancelled"} {
+		r := ResultReq{Status: status}
+		if err := validateResultReq(&r); err != nil {
+			t.Errorf("status %q rejected: %v", status, err)
+		}
+	}
+}
+
 // TestValidateRegisterReq asserts the register payload bounds.
 func TestValidateRegisterReq(t *testing.T) {
 	ok := RegisterReq{Name: "proud-heron-7", Role: "agent", Mode: "pool", Arch: "x86_64", Version: "1.0"}

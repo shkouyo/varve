@@ -164,6 +164,11 @@ func validateResultReq(r *ResultReq) error {
 	if err := bounded("status", r.Status, maxStatusLen); err != nil {
 		return err
 	}
+	switch r.Status {
+	case "succeeded", "failed", "cancelled":
+	default:
+		return errors.New(`status: must be one of "succeeded", "failed", "cancelled"`)
+	}
 	if err := bounded("commit", r.Commit, maxLabelLen); err != nil {
 		return err
 	}
