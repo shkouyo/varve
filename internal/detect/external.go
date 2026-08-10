@@ -64,11 +64,14 @@ func PkgbuildHead(ctx context.Context, execFn ExecFn, fetchKey string, src Pkgbu
 	if err != nil {
 		return "", fmt.Errorf("detect: ls-remote pkgbuild source %s: %w: %s", src.URL, err, strings.TrimSpace(string(out)))
 	}
-	line := strings.TrimSpace(string(out))
-	if line == "" {
-		return "", fmt.Errorf("detect: pkgbuild source %s has no branch %q", src.URL, branch)
+	head, err := vcs.HeadFromLSRemote(out)
+	if err != nil {
+		// A missing branch and a warning-only output both land here; the
+		// caller skips the branch instead of building from a stale
+		// snapshot.
+		return "", fmt.Errorf("detect: pkgbuild source %s has no branch %q: %w", src.URL, branch, err)
 	}
-	return strings.Fields(line)[0], nil
+	return head, nil
 }
 
 // PkgbuildFile reads one file from a pkgbuild_source repository: a shallow

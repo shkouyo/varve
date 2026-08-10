@@ -297,3 +297,42 @@ func TestFetchKeyEnvQuoting(t *testing.T) {
 		t.Errorf("fetchKeyEnv(missing) = %v, want nil", env3)
 	}
 }
+
+// TestPkgbuildHeadSkipsWarningLines asserts the ls-remote parser is shared
+// with the pkgbuild_source path: a redirect warning merged into the output
+// is skipped and the true head hash is returned, instead of the warning
+// text being mistaken for the ref.
+func TestPkgbuildHeadSkipsWarningLines(t *testing.T) {
+	execFn := func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c",
+			"printf 'warning: redirecting to https://example.org/repo.git instead\\n' >&2; "+
+				"printf 'cccccccccccccccccccccccccccccccccccccccc\\trefs/heads/master\\n'")
+	}
+	head, err := PkgbuildHead(context.Background(), execFn, "",
+		PkgbuildSource{URL: "https://example.org/repo.git", Branch: "master"})
+	if err != nil {
+		t.Fatalf("PkgbuildHead: %v", err)
+	}
+	const want = "cccccccccccccccccccccccccccccccccccccccc"
+	if head != want {
+		t.Errorf("PkgbuildHead = %q, want %q (warning line must be skipped)", head, want)
+	}
+}
+
+// TestPkgbuildHeadNoRefs asserts a warning-only output (a missing branch)
+// is still an error naming the branch, so the caller skips it instead of
+// building from a stale snapshot.
+func TestPkgbuildHeadNoRefs(t *testing.T) {
+	execFn := func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c",
+			"printf 'warning: redirecting to https://example.org/repo.git instead\\n' >&2")
+	}
+	_, err := PkgbuildHead(context.Background(), execFn, "",
+		PkgbuildSource{URL: "https://example.org/repo.git", Branch: "master"})
+	if err == nil {
+		t.Fatal("PkgbuildHead on warning-only output: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "master") {
+		t.Errorf("error must name the branch, got %v", err)
+	}
+}

@@ -19,6 +19,7 @@ package vcs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -379,5 +380,71 @@ func TestGitHeadEnv(t *testing.T) {
 	}
 	if got := cmds[1].Env; got != nil {
 		t.Errorf("cmd.Env = %v, want nil when env is nil", got)
+	}
+}
+
+// TestHeadFromLSRemote pins the ref-line parser: only lines carrying a
+// 40-hex or 64-hex object id followed by a tab are accepted; diagnostics
+// and warning lines are skipped.
+func TestHeadFromLSRemote(t *testing.T) {
+	const sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	cases := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{"sha1 line", sha1 + "\tHEAD\n", sha1},
+		{"sha256 line", sha256 + "\trefs/heads/main\n", sha256},
+		{"warning prefix", "warning: redirecting to https://example.org/repo.git instead\n" + sha1 + "\tHEAD\n", sha1},
+		{"warning only between", "warning: a\n" + sha1 + "\tHEAD\nwarning: b\n", sha1},
+		{"carriage return", sha1 + "\tHEAD\r\n", sha1},
+		{"blank and comment lines", "\n# note\n" + sha1 + "\tHEAD\n", sha1},
+		{"first ref line wins", sha1 + "\trefs/tags/v1\n" + sha1 + "\tHEAD\n", sha1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := HeadFromLSRemote([]byte(tc.out))
+			if err != nil {
+				t.Fatalf("HeadFromLSRemote: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("head = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	// No matching line yields ErrNoRefs.
+	for name, out := range map[string]string{
+		"empty":        "",
+		"warning only": "warning: redirecting to https://example.org/repo.git instead\n",
+		"short hash":   "abc\tHEAD\n",
+		"no tab":       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD\n",
+		"non-hex":      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\tHEAD\n",
+	} {
+		if _, err := HeadFromLSRemote([]byte(out)); !errors.Is(err, ErrNoRefs) {
+			t.Errorf("%s: err = %v, want ErrNoRefs", name, err)
+		}
+	}
+}
+
+// TestGitHeadSkipsWarningLines asserts the real command path: a git
+// ls-remote that emits a redirect warning before the ref line still
+// yields the true HEAD hash instead of the warning text.
+func TestGitHeadSkipsWarningLines(t *testing.T) {
+	old := execCommand
+	defer func() { execCommand = old }()
+
+	body := `
+echo "warning: redirecting to https://example.org/repo.git instead" >&2
+echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	HEAD"
+`
+	execCommand = fakeExecScript(t, body)
+	head, err := GitHead(context.Background(), "https://example.org/repo.git", nil)
+	if err != nil {
+		t.Fatalf("GitHead: %v", err)
+	}
+	const want = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	if head != want {
+		t.Errorf("GitHead = %q, want %q (warning line must be skipped)", head, want)
 	}
 }

@@ -156,6 +156,31 @@ func ValidateRepoURL(url string) error {
 	return fmt.Errorf("url %q has no whitelisted scheme", url)
 }
 
+// lsRemoteLineRE matches one real "git ls-remote" output line: a 40-hex
+// (sha1) or 64-hex (sha256) object id followed by a tab and the ref name.
+// Warnings and other diagnostics that git merges into stdout through
+// CombinedOutput never carry that shape, so they are skipped instead of
+// being mistaken for a ref.
+var lsRemoteLineRE = regexp.MustCompile(`^\t?[0-9a-f]{40}([0-9a-f]{24})?\t`)
+
+// HeadFromLSRemote parses the output of a "git ls-remote <url> <ref>"
+// invocation and returns the object id of the first real ref line.
+// Non-ref lines (warnings on stderr merged into the output by
+// CombinedOutput) are skipped. ErrNoRefs when the output carries no ref
+// line.
+var ErrNoRefs = errors.New("vcs: ls-remote output has no ref line")
+
+func HeadFromLSRemote(out []byte) (string, error) {
+	for _, line := range strings.Split(string(out), "\n") {
+		if !lsRemoteLineRE.MatchString(line) {
+			continue
+		}
+		hash, _, _ := strings.Cut(line, "\t")
+		return strings.TrimSpace(hash), nil
+	}
+	return "", ErrNoRefs
+}
+
 // GitHead returns the full HEAD hash of a git repository as reported by
 // "git ls-remote <url> HEAD". An empty repository (no HEAD) yields an
 // empty string, not an error. env, when non-nil, is set as the command
@@ -169,17 +194,14 @@ func GitHead(ctx context.Context, url string, env []string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("vcs: git ls-remote %s: %w: %s", url, err, strings.TrimSpace(string(out)))
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) > 0 {
-			return fields[0], nil
-		}
+	head, err := HeadFromLSRemote(out)
+	if errors.Is(err, ErrNoRefs) {
+		return "", nil // empty repository: no HEAD
 	}
-	return "", nil
+	if err != nil {
+		return "", fmt.Errorf("vcs: git ls-remote %s: %w", url, err)
+	}
+	return head, nil
 }
 
 // svnInfo is the subset of the "svn info --xml" document the package
