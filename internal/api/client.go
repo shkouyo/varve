@@ -34,11 +34,11 @@ import (
 // uploads and downloads carry no per-request timeout and stream for as long
 // as the caller's context allows. Retries apply to idempotent requests only
 // (heartbeat / log append / upload / result report): up to 3 retries with
-// a fixed 1s interval, on network errors and 5xx responses. The result
-// report is retried so a transient 502 from the proxy (Caddy gave up on a
-// slow or hung upstream) cannot permanently orphan the task: the
-// controller tolerates duplicate reports (409 when already terminal), and
-// the ingest orchestration is serialized and idempotent.
+// a fixed 1s interval, on network errors and 5xx responses. A timed-out
+// request is never retried (the server may have applied it), except for
+// the result report: a lost report is unrecoverable and duplicate reports
+// are safe (409 when already terminal), so the report is also retried on
+// timeouts to ride out a slow or hung upstream.
 const (
 	requestTimeout = 30 * time.Second
 	maxRetries     = 3
@@ -97,7 +97,7 @@ func (e *APIError) Error() string {
 // Register registers a node (POST /api/v1/register).
 func (c *Client) Register(ctx context.Context, req RegisterReq) (*RegisterResp, error) {
 	var resp RegisterResp
-	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/register", req, &resp, requestTimeout, false); err != nil {
+	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/register", req, &resp, requestTimeout, false, false); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -108,7 +108,7 @@ func (c *Client) Register(ctx context.Context, req RegisterReq) (*RegisterResp, 
 // Idempotent: retried on transient failures.
 func (c *Client) Heartbeat(ctx context.Context, req HeartbeatReq) (*HeartbeatResp, error) {
 	var resp HeartbeatResp
-	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/heartbeat", req, &resp, requestTimeout, true); err != nil {
+	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/heartbeat", req, &resp, requestTimeout, true, false); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -119,7 +119,7 @@ func (c *Client) Heartbeat(ctx context.Context, req HeartbeatReq) (*HeartbeatRes
 // one-shot agent container.
 func (c *Client) Poll(ctx context.Context, req PollReq) (*PollResp, error) {
 	var resp PollResp
-	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/poll", req, &resp, requestTimeout, false); err != nil {
+	if err := c.nodeRequest(ctx, http.MethodPost, "/api/v1/poll", req, &resp, requestTimeout, false, false); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -130,7 +130,7 @@ func (c *Client) Poll(ctx context.Context, req PollReq) (*PollResp, error) {
 func (c *Client) GetTask(ctx context.Context, taskID, token string) (*TaskDetail, error) {
 	var task TaskDetail
 	if err := c.taskRequest(ctx, http.MethodGet, "/api/v1/tasks/"+url.PathEscape(taskID),
-		token, nil, &task, requestTimeout, false); err != nil {
+		token, nil, &task, requestTimeout, false, false); err != nil {
 		return nil, err
 	}
 	return &task, nil
@@ -141,7 +141,7 @@ func (c *Client) GetTask(ctx context.Context, taskID, token string) (*TaskDetail
 func (c *Client) AppendLog(ctx context.Context, taskID, token string, seg LogSegment) (*LogAck, error) {
 	var ack LogAck
 	if err := c.taskRequest(ctx, http.MethodPost, "/api/v1/tasks/"+url.PathEscape(taskID)+"/log",
-		token, seg, &ack, requestTimeout, true); err != nil {
+		token, seg, &ack, requestTimeout, true, false); err != nil {
 		return nil, err
 	}
 	return &ack, nil
@@ -156,7 +156,7 @@ func (c *Client) AppendLog(ctx context.Context, taskID, token string, seg LogSeg
 // terminal, and concurrent ingests serialize on the ingest mutex.
 func (c *Client) ReportResult(ctx context.Context, taskID, token string, res ResultReq) error {
 	return c.taskRequest(ctx, http.MethodPost, "/api/v1/tasks/"+url.PathEscape(taskID)+"/result",
-		token, res, nil, requestTimeout, true)
+		token, res, nil, requestTimeout, true, true)
 }
 
 // GetSigningKey claims the one-shot signing key material of a task (POST
@@ -164,7 +164,7 @@ func (c *Client) ReportResult(ctx context.Context, taskID, token string, res Res
 func (c *Client) GetSigningKey(ctx context.Context, taskID, token string) (*KeyMaterial, error) {
 	var wire signingKeyWire
 	if err := c.taskRequest(ctx, http.MethodPost, "/api/v1/tasks/"+url.PathEscape(taskID)+"/signing-key",
-		token, nil, &wire, requestTimeout, false); err != nil {
+		token, nil, &wire, requestTimeout, false, false); err != nil {
 		return nil, err
 	}
 	return &KeyMaterial{
@@ -199,7 +199,7 @@ func (c *Client) UploadFile(ctx context.Context, taskID, token, name string, r i
 				}
 			}
 			return io.NopCloser(r), nil
-		}, size, &meta, 0, rewindable)
+		}, size, &meta, 0, rewindable, false)
 	if err != nil {
 		return nil, err
 	}
@@ -234,28 +234,28 @@ func (c *Client) DownloadFile(ctx context.Context, taskID, token, name string) (
 // /api/v1/workers/{name}/deregister).
 func (c *Client) Deregister(ctx context.Context, name string) error {
 	return c.nodeRequest(ctx, http.MethodPost, "/api/v1/workers/"+url.PathEscape(name)+"/deregister",
-		nil, nil, requestTimeout, false)
+		nil, nil, requestTimeout, false, false)
 }
 
 // nodeRequest issues a node-level request authenticated with the shared
 // Bearer token.
 func (c *Client) nodeRequest(ctx context.Context, method, path string, reqBody, respBody any,
-	timeout time.Duration, retryable bool) error {
-	return c.jsonRequest(ctx, method, path, reqBody, respBody, timeout, retryable, "", true, nil)
+	timeout time.Duration, retryable, retryOnTimeout bool) error {
+	return c.jsonRequest(ctx, method, path, reqBody, respBody, timeout, retryable, retryOnTimeout, "", true, nil)
 }
 
 // taskRequest issues a task-level request authenticated with the per-task
 // claim token (no shared Bearer on task endpoints).
 func (c *Client) taskRequest(ctx context.Context, method, path string, taskToken string,
-	reqBody, respBody any, timeout time.Duration, retryable bool) error {
-	return c.jsonRequest(ctx, method, path, reqBody, respBody, timeout, retryable, taskToken, false, nil)
+	reqBody, respBody any, timeout time.Duration, retryable, retryOnTimeout bool) error {
+	return c.jsonRequest(ctx, method, path, reqBody, respBody, timeout, retryable, retryOnTimeout, taskToken, false, nil)
 }
 
 // jsonRequest runs a request whose body is a JSON payload marshaled once
 // and re-marshaled per retry attempt; newBody overrides the default body
 // factory and is used by the streaming upload.
 func (c *Client) jsonRequest(ctx context.Context, method, path string, reqBody, respBody any,
-	timeout time.Duration, retryable bool, taskToken string, useBearer bool,
+	timeout time.Duration, retryable, retryOnTimeout bool, taskToken string, useBearer bool,
 	newBody func() (io.ReadCloser, error)) error {
 	payloadLen := int64(0)
 	if reqBody != nil && newBody == nil {
@@ -268,7 +268,7 @@ func (c *Client) jsonRequest(ctx context.Context, method, path string, reqBody, 
 			return io.NopCloser(bytes.NewReader(payload)), nil
 		}
 	}
-	return c.exec(ctx, method, path, taskToken, useBearer, newBody, payloadLen, respBody, timeout, retryable)
+	return c.exec(ctx, method, path, taskToken, useBearer, newBody, payloadLen, respBody, timeout, retryable, retryOnTimeout)
 }
 
 // exec runs the request, retrying transient failures for idempotent calls.
@@ -276,8 +276,15 @@ func (c *Client) jsonRequest(ctx context.Context, method, path string, reqBody, 
 // keeps the request chunked): every varve request body has a known size,
 // so the server-side ContentLength checks and limits apply to real
 // traffic instead of being bypassed by chunked encoding.
+// exec runs the request, retrying transient failures for idempotent calls.
+// contentLength is the declared body size in bytes (0 when unknown, which
+// keeps the request chunked): every varve request body has a known size,
+// so the server-side ContentLength checks and limits apply to real
+// traffic instead of being bypassed by chunked encoding. retryOnTimeout
+// additionally retries per-request deadline failures, an escape hatch for
+// the result report only.
 func (c *Client) exec(ctx context.Context, method, path, taskToken string, useBearer bool,
-	newBody func() (io.ReadCloser, error), contentLength int64, respBody any, timeout time.Duration, retryable bool) error {
+	newBody func() (io.ReadCloser, error), contentLength int64, respBody any, timeout time.Duration, retryable, retryOnTimeout bool) error {
 	var lastErr error
 	for attempt := 0; ; attempt++ {
 		err := c.do(ctx, method, path, taskToken, useBearer, newBody, contentLength, respBody, timeout)
@@ -285,7 +292,8 @@ func (c *Client) exec(ctx context.Context, method, path, taskToken string, useBe
 			return nil
 		}
 		lastErr = err
-		if !retryable || attempt >= maxRetries || !isRetryable(ctx, err) {
+		if !retryable || attempt >= maxRetries || !isRetryable(ctx, err) ||
+			(!retryOnTimeout && errors.Is(err, context.DeadlineExceeded)) {
 			return lastErr
 		}
 		if err := sleepContext(ctx, retryInterval); err != nil {

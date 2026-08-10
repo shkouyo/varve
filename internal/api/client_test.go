@@ -21,9 +21,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -409,6 +412,54 @@ func (r *roundTripRecorder) RoundTrip(req *http.Request) (*http.Response, error)
 		Body:       io.NopCloser(strings.NewReader("{}")),
 		Request:    req,
 	}, nil
+}
+
+// slowServer answers after the given delay and counts requests.
+func slowServer(t *testing.T, delay time.Duration) (*httptest.Server, *int32) {
+	t.Helper()
+	var n int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&n, 1)
+		time.Sleep(delay)
+		fmt.Fprint(w, "{}")
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &n
+}
+
+// TestExecTimeoutNotRetried asserts a per-request deadline failure is not
+// retried: the server may have applied the request, so re-sending would
+// duplicate the side effect.
+func TestExecTimeoutNotRetried(t *testing.T) {
+	srv, n := slowServer(t, 300*time.Millisecond)
+	client := NewClient(srv.URL, testToken)
+
+	err := client.exec(context.Background(), http.MethodGet, "/slow", "", false, nil, 0, nil, 50*time.Millisecond, true, false)
+	if err == nil {
+		t.Fatal("exec with a deadline failure: want error")
+	}
+	if !strings.Contains(err.Error(), "deadline exceeded") {
+		t.Errorf("error = %v, want a deadline error", err)
+	}
+	if got := atomic.LoadInt32(n); got != 1 {
+		t.Errorf("requests = %d, want 1 (timeout must not be retried)", got)
+	}
+}
+
+// TestExecTimeoutRetriedForResultReport asserts the result-report escape
+// hatch: with retryOnTimeout set, deadline failures are retried like any
+// other transient failure (the server tolerates duplicate reports).
+func TestExecTimeoutRetriedForResultReport(t *testing.T) {
+	srv, n := slowServer(t, 300*time.Millisecond)
+	client := NewClient(srv.URL, testToken)
+
+	err := client.exec(context.Background(), http.MethodGet, "/slow", "", false, nil, 0, nil, 50*time.Millisecond, true, true)
+	if err == nil {
+		t.Fatal("exec with a deadline failure: want error")
+	}
+	if got := atomic.LoadInt32(n); got != maxRetries+1 {
+		t.Errorf("requests = %d, want %d (timeout retried for the result report)", got, maxRetries+1)
+	}
 }
 
 // TestClientDeclaresContentLength asserts every JSON request and every
