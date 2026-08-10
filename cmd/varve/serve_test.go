@@ -489,9 +489,22 @@ func TestRunServeServeErrorCarriesPort(t *testing.T) {
 		}
 		return &fakeServer{rec: rec, name: addr}, nil
 	})
-	replaceVar(t, &waitSignal, func(<-chan os.Signal) error { return nil })
+	// runServe waits for a signal in a goroutine that reads the
+	// waitSignal package variable; it returns early on the fatal serve
+	// error, so wait until the watcher has loaded the fake before
+	// t.Cleanup restores the variable.
+	waitSignalLoaded := make(chan struct{})
+	replaceVar(t, &waitSignal, func(<-chan os.Signal) error {
+		close(waitSignalLoaded)
+		return nil
+	})
 
 	err := runServe([]string{"--config", cfgPath})
+	select {
+	case <-waitSignalLoaded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runServe never started the signal watcher")
+	}
 	if err == nil {
 		t.Fatal("runServe must fail on a fatal serve error")
 	}

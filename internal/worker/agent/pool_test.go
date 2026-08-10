@@ -213,10 +213,10 @@ func TestPoolHeartbeatErrorKeepsRunning(t *testing.T) {
 		t.Fatal("node never registered")
 	}
 	// The heartbeat error path must run, and polling must continue.
-	if !waitFor(t, 5*time.Second, func() bool { return len(f.heartbeats) > 0 }) {
+	if !waitFor(t, 5*time.Second, func() bool { return f.heartbeatCount() > 0 }) {
 		t.Fatal("no heartbeat was attempted")
 	}
-	if !waitFor(t, 5*time.Second, func() bool { return len(f.polls) >= 2 }) {
+	if !waitFor(t, 5*time.Second, func() bool { return f.pollCount() >= 2 }) {
 		t.Fatal("polling stopped after heartbeat errors")
 	}
 
@@ -253,7 +253,7 @@ func TestPoolPollErrorKeepsPolling(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.runPool(ctx) }()
 
-	if !waitFor(t, 5*time.Second, func() bool { return len(f.polls) >= 3 }) {
+	if !waitFor(t, 5*time.Second, func() bool { return f.pollCount() >= 3 }) {
 		t.Fatal("polling stopped after poll errors")
 	}
 	cancel()

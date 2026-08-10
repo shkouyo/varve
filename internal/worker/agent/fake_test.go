@@ -282,6 +282,20 @@ func (f *fakeClient) regCount() int {
 	return f.regCalls
 }
 
+// heartbeatCount returns how many Heartbeat calls were recorded.
+func (f *fakeClient) heartbeatCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.heartbeats)
+}
+
+// pollCount returns how many Poll calls were recorded.
+func (f *fakeClient) pollCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.polls)
+}
+
 // execCall records one external command invocation. cmd keeps the
 // built *exec.Cmd so tests can assert the environment the command
 // actually ran with (the agent injects it after the recorder returns).
