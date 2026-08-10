@@ -96,6 +96,43 @@ func TestPollClaimsFIFOAndHeartbeat(t *testing.T) {
 	}
 }
 
+// TestTokenCacheBound asserts the in-memory claim-token cache never
+// outgrows maxTokenCache: overflowing claims rebuild the cache, and an
+// evicted entry still validates through the authoritative database.
+func TestTokenCacheBound(t *testing.T) {
+	orig := maxTokenCache
+	maxTokenCache = 4
+	defer func() { maxTokenCache = orig }()
+
+	env := newTestEnv(t)
+	for _, pkg := range []string{"a", "b", "c", "d", "e", "f"} {
+		env.enqueue(t, pkg, pkg)
+	}
+	env.registerWorker(t, "w1", "host", "host", 8)
+
+	var firstID, firstToken string
+	for i := 0; i < 6; i++ {
+		got, token := env.claim(t, "w1")
+		if i == 0 {
+			firstID, firstToken = got, token
+		}
+		env.o.tokenMu.Lock()
+		size := len(env.o.tokenCache)
+		env.o.tokenMu.Unlock()
+		if size > maxTokenCache {
+			t.Fatalf("token cache size = %d after %d claims, want <= %d", size, i+1, maxTokenCache)
+		}
+	}
+	// The first claim was evicted by the overflow rebuild; the check must
+	// still pass via the database read-through.
+	if err := env.o.checkToken(ctx(), firstID, firstToken); err != nil {
+		t.Errorf("checkToken(evicted) = %v, want pass via the database", err)
+	}
+	if err := env.o.checkToken(ctx(), firstID, "wrong-token"); err != ErrForbidden {
+		t.Errorf("checkToken(wrong) = %v, want ErrForbidden", err)
+	}
+}
+
 // TestPollArchFilterAndCapacity covers the db claim constraints surfaced
 // through Poll: an arch mismatch blocks the claim and capacity limits the
 // concurrent tasks per node.

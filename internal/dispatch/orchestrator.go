@@ -334,6 +334,13 @@ func isTerminal(state string) bool {
 	return false
 }
 
+// maxTokenCache caps the in-memory claim-token mirror. The database is
+// authoritative, so evicting arbitrary entries never changes semantics:
+// a cache miss re-reads the persisted token (one extra query). 8192
+// entries bound the map to roughly 2-3 MiB. It is a variable so tests
+// can shrink it.
+var maxTokenCache = 8192
+
 // checkToken validates a claim token against the persisted tasks row with
 // a constant-time comparison. The in-memory cache is a fast path only;
 // the database is authoritative, so a controller restart cannot orphan
@@ -351,9 +358,7 @@ func (o *OrchestratorImpl) checkToken(ctx context.Context, taskID, token string)
 		}
 		got = persisted
 		if got != "" {
-			o.tokenMu.Lock()
-			o.tokenCache[taskID] = got
-			o.tokenMu.Unlock()
+			o.putToken(taskID, got)
 		}
 	}
 	if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
@@ -366,9 +371,22 @@ func (o *OrchestratorImpl) checkToken(ctx context.Context, taskID, token string)
 // already persisted by the claim transaction or the dispatch binding, so
 // this only mirrors the database in memory.
 func (o *OrchestratorImpl) cacheToken(taskID, token string) {
+	o.putToken(taskID, token)
+}
+
+// putToken is the single write path into the token cache. When the cache
+// reaches maxTokenCache entries it is rebuilt empty first: the overflow
+// lands in a fresh map and the oldest entries fall back to the database,
+// bounding memory without a sweep (the rebuild is O(n) and happens at
+// most once per refill round). Active tasks re-enter the cache on their
+// next request, so they are never evicted for long.
+func (o *OrchestratorImpl) putToken(taskID, token string) {
 	o.tokenMu.Lock()
+	defer o.tokenMu.Unlock()
+	if len(o.tokenCache) >= maxTokenCache {
+		o.tokenCache = make(map[string]string)
+	}
 	o.tokenCache[taskID] = token
-	o.tokenMu.Unlock()
 }
 
 // clearToken drops a claim token from the cache and the database. Tokens
