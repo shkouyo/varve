@@ -642,7 +642,7 @@ func TestIngestOldVersionCleanup(t *testing.T) {
 		}
 	}
 	// remove (replaced pkgname) must precede add.
-	rem := e.logIndex("exec repo-remove " + e.root + " " + testDBArchive + " foo-old")
+	rem := e.logIndex("exec repo-remove " + e.root + " -- " + testDBArchive + " foo-old")
 	add := e.logIndex("exec repo-add " + e.root)
 	if rem < 0 {
 		t.Error("missing repo-remove for replaced pkgname foo-old")
@@ -822,5 +822,23 @@ func TestIngestLocalAtomicNoTempResidue(t *testing.T) {
 	}
 	if sc.Pkgbase != testPkgbase || sc.Build.Worker != "w" {
 		t.Errorf("sidecar = %+v", sc)
+	}
+}
+
+// TestExtractPkgbaseValidates asserts the .SRCINFO pkgbase is checked
+// against the shared name rule before it names a side file: multi-segment
+// or dash-prefixed values would otherwise write a nested sidecar or be
+// parsed as an option by the database tools.
+func TestExtractPkgbaseValidates(t *testing.T) {
+	for _, good := range []string{"foo", "foo+bar_baz", "linux-zen", "foo@bar"} {
+		got, err := extractPkgbase(srcinfoText(good))
+		if err != nil || got != good {
+			t.Errorf("extractPkgbase(%q) = %q, %v; want the value", good, got, err)
+		}
+	}
+	for _, bad := range []string{"a/b", "-x", "x y", ""} {
+		if _, err := extractPkgbase(srcinfoText(bad)); err == nil {
+			t.Errorf("extractPkgbase(%q) succeeded, want error", bad)
+		}
 	}
 }

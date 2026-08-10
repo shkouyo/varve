@@ -55,7 +55,7 @@ func TestS3RepoUpdateFlow(t *testing.T) {
 	if len(execs) != 1 {
 		t.Fatalf("exec lines = %d, want 1: %v", len(execs), execs)
 	}
-	if !strings.Contains(execs[0], "repo-add "+workDir+" "+testDBArchive+" "+testPkgFile) {
+	if !strings.Contains(execs[0], "repo-add "+workDir+" -- "+testDBArchive+" "+testPkgFile) {
 		t.Errorf("repo-add must run in the work dir, got %q", execs[0])
 	}
 	if i := e.logIndex("exec repo-add " + workDir); i < 0 {

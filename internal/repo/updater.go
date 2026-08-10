@@ -34,6 +34,7 @@ import (
 
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
+	"git.0x0f.dev/varve/internal/objname"
 	"git.0x0f.dev/varve/internal/storage"
 )
 
@@ -339,6 +340,9 @@ func extractPkgbase(data []byte) (string, error) {
 		v := strings.Trim(strings.TrimSpace(val), `"`)
 		if v == "" {
 			return "", errors.New("ingest: .SRCINFO has an empty pkgbase")
+		}
+		if !objname.ValidPkgbase(v) {
+			return "", fmt.Errorf("ingest: .SRCINFO has an invalid pkgbase %q", v)
 		}
 		return v, nil
 	}

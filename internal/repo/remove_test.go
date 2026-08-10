@@ -67,7 +67,7 @@ func TestRemoveLocal(t *testing.T) {
 	}
 	// The pacman database entry is repo-removed.
 	execs := e.log.read()
-	if !strings.Contains(strings.Join(execs, "\n"), "exec repo-remove "+e.root+" "+testDBArchive+" "+testPkgbase) {
+	if !strings.Contains(strings.Join(execs, "\n"), "exec repo-remove "+e.root+" -- "+testDBArchive+" "+testPkgbase) {
 		t.Errorf("no repo-remove recorded: %v", execs)
 	}
 
@@ -86,5 +86,15 @@ func TestRemoveUnknown(t *testing.T) {
 	e := newIngestEnv(t, "local", execCfg{})
 	if err := e.upd.Remove(context.Background(), "ghost"); err != nil {
 		t.Fatalf("Remove(unknown): %v", err)
+	}
+}
+
+// TestRemoveInvalidPkgbase asserts a pkgbase outside the shared name rule
+// (e.g. multi-segment, which would name a nested side file) is rejected
+// up front.
+func TestRemoveInvalidPkgbase(t *testing.T) {
+	e := newIngestEnv(t, "local", execCfg{})
+	if err := e.upd.Remove(context.Background(), "a/b"); err == nil {
+		t.Fatal("Remove with multi-segment pkgbase succeeded, want error")
 	}
 }

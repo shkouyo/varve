@@ -31,6 +31,7 @@ import (
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/detect/srcinfo"
 	"git.0x0f.dev/varve/internal/mail"
+	"git.0x0f.dev/varve/internal/objname"
 	"git.0x0f.dev/varve/internal/repo"
 	"git.0x0f.dev/varve/internal/storage"
 )
@@ -317,6 +318,9 @@ func (o *OrchestratorImpl) verifyManifest(ctx context.Context, taskID string, ma
 	}
 	signing := o.cfg.Repo.Sign != "off"
 	for _, a := range manifest {
+		if a.Kind == "package" && !objname.ValidPkgname(a.Pkgname) {
+			return fmt.Errorf("invalid pkgname %q for %q", a.Pkgname, a.File)
+		}
 		name := o.storage.StagingPath(taskID, a.File)
 		if _, err := o.storage.Stat(ctx, name); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {

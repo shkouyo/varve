@@ -20,6 +20,8 @@ package api
 import (
 	"errors"
 	"fmt"
+
+	"git.0x0f.dev/varve/internal/objname"
 )
 
 // Wire input limits: plain anti-injection and length bounds for every
@@ -148,6 +150,19 @@ func validateResultReq(r *ResultReq) error {
 		}
 		if err := bounded("error.summary", r.Error.Summary, maxSummaryLen); err != nil {
 			return err
+		}
+	}
+	for i, a := range r.Artifacts {
+		// Package entries feed repo-add/repo-remove positionally; the
+		// names must survive the shared objname rule and the upload
+		// whitelist (a leading dash would be parsed as an option).
+		if a.Kind == "package" {
+			if !objname.ValidPkgname(a.Pkgname) {
+				return fmt.Errorf("artifacts[%d]: invalid pkgname %q", i, a.Pkgname)
+			}
+			if !validUploadName(a.File) {
+				return fmt.Errorf("artifacts[%d]: invalid file name %q", i, a.File)
+			}
 		}
 	}
 	return nil

@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"git.0x0f.dev/varve/internal/objname"
 	"git.0x0f.dev/varve/internal/storage"
 )
 
@@ -34,6 +35,12 @@ import (
 // retry after a partial failure converges. The side file is the
 // authoritative manifest; a package without one has nothing to delete.
 func (u *updater) Remove(ctx context.Context, pkgbase string) error {
+	// The pkgbase names the side file and is not otherwise constrained
+	// by the storage backend; reject anything outside the shared rule
+	// (including multi-segment names that would write a nested sidecar).
+	if !objname.ValidPkgbase(pkgbase) {
+		return fmt.Errorf("repo: remove: invalid pkgbase %q", pkgbase)
+	}
 	sidecarName := pkgbase + ".meta.toml"
 	old, hadOld := u.readOldSidecar(ctx, sidecarName)
 	if hadOld {

@@ -149,6 +149,22 @@ func TestReportVerifyFailures(t *testing.T) {
 		env.assertFailedVerify(t, claimed, "sha256")
 	})
 
+	t.Run("invalid pkgname", func(t *testing.T) {
+		env := newTestEnv(t)
+		artifacts := testArtifacts("foo", "1.0-1")
+		artifacts[0].Pkgname = "-q"
+		taskID := env.enqueue(t, "foo", "foo", "maint@example.org")
+		for _, a := range artifacts {
+			env.stage(t, taskID, a.File)
+		}
+		env.registerWorker(t, "w1", "host", "host", 1)
+		claimed, token := env.claim(t, "w1")
+		if err := env.reportSucceeded(t, claimed, token, artifacts, ""); err != nil {
+			t.Fatalf("ReportResult: %v", err)
+		}
+		env.assertFailedVerify(t, claimed, "pkgname")
+	})
+
 	t.Run("missing artifact", func(t *testing.T) {
 		env := newTestEnv(t)
 		artifacts := testArtifacts("foo", "1.0-1")

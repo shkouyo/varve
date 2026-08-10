@@ -44,6 +44,7 @@ import (
 	"git.0x0f.dev/varve/internal/config"
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/dispatch"
+	"git.0x0f.dev/varve/internal/objname"
 )
 
 // LogReader is the build-log interface consumed by the web UI and
@@ -363,22 +364,10 @@ func parsePage(raw string) int {
 // names so a hostile query cannot push unbounded data into the store.
 const maxQueryLen = 200
 
-// validPkgbase reports whether raw is a well-formed package base name:
-// letters, digits and the AUR separator set (@ . _ + -), up to
-// maxQueryLen bytes.
+// validPkgbase reports whether raw is a well-formed package base name
+// (shared objname rule) up to maxQueryLen bytes.
 func validPkgbase(raw string) bool {
-	if raw == "" || len(raw) > maxQueryLen {
-		return false
-	}
-	for i := 0; i < len(raw); i++ {
-		switch c := raw[i]; {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '@' || c == '.' || c == '_' || c == '+' || c == '-':
-		default:
-			return false
-		}
-	}
-	return true
+	return len(raw) <= maxQueryLen && objname.ValidPkgbase(raw)
 }
 
 // isTerminalStatus reports whether a build status is final. Terminal

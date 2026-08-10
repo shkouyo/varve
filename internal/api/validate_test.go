@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"git.0x0f.dev/varve/internal/config"
+	"git.0x0f.dev/varve/internal/repo"
 )
 
 // TestValidTaskID covers the task id path-value charset and length bound.
@@ -103,6 +104,32 @@ func TestValidateResultReq(t *testing.T) {
 		Status: strings.Repeat("s", maxStatusLen+1),
 	}); err == nil {
 		t.Error("oversized status accepted, want error")
+	}
+	// Package artifacts feed repo-add/repo-remove positionally: the
+	// pkgname and file name must survive the shared name rule and the
+	// upload whitelist.
+	for name, mutate := range map[string]func(*ResultReq){
+		"dash pkgname": func(r *ResultReq) {
+			r.Artifacts = []repo.Artifact{{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "-q"}}
+		},
+		"nested pkgname": func(r *ResultReq) {
+			r.Artifacts = []repo.Artifact{{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "a/b"}}
+		},
+		"non-ascii pkgname": func(r *ResultReq) {
+			r.Artifacts = []repo.Artifact{{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "é"}}
+		},
+		"empty pkgname": func(r *ResultReq) {
+			r.Artifacts = []repo.Artifact{{File: "a-1-1-x86_64.pkg.tar.zst", Kind: "package"}}
+		},
+		"dash file name": func(r *ResultReq) {
+			r.Artifacts = []repo.Artifact{{File: "-a-1-1-x86_64.pkg.tar.zst", Kind: "package", Pkgname: "a"}}
+		},
+	} {
+		r := ResultReq{Status: "succeeded"}
+		mutate(&r)
+		if err := validateResultReq(&r); err == nil {
+			t.Errorf("result with %s accepted, want error", name)
+		}
 	}
 }
 

@@ -101,6 +101,10 @@ func (u *updater) runRepoCmd(ctx context.Context, name, dir string, args ...stri
 	if u.signDB() {
 		full = append(full, "--sign")
 	}
+	// "--" ends option parsing: pacman-contrib parseopts consumes
+	// options anywhere on the command line, so an artifact or pkgname
+	// that starts with '-' would otherwise be swallowed as an option.
+	full = append(full, "--")
 	full = append(full, args...)
 	cmdCtx, cancel := context.WithTimeout(ctx, repoCmdTimeout)
 	defer cancel()
