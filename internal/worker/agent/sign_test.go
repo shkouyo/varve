@@ -29,8 +29,11 @@ import (
 	"git.0x0f.dev/varve/internal/api"
 )
 
-// TestSignPackagesGpgArgs asserts the gpg invocations: one import into the
-// temporary GNUPGHOME and one loopback-pinentry detach-sign per package.
+// TestSignPackagesGpgArgs asserts the hardened gpg invocations: one
+// stdin import into the temporary GNUPGHOME and one loopback-pinentry
+// detach-sign per package. The passphrase travels on stdin (--passphrase-
+// fd 0), never in argv, and the armored key is fed to the import through
+// stdin instead of a private.asc file on disk.
 func TestSignPackagesGpgArgs(t *testing.T) {
 	f := &fakeClient{keyMaterial: &api.KeyMaterial{
 		KeyID:             "DEADBEEF",
@@ -39,16 +42,18 @@ func TestSignPackagesGpgArgs(t *testing.T) {
 	}}
 	r := runOneShotRunner(t, f)
 
+	importCapture := t.TempDir() + "/imported-key"
+	passCapture := t.TempDir() + "/passphrase"
 	exec := newFakeExec()
-	exec.scripts["gpg --batch --import "+filepath.Join(r.workDir, "t-1", ".gnupg", "private.asc")] =
-		writeScript(t, "true")
-	exec.scripts["gpg --batch --pinentry-mode loopback --passphrase secret --detach-sign "+filepath.Join(r.workDir, "t-1", "a.pkg.tar.zst")] =
-		writeScript(t, "true")
-	exec.scripts["gpg --batch --pinentry-mode loopback --passphrase secret --detach-sign "+filepath.Join(r.workDir, "t-1", "b.pkg.tar.zst")] =
-		writeScript(t, "true")
+	exec.scripts["gpg --batch --import"] =
+		writeScript(t, "cat > "+importCapture)
+	exec.scripts["gpg --batch --pinentry-mode loopback --passphrase-fd 0 --detach-sign "+filepath.Join(r.workDir, "t-1", "a.pkg.tar.zst")] =
+		writeScript(t, "read -r line && echo \"$line\" > "+passCapture)
+	exec.scripts["gpg --batch --pinentry-mode loopback --passphrase-fd 0 --detach-sign "+filepath.Join(r.workDir, "t-1", "b.pkg.tar.zst")] =
+		writeScript(t, "read -r line && echo \"$line\" > "+passCapture)
 	r.execCommand = exec.command
 
-	gnupgHome := filepath.Join(r.workDir, "t-1", ".gnupg")
+	gnupgHome := filepath.Join(r.workDir, ".gnupg-t-1")
 	sigs, err := r.signPackages(context.Background(), taskFor("t-1"), "tok", []string{
 		filepath.Join(r.workDir, "t-1", "a.pkg.tar.zst"),
 		filepath.Join(r.workDir, "t-1", "b.pkg.tar.zst"),
@@ -68,21 +73,40 @@ func TestSignPackagesGpgArgs(t *testing.T) {
 	if !contains(importArgs, "--batch") || !contains(importArgs, "--import") {
 		t.Errorf("import args = %v", importArgs)
 	}
+	if len(importArgs) != 2 {
+		t.Errorf("import args = %v, want exactly --batch --import (no key file)", importArgs)
+	}
 	for _, args := range gpgArgs[1:] {
 		if !contains(args, "--pinentry-mode") || !contains(args, "loopback") ||
-			!contains(args, "--passphrase") || !contains(args, "secret") ||
+			!contains(args, "--passphrase-fd") || !contains(args, "0") ||
 			!contains(args, "--detach-sign") {
 			t.Errorf("detach-sign args = %v", args)
 		}
+		for _, a := range args {
+			if a == "--passphrase" || a == "secret" {
+				t.Errorf("detach-sign args %v leak the passphrase through argv", args)
+			}
+		}
 	}
 
-	// The armored key material lands in the temporary GNUPGHOME.
-	keyData, err := os.ReadFile(filepath.Join(gnupgHome, "private.asc"))
+	// The armored key reached gpg through the import's stdin, and the
+	// GNUPGHOME holds no private.asc file.
+	keyData, err := os.ReadFile(importCapture)
 	if err != nil {
-		t.Fatalf("read private.asc: %v", err)
+		t.Fatalf("read imported key capture: %v", err)
 	}
 	if !strings.Contains(string(keyData), "BEGIN PGP PRIVATE KEY") {
-		t.Errorf("private.asc does not carry the armored key")
+		t.Errorf("import stdin does not carry the armored key: %q", keyData)
+	}
+	if _, err := os.Stat(filepath.Join(gnupgHome, "private.asc")); !os.IsNotExist(err) {
+		t.Errorf("private.asc exists in the GNUPGHOME: %v", err)
+	}
+	passData, err := os.ReadFile(passCapture)
+	if err != nil {
+		t.Fatalf("read passphrase capture: %v", err)
+	}
+	if strings.TrimSpace(string(passData)) != "secret" {
+		t.Errorf("detach-sign stdin = %q, want the passphrase", passData)
 	}
 }
 
@@ -112,7 +136,7 @@ func TestSignKeyClaimFailureFailsTask(t *testing.T) {
 		t.Errorf("upload ran after a signing failure")
 	}
 	// The temporary GNUPGHOME is cleaned up on the failure path.
-	if _, err := os.Stat(filepath.Join(r.workDir, "t-1", ".gnupg")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(r.workDir, ".gnupg-t-1")); !os.IsNotExist(err) {
 		t.Errorf("temporary GNUPGHOME left behind: %v", err)
 	}
 }

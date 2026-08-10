@@ -162,17 +162,26 @@ func (r *Runner) executeTask(ctx context.Context, task *api.TaskDetail, token st
 	}
 
 	// ⑥ sign: claim the one-shot key and detach-sign every package into a
-	// temporary GNUPGHOME (removed at task end, container teardown is the
-	// backstop).
+	// temporary GNUPGHOME outside the build tree (a sibling of the task
+	// dir, like the pkgbuild_source clone), so the repository-supplied
+	// on_success/on_failure hooks never see the key material inside the
+	// checkout. The home is removed right after signing, before the
+	// upload and the success hooks run; the deferred removal is the
+	// failure backstop and the container teardown the last resort.
 	var sigs []string
 	if task.Signing.Required {
 		r.state.setStage(stageSign)
-		gnupgHome := filepath.Join(taskDir, ".gnupg")
+		gnupgHome := filepath.Join(r.workDir, ".gnupg-"+task.ID)
 		sigs, err = r.signPackages(taskCtx, task, token, pkgs, gnupgHome, buildLog)
 		if err != nil {
 			_ = os.RemoveAll(gnupgHome)
 			r.failStep(ctx, task, token, taskDir, taskCtx, cancelCh, commit, stageSign, err.Error(), buildLog)
 			return
+		}
+		// Remove the key home before upload and the on_success hooks:
+		// nothing after signing may read the key material.
+		if err := os.RemoveAll(gnupgHome); err != nil {
+			log.Printf("agent: task %s: remove gnupg home: %v", task.ID, err)
 		}
 		defer os.RemoveAll(gnupgHome)
 	}
@@ -539,6 +548,31 @@ func runCmd(ctx context.Context, execFn func(ctx context.Context, name string, a
 	}
 	cmd.Stdout = w
 	cmd.Stderr = w
+	err := cmd.Run()
+	if err == nil {
+		return 0, nil
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode(), nil
+	}
+	return -1, err
+}
+
+// runCmdIn runs an external command like runCmd, feeding the given text
+// to the child's stdin. It exists for commands whose sensitive input
+// (signing keys, passphrases) must travel through a pipe instead of a
+// file or the argument list.
+func runCmdIn(ctx context.Context, execFn func(ctx context.Context, name string, arg ...string) *exec.Cmd,
+	dir string, w io.Writer, env []string, stdin string, name string, arg ...string) (int, error) {
+	cmd := execFn(ctx, name, arg...)
+	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = env
+	}
+	cmd.Stdout = w
+	cmd.Stderr = w
+	cmd.Stdin = strings.NewReader(stdin)
 	err := cmd.Run()
 	if err == nil {
 		return 0, nil

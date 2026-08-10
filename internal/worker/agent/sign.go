@@ -28,12 +28,19 @@ import (
 )
 
 // signPackages claims the task's one-shot signing key and detach-signs
-// every package into a temporary GNUPGHOME: the armored private key is
-// imported once, then each package gets
-// "gpg --batch --pinentry-mode loopback --passphrase <pass> --detach-sign".
-// It returns the created .sig paths. The caller owns the GNUPGHOME
-// lifecycle (created here, removed by the caller at task end; the
-// container teardown is the backstop).
+// every package into a temporary GNUPGHOME outside the build tree (the
+// caller picks the location). The armored private key is imported through
+// stdin, so no key file ever lands on disk, and the passphrase is handed
+// to gpg on fd 0 (--passphrase-fd 0) instead of argv, so no other process
+// in the container can read it from /proc/<pid>/cmdline. Moving the
+// GNUPGHOME out of the build tree is defense in depth only: the keyring
+// is still readable by the same user, so the real protection is the
+// stdin-only key and passphrase plus the caller's removal of the home
+// right after signing, before the repository-supplied on_success hooks
+// can run. It returns the created .sig paths. The caller owns the
+// GNUPGHOME lifecycle (created here, removed by the caller once signing
+// is done and at task end as the failure backstop; the container teardown
+// is the last resort).
 //
 // A key-claim failure or any gpg failure fails the task (stage=sign).
 func (r *Runner) signPackages(ctx context.Context, task *api.TaskDetail, token string,
@@ -45,22 +52,20 @@ func (r *Runner) signPackages(ctx context.Context, task *api.TaskDetail, token s
 	if err := os.MkdirAll(gnupgHome, 0o700); err != nil {
 		return nil, fmt.Errorf("create gnupg home: %w", err)
 	}
-	keyFile := filepath.Join(gnupgHome, "private.asc")
-	if err := os.WriteFile(keyFile, []byte(km.ArmoredPrivateKey), 0o600); err != nil {
-		return nil, fmt.Errorf("write signing key: %w", err)
-	}
 	env := withEnv(r.childEnv(), "GNUPGHOME", gnupgHome)
 
-	exit, err := runCmd(ctx, r.command, "", w, env, "gpg", "--batch", "--import", keyFile)
+	// Import the armored key from stdin: no private.asc on disk.
+	exit, err := runCmdIn(ctx, r.command, "", w, env, km.ArmoredPrivateKey, "gpg", "--batch", "--import")
 	if err != nil || exit != 0 {
 		return nil, fmt.Errorf("gpg import: exit %d: %w", exit, err)
 	}
 
 	sigs := make([]string, 0, len(pkgs))
 	for _, pkg := range pkgs {
-		exit, err := runCmd(ctx, r.command, "", w, env, "gpg",
+		// The passphrase rides on stdin (fd 0), never in argv.
+		exit, err := runCmdIn(ctx, r.command, "", w, env, km.Passphrase+"\n", "gpg",
 			"--batch", "--pinentry-mode", "loopback",
-			"--passphrase", km.Passphrase, "--detach-sign", pkg)
+			"--passphrase-fd", "0", "--detach-sign", pkg)
 		if err != nil || exit != 0 {
 			return nil, fmt.Errorf("gpg detach-sign %s: exit %d: %w", filepath.Base(pkg), exit, err)
 		}

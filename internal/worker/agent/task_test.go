@@ -51,13 +51,20 @@ func TestTaskNineStepSequence(t *testing.T) {
 	exec.scripts["git clone --depth 1 --branch main https://example.invalid/repo.git "+taskDir] =
 		writeScript(t, "cat > .SRCINFO <<'EOF'\n"+testSrcinfo+"EOF")
 	exec.scripts["makepkg -s --noconfirm"] = mkpkg
-	exec.scripts["gpg --batch --pinentry-mode loopback --passphrase secret --detach-sign "+filepath.Join(taskDir, "foo-1.0-1-x86_64.pkg.tar.zst")] = signScript
+	exec.scripts["gpg --batch --pinentry-mode loopback --passphrase-fd 0 --detach-sign "+filepath.Join(taskDir, "foo-1.0-1-x86_64.pkg.tar.zst")] = signScript
 	r.execCommand = exec.command
 	r.logInterval = 10 * time.Millisecond
 	r.logThreshold = 1 << 20
 
 	task := taskFor("t-1")
 	task.Signing.Required = true
+	// The on_success hook comes from the built repository (untrusted):
+	// it must not find the key material when it runs.
+	gnupgHome := filepath.Join(r.workDir, ".gnupg-t-1")
+	hookSawNoKey := t.TempDir() + "/hook-saw-no-key"
+	task.Hooks.OnSuccess = []string{"onsuccess"}
+	exec.scripts["sh -c onsuccess"] = writeScript(t,
+		"test ! -d '"+gnupgHome+"' && touch '"+hookSawNoKey+"'")
 	f.taskDetail = task
 	if err := r.Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -108,21 +115,32 @@ func TestTaskNineStepSequence(t *testing.T) {
 		t.Error("no log segment carried a progress sample")
 	}
 
-	// gpg detach-sign used the loopback pinentry mode.
+	// gpg detach-sign used the loopback pinentry mode with the
+	// passphrase on fd 0 (the import takes the armored key on stdin).
 	gpgArgs := exec.callArgs("gpg")
 	if len(gpgArgs) < 2 {
 		t.Fatalf("gpg calls = %d, want import + detach-sign", len(gpgArgs))
 	}
-	if strings.Join(gpgArgs[0], " ") != "--batch --import "+filepath.Join(taskDir, ".gnupg", "private.asc") {
-		t.Errorf("gpg import args = %v", gpgArgs[0])
+	if strings.Join(gpgArgs[0], " ") != "--batch --import" {
+		t.Errorf("gpg import args = %v, want --batch --import with no key file", gpgArgs[0])
 	}
-	if !contains(gpgArgs[1], "--pinentry-mode") || !contains(gpgArgs[1], "loopback") {
-		t.Errorf("gpg detach-sign args missing loopback pinentry: %v", gpgArgs[1])
+	if !contains(gpgArgs[1], "--pinentry-mode") || !contains(gpgArgs[1], "loopback") ||
+		!contains(gpgArgs[1], "--passphrase-fd") || !contains(gpgArgs[1], "0") {
+		t.Errorf("gpg detach-sign args missing the fd-0 passphrase path: %v", gpgArgs[1])
 	}
 
-	// The temporary GNUPGHOME is removed at task end.
-	if _, err := os.Stat(filepath.Join(taskDir, ".gnupg")); !os.IsNotExist(err) {
+	// The success hook ran only after the key home was gone.
+	if _, err := os.Stat(hookSawNoKey); err != nil {
+		t.Errorf("on_success hook could still see the GNUPGHOME: %v", err)
+	}
+
+	// The GNUPGHOME lived outside the build tree (a sibling of the task
+	// dir) and is removed at task end.
+	if _, err := os.Stat(filepath.Join(r.workDir, ".gnupg-t-1")); !os.IsNotExist(err) {
 		t.Errorf("temporary GNUPGHOME still present: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(taskDir, ".gnupg")); !os.IsNotExist(err) {
+		t.Errorf("GNUPGHOME inside the build tree: %v", err)
 	}
 }
 
