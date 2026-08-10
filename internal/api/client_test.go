@@ -334,3 +334,64 @@ func TestClientReportResultRetry(t *testing.T) {
 		t.Errorf("last result status = %q, want succeeded", f.lastResult.Status)
 	}
 }
+
+// roundTripRecorder records every request the client sends and answers
+// with an empty JSON success body.
+type roundTripRecorder struct {
+	reqs []*http.Request
+}
+
+func (r *roundTripRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.reqs = append(r.reqs, req)
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("{}")),
+		Request:    req,
+	}, nil
+}
+
+// TestClientDeclaresContentLength asserts every JSON request and every
+// upload carries a declared Content-Length matching its body: the
+// server-side size checks and limits then apply to real traffic instead
+// of being bypassed by chunked encoding.
+func TestClientDeclaresContentLength(t *testing.T) {
+	rec := &roundTripRecorder{}
+	client := NewClient("http://controller", testToken)
+	client.http = &http.Client{Transport: rec}
+
+	if _, err := client.Register(context.Background(), RegisterReq{Name: "n1"}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if _, err := client.GetSigningKey(context.Background(), testTaskID, testClaimTok); err != nil {
+		t.Fatalf("GetSigningKey: %v", err)
+	}
+	if _, err := client.UploadFile(context.Background(), testTaskID, testClaimTok,
+		"pkg.pkg.tar.zst", strings.NewReader("0123456789"), 10, 0); err != nil {
+		t.Fatalf("UploadFile: %v", err)
+	}
+	if len(rec.reqs) != 3 {
+		t.Fatalf("requests = %d, want 3", len(rec.reqs))
+	}
+	for i, req := range rec.reqs {
+		if req.Body == nil {
+			if req.ContentLength != 0 {
+				t.Errorf("request %d: body-less request declares ContentLength %d, want 0", i, req.ContentLength)
+			}
+			continue
+		}
+		body, err := io.ReadAll(req.Body)
+		req.Body.Close()
+		if err != nil {
+			t.Fatalf("request %d: read body: %v", i, err)
+		}
+		if req.ContentLength != int64(len(body)) {
+			t.Errorf("request %d: ContentLength = %d, want %d (declared body size)", i, req.ContentLength, len(body))
+		}
+	}
+	// The upload additionally declares the exact file size, not just the
+	// buffered segment.
+	if rec.reqs[2].ContentLength != 10 {
+		t.Errorf("upload ContentLength = %d, want 10", rec.reqs[2].ContentLength)
+	}
+}

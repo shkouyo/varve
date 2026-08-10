@@ -189,7 +189,7 @@ func (c *Client) UploadFile(ctx context.Context, taskID, token, name string, r i
 				}
 			}
 			return io.NopCloser(r), nil
-		}, &meta, 0, rewindable)
+		}, size, &meta, 0, rewindable)
 	if err != nil {
 		return nil, err
 	}
@@ -247,24 +247,30 @@ func (c *Client) taskRequest(ctx context.Context, method, path string, taskToken
 func (c *Client) jsonRequest(ctx context.Context, method, path string, reqBody, respBody any,
 	timeout time.Duration, retryable bool, taskToken string, useBearer bool,
 	newBody func() (io.ReadCloser, error)) error {
+	payloadLen := int64(0)
 	if reqBody != nil && newBody == nil {
 		payload, err := json.Marshal(reqBody)
 		if err != nil {
 			return fmt.Errorf("api: marshal request: %w", err)
 		}
+		payloadLen = int64(len(payload))
 		newBody = func() (io.ReadCloser, error) {
 			return io.NopCloser(bytes.NewReader(payload)), nil
 		}
 	}
-	return c.exec(ctx, method, path, taskToken, useBearer, newBody, respBody, timeout, retryable)
+	return c.exec(ctx, method, path, taskToken, useBearer, newBody, payloadLen, respBody, timeout, retryable)
 }
 
 // exec runs the request, retrying transient failures for idempotent calls.
+// contentLength is the declared body size in bytes (0 when unknown, which
+// keeps the request chunked): every varve request body has a known size,
+// so the server-side ContentLength checks and limits apply to real
+// traffic instead of being bypassed by chunked encoding.
 func (c *Client) exec(ctx context.Context, method, path, taskToken string, useBearer bool,
-	newBody func() (io.ReadCloser, error), respBody any, timeout time.Duration, retryable bool) error {
+	newBody func() (io.ReadCloser, error), contentLength int64, respBody any, timeout time.Duration, retryable bool) error {
 	var lastErr error
 	for attempt := 0; ; attempt++ {
-		err := c.do(ctx, method, path, taskToken, useBearer, newBody, respBody, timeout)
+		err := c.do(ctx, method, path, taskToken, useBearer, newBody, contentLength, respBody, timeout)
 		if err == nil {
 			return nil
 		}
@@ -278,9 +284,11 @@ func (c *Client) exec(ctx context.Context, method, path, taskToken string, useBe
 	}
 }
 
-// do performs a single request attempt and decodes the response.
+// do performs a single request attempt and decodes the response. A
+// positive contentLength is declared on the request so the body travels
+// with a known size instead of chunked encoding.
 func (c *Client) do(ctx context.Context, method, path, taskToken string, useBearer bool,
-	newBody func() (io.ReadCloser, error), respBody any, timeout time.Duration) error {
+	newBody func() (io.ReadCloser, error), contentLength int64, respBody any, timeout time.Duration) error {
 	reqCtx := ctx
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -299,6 +307,9 @@ func (c *Client) do(ctx context.Context, method, path, taskToken string, useBear
 	req, err := http.NewRequestWithContext(reqCtx, method, c.baseURL+path, body)
 	if err != nil {
 		return fmt.Errorf("api: build request %s %s: %w", method, path, err)
+	}
+	if contentLength > 0 {
+		req.ContentLength = contentLength
 	}
 	if useBearer && c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
