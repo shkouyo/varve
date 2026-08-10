@@ -517,15 +517,20 @@ func (r *Runner) reportCancelled(ctx context.Context, task *api.TaskDetail, toke
 }
 
 // report sends the final result; a 409 (late duplicate) is logged and
-// ignored, any other failure is logged best-effort.
+// ignored, any other failure is logged best-effort. A successful send
+// (or a 409, which means the controller already holds a result) marks
+// the report as acknowledged; runOneShot turns a missing acknowledgement
+// into a non-zero container exit so the host can report the loss.
 func (r *Runner) report(ctx context.Context, task *api.TaskDetail, token string, res api.ResultReq) {
 	if err := r.client.ReportResult(ctx, task.ID, token, res); err != nil {
 		if isConflict(err) {
 			log.Printf("agent: task %s: late result ignored (409)", task.ID)
 		} else {
 			log.Printf("agent: task %s: report result: %v", task.ID, err)
+			return
 		}
 	}
+	r.state.markReportAcked()
 }
 
 // finalSamples snapshots the resource samples accumulated during the task,

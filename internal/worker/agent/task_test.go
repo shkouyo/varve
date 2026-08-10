@@ -20,6 +20,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -583,5 +584,57 @@ func assertHookNotCalled(t *testing.T, exec *fakeExec, hook string) {
 		if len(args) == 2 && args[0] == "-c" && args[1] == hook {
 			t.Errorf("hook %q unexpectedly executed", hook)
 		}
+	}
+}
+
+// TestOneShotNonZeroExitOnUnacknowledgedReport is the L6 regression: when
+// the final result report fails permanently, runOneShot returns an error
+// so the container exits non-zero and the host reports the loss, instead
+// of exiting 0 and leaving the task "running" on the controller until the
+// stall scan recovers it.
+func TestOneShotNonZeroExitOnUnacknowledgedReport(t *testing.T) {
+	f := &fakeClient{taskDetail: taskFor("t-1")}
+	f.reportErr = errors.New("controller unreachable")
+	f.reportErrTo = 100 // every report attempt fails
+	r := runOneShotRunner(t, f)
+	exec := flowExec(t, r.workDir, "t-1", testSrcinfo,
+		[]string{"foo-1.0-1-x86_64.pkg.tar.zst"}, nil)
+	r.execCommand = exec.command
+
+	err := r.Run(context.Background())
+	if err == nil {
+		t.Fatal("runOneShot returned nil, want an error for the unacknowledged report")
+	}
+	if !strings.Contains(err.Error(), "not acknowledged") {
+		t.Errorf("error = %v, want the unacknowledged-report wording", err)
+	}
+	if res := f.lastResult(); res == nil || res.Status != statusSucceeded {
+		t.Errorf("result = %+v, want the succeeded report attempt", res)
+	}
+}
+
+// TestOneShotZeroExitOnAcknowledgedReport asserts the counterpart: a
+// successful report (or a 409, where the controller already holds a
+// result) lets the container exit 0.
+func TestOneShotZeroExitOnAcknowledgedReport(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		reportErr error
+	}{
+		{"accepted", nil},
+		{"late duplicate 409", &api.APIError{Status: 409, Code: "conflict"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeClient{taskDetail: taskFor("t-1")}
+			f.reportErr = tc.reportErr
+			f.reportErrTo = 1
+			r := runOneShotRunner(t, f)
+			exec := flowExec(t, r.workDir, "t-1", testSrcinfo,
+				[]string{"foo-1.0-1-x86_64.pkg.tar.zst"}, nil)
+			r.execCommand = exec.command
+			if err := r.Run(context.Background()); err != nil {
+				t.Fatalf("runOneShot: %v, want nil (report acknowledged)", err)
+			}
+		})
 	}
 }

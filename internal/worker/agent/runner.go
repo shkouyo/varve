@@ -215,6 +215,16 @@ func (r *Runner) runOneShot(ctx context.Context) error {
 		return fmt.Errorf("agent: get task %s: %w", r.taskID, err)
 	}
 	r.executeTask(ctx, task, r.taskToken)
+	// A one-shot container's exit code is the host's evidence that the
+	// task reached a terminal state. When the final result report was
+	// never acknowledged (all client retries failed), exit non-zero so
+	// the host reports the loss as failed(stage=container) instead of
+	// leaving the task "running" on the controller until the stall scan
+	// recovers it. Pool agents have no exit-code signal and keep their
+	// log-and-continue behavior.
+	if !r.state.reportAcked() {
+		return fmt.Errorf("agent: task %s: final result was not acknowledged by the controller", r.taskID)
+	}
 	return nil
 }
 
@@ -229,6 +239,11 @@ type taskState struct {
 	stage   string
 	samples []db.Sample
 	cancel  chan struct{}
+	// acked records whether the task's final result report was
+	// acknowledged by the controller (a 409 "already reported" counts:
+	// a result is on record either way). Read by runOneShot to decide
+	// the container exit code; pool mode ignores it.
+	acked bool
 }
 
 // begin marks the given task as running and returns its cancellation
@@ -240,6 +255,7 @@ func (s *taskState) begin(id string) <-chan struct{} {
 	s.stage = stagePrepare
 	s.samples = nil
 	s.cancel = make(chan struct{})
+	s.acked = false
 	return s.cancel
 }
 
@@ -300,6 +316,21 @@ func (s *taskState) cancelTask(id string) bool {
 		close(s.cancel)
 	}
 	return true
+}
+
+// markReportAcked records that the final result report reached the
+// controller (accepted, or refused as a late duplicate).
+func (s *taskState) markReportAcked() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.acked = true
+}
+
+// reportAcked reports whether the final result was acknowledged.
+func (s *taskState) reportAcked() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.acked
 }
 
 // heartbeatTasks returns the heartbeat payload for the running task: one
