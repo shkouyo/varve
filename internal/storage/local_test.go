@@ -278,3 +278,61 @@ func (t *trackWriter) Write(p []byte) (int, error) {
 	}
 	return t.b.Write(p)
 }
+
+// TestLocalPublishPermissions asserts every published object is world-
+// readable: Put and Move force 0o644 (CreateTemp starts 0600 and Append
+// already opens 0o644), so the documented external-download deployments
+// (nginx/Caddy reading the repo root as a different user) never see a
+// silent 403.
+func TestLocalPublishPermissions(t *testing.T) {
+	b := mustLocal(t)
+	ctx := context.Background()
+
+	if err := b.Put(ctx, "pkg-1.0-1-x86_64.pkg.tar.zst", strings.NewReader("pkg"), 3); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if got := modeOf(t, filepath.Join(b.root, "pkg-1.0-1-x86_64.pkg.tar.zst")); got != 0o644 {
+		t.Errorf("Put published mode = %o, want 644", got)
+	}
+
+	// Overwriting an existing published file keeps the publish mode.
+	if err := b.Put(ctx, "pkg-1.0-1-x86_64.pkg.tar.zst", strings.NewReader("pkg2"), 4); err != nil {
+		t.Fatalf("Put overwrite: %v", err)
+	}
+	if got := modeOf(t, filepath.Join(b.root, "pkg-1.0-1-x86_64.pkg.tar.zst")); got != 0o644 {
+		t.Errorf("overwritten mode = %o, want 644", got)
+	}
+
+	// A staging file forced to restrictive 0600 is re-published 0644 by
+	// Move (the ingest path).
+	staged := b.StagingPath("t-1", "other.pkg.tar.zst")
+	if err := b.Put(ctx, staged, strings.NewReader("other"), 5); err != nil {
+		t.Fatalf("Put staged: %v", err)
+	}
+	if err := os.Chmod(filepath.Join(b.stagingDir, "t-1", "other.pkg.tar.zst"), 0o600); err != nil {
+		t.Fatalf("chmod staged 0600: %v", err)
+	}
+	if err := b.Move(ctx, staged, "other.pkg.tar.zst"); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	if got := modeOf(t, filepath.Join(b.root, "other.pkg.tar.zst")); got != 0o644 {
+		t.Errorf("Move published mode = %o, want 644", got)
+	}
+
+	// Append lands 0644 as before (the two publish paths are aligned).
+	if err := b.Append(ctx, "seg.pkg.tar.zst", strings.NewReader("abc"), 0); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if got := modeOf(t, filepath.Join(b.root, "seg.pkg.tar.zst")); got != 0o644 {
+		t.Errorf("Append mode = %o, want 644", got)
+	}
+}
+
+func modeOf(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return fi.Mode() & 0o777
+}

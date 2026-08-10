@@ -103,37 +103,71 @@ func (b *localBackend) resolve(name string) (string, error) {
 	return filepath.Join(b.root, filepath.FromSlash(name)), nil
 }
 
-// Put writes r atomically: the content is first written to a sibling temp
-// file, fsynced, then renamed over the target. A crash may leave the temp
-// file behind; the caller's staging sweep is responsible for it. size is
-// informational and ignored.
+// rename atomically replaces dst with src; a package variable so tests can
+// inject cross-device failures (syscall.EXDEV).
+var rename = os.Rename
+
+// syncDir fsyncs a directory so a rename published into it is durable. A
+// crash after the rename but before the directory fsync can lose the
+// directory entry, so the fsync is what makes a published object survive
+// power loss; the callers treat its failure as best effort (the object is
+// already visible, and failing the operation at that point would make
+// callers believe the publish itself failed).
+func syncDir(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
+}
+
+// writeFileAtomic streams r into a sibling temp file of target and renames
+// it into place: the content is copied, chmod'ed to the publish mode 0o644
+// (temp files start 0600, so without an explicit chmod every object would
+// be world-unreadable under the documented external-download deployments),
+// fsynced and only then renamed, so a crash never exposes a partial or
+// private object. The temp file is removed on any failure.
+func writeFileAtomic(ctx context.Context, target string, r io.Reader) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+".tmp.*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := copyContext(ctx, tmp, r); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return rename(tmp.Name(), target)
+}
+
+// Put writes r atomically: the content is first streamed to a sibling
+// temp file (mode 0o644, matching Append), fsynced, then renamed over the
+// target; the parent directory is fsynced afterwards as best effort, so
+// the data blocks are durable and the directory entry is durable barring
+// a crash in the tiny window between rename and directory fsync. A crash
+// may leave the temp file behind; the caller's staging sweep is
+// responsible for it. size is informational and ignored.
 func (b *localBackend) Put(ctx context.Context, name string, r io.Reader, size int64) error {
 	target, err := b.resolve(name)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("storage: put %q: create parent: %w", name, err)
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+".tmp.*")
-	if err != nil {
-		return fmt.Errorf("storage: put %q: create temp: %w", name, err)
-	}
-	_, err = copyContext(ctx, tmp, r)
-	if err == nil {
-		err = tmp.Sync() // fsync before rename: only durable data is published
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		os.Remove(tmp.Name())
+	if err := writeFileAtomic(ctx, target, r); err != nil {
 		return fmt.Errorf("storage: put %q: %w", name, err)
 	}
-	if err := os.Rename(tmp.Name(), target); err != nil {
-		os.Remove(tmp.Name())
-		return fmt.Errorf("storage: put %q: rename: %w", name, err)
-	}
+	_ = syncDir(filepath.Dir(target)) // best effort, see syncDir
 	return nil
 }
 
@@ -237,7 +271,11 @@ func (b *localBackend) Stat(ctx context.Context, name string) (FileInfo, error) 
 }
 
 // Move renames src onto dst. rename is atomic on the same filesystem and
-// the source disappears afterwards (Mover capability).
+// the source disappears afterwards (Mover capability). The published
+// object is forced to the 0o644 mode of Put, so staging files that
+// arrived 0600 (or were placed from outside) never leak restrictive
+// permissions into the public tree; the destination directory is fsynced
+// afterwards as best effort.
 func (b *localBackend) Move(ctx context.Context, src, dst string) error {
 	srcPath, err := b.resolve(src)
 	if err != nil {
@@ -247,12 +285,16 @@ func (b *localBackend) Move(ctx context.Context, src, dst string) error {
 	if err != nil {
 		return err
 	}
+	if err := os.Chmod(srcPath, 0o644); err != nil {
+		return fmt.Errorf("storage: move %q -> %q: chmod: %w", src, dst, err)
+	}
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("storage: move %q -> %q: create parent: %w", src, dst, err)
 	}
-	if err := os.Rename(srcPath, dstPath); err != nil {
+	if err := rename(srcPath, dstPath); err != nil {
 		return fmt.Errorf("storage: move %q -> %q: %w", src, dst, err)
 	}
+	_ = syncDir(filepath.Dir(dstPath)) // best effort, see syncDir
 	return nil
 }
 
