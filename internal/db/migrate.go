@@ -30,7 +30,12 @@ import (
 )
 
 //go:embed migrations/*.sql
-var migrationsFS embed.FS
+var migrations embed.FS
+
+// migrationsFS is the migration source used by migrate. It is a package
+// variable (over the embedded set) so tests can overlay an extra failing
+// migration script; production always uses the embedded migrations.
+var migrationsFS fs.FS = migrations
 
 // migrate creates the version ledger and applies every embedded migration
 // that has not been applied yet, each inside its own transaction. A
@@ -60,7 +65,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		if applied > 0 {
 			continue
 		}
-		script, err := migrationsFS.ReadFile(name)
+		script, err := fs.ReadFile(migrationsFS, name)
 		if err != nil {
 			return fmt.Errorf("db: read migration %s: %w", name, err)
 		}

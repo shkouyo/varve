@@ -19,6 +19,7 @@ package db
 
 import (
 	"database/sql"
+	"io/fs"
 	"path/filepath"
 	"testing"
 )
@@ -34,7 +35,7 @@ func TestMigrateUpgradeFromV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open legacy db: %v", err)
 	}
-	script, err := migrationsFS.ReadFile("migrations/001_init.sql")
+	script, err := fs.ReadFile(migrationsFS, "migrations/001_init.sql")
 	if err != nil {
 		t.Fatalf("read migration 001: %v", err)
 	}

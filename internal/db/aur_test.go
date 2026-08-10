@@ -20,6 +20,7 @@ package db
 import (
 	"database/sql"
 	"errors"
+	"io/fs"
 	"path/filepath"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestMigrateAURColumns(t *testing.T) {
 		t.Fatalf("open legacy db: %v", err)
 	}
 	for _, name := range []string{"001_init.sql", "002_build_hash_ids.sql", "003_drop_task_worker_fk.sql", "004_package_metadata.sql", "005_drop_package_enabled.sql", "006_package_metadata.sql", "007_package_epoch.sql"} {
-		script, err := migrationsFS.ReadFile("migrations/" + name)
+		script, err := fs.ReadFile(migrationsFS, "migrations/"+name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)
 		}
