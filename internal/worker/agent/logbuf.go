@@ -20,6 +20,7 @@ package agent
 import (
 	"bytes"
 	"errors"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -46,15 +47,18 @@ type LogBuffer struct {
 	threshold int
 	progress  progressFn
 
-	mu      sync.Mutex
-	buf     bytes.Buffer
-	offset  int64
-	closed  bool
-	cancel  chan struct{}
-	once    sync.Once
-	flushCh chan struct{}
-	done    chan struct{}
-	wg      sync.WaitGroup
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	offset int64
+	// discarded counts output bytes dropped by the Write cap while the
+	// buffer was full (the controller unreachable for a long stretch).
+	discarded int64
+	closed    bool
+	cancel    chan struct{}
+	once      sync.Once
+	flushCh   chan struct{}
+	done      chan struct{}
+	wg        sync.WaitGroup
 }
 
 // NewLogBuffer starts a LogBuffer. append sends one buffered segment and
@@ -74,9 +78,27 @@ func NewLogBuffer(append func(api.LogSegment) (*api.LogAck, error), threshold in
 	return b
 }
 
+// maxBufferedLog caps the output a LogBuffer keeps while the controller
+// is unreachable. Writes past the cap are dropped and counted instead of
+// growing memory without bound; the stream stays consistent because only
+// never-acknowledged tail bytes are lost and the wire offset contract
+// (server size vs segment offset, resynced on 409) prevents duplicates or
+// reordering. A variable so tests can shrink it.
+var maxBufferedLog = 64 << 20
+
 // Write appends output, triggering a flush when the threshold is reached.
+// When the buffer already holds maxBufferedLog bytes the input is dropped
+// (counted, logged once) so a stalled flush loop cannot grow memory.
 func (b *LogBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
+	if len(p) > 0 && b.buf.Len() >= maxBufferedLog {
+		if b.discarded == 0 {
+			log.Printf("agent: log buffer full (%d bytes), dropping build output", maxBufferedLog)
+		}
+		b.discarded += int64(len(p))
+		b.mu.Unlock()
+		return len(p), nil
+	}
 	b.buf.Write(p)
 	full := b.buf.Len() >= b.threshold
 	b.mu.Unlock()
@@ -128,6 +150,12 @@ func (b *LogBuffer) loop(interval time.Duration) {
 			// The loop stops when the buffer is empty or an append
 			// fails, so Close cannot hang on a dead controller.
 			for b.flush() {
+			}
+			b.mu.Lock()
+			left := b.buf.Len()
+			b.mu.Unlock()
+			if left > 0 {
+				log.Printf("agent: %d bytes of build log dropped at close", left)
 			}
 			return
 		case <-b.flushCh:
@@ -188,6 +216,7 @@ func (b *LogBuffer) flush() bool {
 				b.buf.Reset()
 			}
 		}
+		log.Printf("agent: log flush (offset %d): %v", offset, err)
 	} else {
 		b.offset = ack.Offset
 		if ack.Cancelled {

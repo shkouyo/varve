@@ -33,9 +33,15 @@ type logRecorder struct {
 	segments []api.LogSegment
 	acks     []api.LogAck
 	errors   []error
+	// block, when non-nil, parks every append call until the channel is
+	// closed (simulates an in-flight request against a slow controller).
+	block <-chan struct{}
 }
 
 func (r *logRecorder) append(seg api.LogSegment) (*api.LogAck, error) {
+	if r.block != nil {
+		<-r.block
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.segments = append(r.segments, seg)
@@ -230,6 +236,102 @@ func TestLogBufferProgressAttached(t *testing.T) {
 	if rec.segments[0].Progress == nil || rec.segments[0].Progress.CPUTimeNS != 42 {
 		t.Errorf("segment progress not attached: %+v", rec.segments[0].Progress)
 	}
+}
+
+// TestLogBufferDropsWhenFull asserts the hard buffer cap: writes past
+// maxBufferedLog are dropped and counted instead of growing memory, and
+// the retained prefix still flushes on Close.
+func TestLogBufferDropsWhenFull(t *testing.T) {
+	orig := maxBufferedLog
+	maxBufferedLog = 64
+	defer func() { maxBufferedLog = orig }()
+
+	rec := &logRecorder{}
+	b := NewLogBuffer(rec.append, 1<<20, time.Hour, nil) // threshold unreachable: nothing flushes early
+	for i := 0; i < 10; i++ {
+		if _, err := b.Write([]byte("0123456789")); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	b.mu.Lock()
+	buffered := b.buf.Len()
+	discarded := b.discarded
+	b.mu.Unlock()
+	if discarded != 30 {
+		t.Errorf("discarded = %d, want 30 (the last three 10-byte writes)", discarded)
+	}
+	if buffered > maxBufferedLog+9 {
+		t.Errorf("buffered = %d, want at most %d", buffered, maxBufferedLog+9)
+	}
+	b.Close()
+	if rec.count() != 1 {
+		t.Fatalf("close flush segments = %d, want 1", rec.count())
+	}
+	if got := rec.segments[0].Data; got != strings.Repeat("0123456789", 7) {
+		t.Errorf("flushed data = %d bytes, want the retained 70-byte prefix", len(got))
+	}
+}
+
+// TestLogBufferSustainedFailureBounded asserts a controller that is slow
+// (append parked) neither grows the buffer past the cap nor hangs Close:
+// output beyond the cap is dropped, and after the controller responds the
+// retained prefix flushes with a continuous offset sequence (no
+// duplicates, no reordering).
+func TestLogBufferSustainedFailureBounded(t *testing.T) {
+	orig := maxBufferedLog
+	maxBufferedLog = 64
+	defer func() { maxBufferedLog = orig }()
+
+	block := make(chan struct{})
+	rec := &logRecorder{block: block}
+	b := NewLogBuffer(rec.append, 16, time.Hour, nil)
+	defer b.Close()
+
+	burst := strings.Repeat("x", 4096)
+	for i := 0; i < 256; i++ {
+		if _, err := b.Write([]byte(burst[i*16 : (i+1)*16])); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	b.mu.Lock()
+	buffered := b.buf.Len()
+	discarded := b.discarded
+	b.mu.Unlock()
+	if discarded == 0 {
+		t.Error("discarded = 0, want drops past the cap")
+	}
+	if buffered > maxBufferedLog+15 {
+		t.Errorf("buffered = %d, want at most %d", buffered, maxBufferedLog+15)
+	}
+
+	// Release the append. Every retained byte must eventually flush; the
+	// in-flight segment was either inside the buffer or parked in append
+	// when the counters were read, so the delivered total is exactly
+	// 4096 - discarded either way.
+	close(block)
+	delivered := 0
+	if !waitFor(t, time.Second, func() bool {
+		rec.mu.Lock()
+		var n int
+		for _, seg := range rec.segments {
+			n += len(seg.Data)
+		}
+		rec.mu.Unlock()
+		delivered = n
+		return n == 4096-int(discarded)
+	}) {
+		t.Fatalf("retained prefix not fully flushed: delivered = %d, want %d", delivered, 4096-int(discarded))
+	}
+	rec.mu.Lock()
+	joined := make([]byte, 0, delivered)
+	for _, seg := range rec.segments {
+		joined = append(joined, seg.Data...)
+	}
+	rec.mu.Unlock()
+	if string(joined) != burst[:delivered] {
+		t.Error("delivered bytes are not the contiguous write prefix (gap or reorder)")
+	}
+	b.Close() // must not hang
 }
 
 func TestTailBufferKeepsTail(t *testing.T) {
