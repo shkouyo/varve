@@ -51,11 +51,19 @@ func (o *OrchestratorImpl) UploadFile(ctx context.Context, taskID, token, name s
 	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
-	if _, err := o.store.GetTask(ctx, taskID); err != nil {
+	task, err := o.store.GetTask(ctx, taskID)
+	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	if isTerminal(task.State) {
+		// Terminal tasks never accept uploads: the normal flow reports
+		// the result only after every file was uploaded, so a terminal
+		// task means the report already won the race and the staging
+		// area is no longer needed.
+		return nil, ErrConflict
 	}
 	staging := o.storage.StagingPath(taskID, name)
 	current, err := o.stagingSize(ctx, staging)
@@ -97,11 +105,19 @@ func (o *OrchestratorImpl) DownloadFile(ctx context.Context, taskID, token, name
 	if err := o.checkToken(ctx, taskID, token); err != nil {
 		return nil, err
 	}
-	if _, err := o.store.GetTask(ctx, taskID); err != nil {
+	task, err := o.store.GetTask(ctx, taskID)
+	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	if isTerminal(task.State) {
+		// Terminal tasks never accept uploads: the normal flow reports
+		// the result only after every file was uploaded, so a terminal
+		// task means the report already won the race and the staging
+		// area is no longer needed.
+		return nil, ErrConflict
 	}
 	staging := o.storage.StagingPath(taskID, name)
 	// Existence is checked up front so the 404 reaches the client before any

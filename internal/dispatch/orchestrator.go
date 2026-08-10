@@ -188,6 +188,11 @@ type OrchestratorImpl struct {
 	roundMu    sync.Mutex
 	roundSet   map[string]time.Time
 
+	// terminalMu guards postTerminalLog: tasks that already received the
+	// one post-terminal log segment they are granted.
+	terminalMu      sync.Mutex
+	postTerminalLog map[string]struct{}
+
 	// actions per-task dispatch (worker.actions): the dispatcher is
 	// built at construction and dispatchMap tracks every dispatched run
 	// (dispatched → claimed → done) so the scheduler can enforce
@@ -239,23 +244,24 @@ func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend stor
 		signer = nil // typed nil pointer in the interface == no signer
 	}
 	o := &OrchestratorImpl{
-		cfg:            cfg,
-		store:          store,
-		storage:        backend,
-		signer:         signer,
-		updater:        updater,
-		notifier:       notifier,
-		logs:           logs,
-		mirrorDir:      sourceMirrorDir(cfg.Source.URL),
-		now:            time.Now,
-		execCommand:    exec.CommandContext,
-		tokenCache:     make(map[string]string),
-		roundSet:       make(map[string]time.Time),
-		dispatchMap:    make(map[string]dispatchEntry),
-		stallInterval:  30 * time.Second,
-		hourlyInterval: time.Hour,
-		actions:        newActionsDispatcher(&cfg.Worker.Actions),
-		aurPusher:      NewAURPusher(&cfg.AUR),
+		cfg:             cfg,
+		store:           store,
+		storage:         backend,
+		signer:          signer,
+		updater:         updater,
+		notifier:        notifier,
+		logs:            logs,
+		mirrorDir:       sourceMirrorDir(cfg.Source.URL),
+		now:             time.Now,
+		execCommand:     exec.CommandContext,
+		tokenCache:      make(map[string]string),
+		roundSet:        make(map[string]time.Time),
+		postTerminalLog: make(map[string]struct{}),
+		dispatchMap:     make(map[string]dispatchEntry),
+		stallInterval:   30 * time.Second,
+		hourlyInterval:  time.Hour,
+		actions:         newActionsDispatcher(&cfg.Worker.Actions),
+		aurPusher:       NewAURPusher(&cfg.AUR),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	o.schedCancel = cancel
@@ -301,6 +307,22 @@ func randomToken() (string, error) {
 		return "", fmt.Errorf("dispatch: generate claim token: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// grantPostTerminalSegment returns true when the task may still send one
+// log segment after becoming terminal, marking it as granted on the first
+// call. The normal flow races the result report against the final log
+// drain (and the on_success/on_failure hook output), so the first
+// post-terminal segment is accepted; every further segment conflicts,
+// which bounds the write amplification of a terminal task's log.
+func (o *OrchestratorImpl) grantPostTerminalSegment(taskID string) bool {
+	o.terminalMu.Lock()
+	defer o.terminalMu.Unlock()
+	if _, ok := o.postTerminalLog[taskID]; ok {
+		return false
+	}
+	o.postTerminalLog[taskID] = struct{}{}
+	return true
 }
 
 // isTerminal reports whether a task state is final.

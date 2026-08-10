@@ -91,6 +91,13 @@ func (o *OrchestratorImpl) AppendLog(ctx context.Context, taskID, token string, 
 		}
 		return nil, err
 	}
+	if isTerminal(task.State) && !o.grantPostTerminalSegment(taskID) {
+		// The task is terminal and its one post-terminal segment is
+		// spent: further log data is refused so a holder of the (still
+		// valid) token cannot grow the permanently kept failed log
+		// without bound.
+		return nil, ErrConflict
+	}
 	buildID := task.BuildID
 	size, err := o.logs.Size(buildID)
 	if err != nil {

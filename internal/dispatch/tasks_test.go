@@ -21,6 +21,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"git.0x0f.dev/varve/internal/db"
 )
 
 // TestGetTaskTransitions covers the one-shot detail fetch: the first call
@@ -202,5 +204,36 @@ func TestTaskDetailPackager(t *testing.T) {
 	}
 	if detail.Packager != "Jane Packager <jane@example.org>" {
 		t.Errorf("packager = %q, want the configured identity", detail.Packager)
+	}
+}
+
+// TestAppendLogTerminalBudget covers the post-terminal log policy: the
+// task grants exactly one segment after becoming terminal (the final
+// drain of the normal flow), then rejects every further append with
+// ErrConflict so a token holder cannot grow a terminal task's log
+// without bound.
+func TestAppendLogTerminalBudget(t *testing.T) {
+	env := newTestEnv(t)
+	taskID := env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+	if claimed != taskID {
+		t.Fatalf("claimed %s", claimed)
+	}
+	if err := env.store.WithTx(ctx(), func(tx *db.Tx) error {
+		return tx.FinalizeTask(ctx(), claimed, "succeeded", "", env.now.UTC(), nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+
+	ack, err := env.o.AppendLog(ctx(), claimed, token, LogSegment{Offset: 0, Data: "tail"})
+	if err != nil {
+		t.Fatalf("first post-terminal segment: %v", err)
+	}
+	if ack.Offset != 4 {
+		t.Errorf("ack offset = %d, want 4", ack.Offset)
+	}
+	if _, err := env.o.AppendLog(ctx(), claimed, token, LogSegment{Offset: 4, Data: "more"}); !errors.Is(err, ErrConflict) {
+		t.Errorf("second post-terminal segment = %v, want ErrConflict", err)
 	}
 }

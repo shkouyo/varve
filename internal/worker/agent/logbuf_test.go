@@ -243,3 +243,47 @@ func TestTailBufferKeepsTail(t *testing.T) {
 		t.Errorf("tail beyond max = %q, want the capped buffer", got)
 	}
 }
+
+// TestLogBufferDropsOnNonAdvancingConflict asserts a 409 whose resync
+// offset does not advance the stream (the controller refuses the segment
+// for good because the task became terminal) ends the log stream: the
+// buffered tail is dropped instead of being retried in a tight loop.
+func TestLogBufferDropsOnNonAdvancingConflict(t *testing.T) {
+	rec := &logRecorder{}
+	rec.errors = []error{&api.APIError{Status: http.StatusConflict}} // no offset field
+	b := NewLogBuffer(rec.append, 16, time.Hour, nil)
+	defer b.Close()
+	if _, err := b.Write([]byte(strings.Repeat("x", 16))); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if !waitFor(t, time.Second, func() bool { return rec.count() == 1 }) {
+		t.Fatalf("first flush never happened")
+	}
+	// A retry after the drop would mean a second append call; give the
+	// loop a moment and assert it did not happen.
+	time.Sleep(50 * time.Millisecond)
+	if rec.count() != 1 {
+		t.Fatalf("appends = %d, want 1 (dropped tail must not be retried)", rec.count())
+	}
+	// The offset stays where it was: the server never acked the segment.
+	if b.Offset() != 0 {
+		t.Errorf("offset = %d, want 0", b.Offset())
+	}
+}
+
+// TestLogBufferResyncStillRetries guards the other branch: a 409 that
+// advances the offset (server holds more bytes) still retries from there
+// (see TestLogBufferConflictResyncsOffset); the drop must only trigger on
+// non-advancing conflicts.
+func TestLogBufferResyncStillRetries(t *testing.T) {
+	rec := &logRecorder{}
+	rec.errors = []error{&api.APIError{Status: http.StatusConflict, Offset: 4}}
+	b := NewLogBuffer(rec.append, 16, time.Hour, nil)
+	defer b.Close()
+	if _, err := b.Write([]byte(strings.Repeat("x", 16))); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if !waitFor(t, time.Second, func() bool { return rec.count() >= 2 }) {
+		t.Fatalf("retry after advancing 409 never happened")
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/sign"
 	"git.0x0f.dev/varve/internal/storage"
 )
@@ -257,5 +258,27 @@ func TestUploadFileTruncatedStream(t *testing.T) {
 	}
 	if _, serr := env.fs.Stat(ctx(), env.fs.StagingPath(claimed, name)); !errors.Is(serr, storage.ErrNotFound) {
 		t.Errorf("truncated staging file not removed: %v", serr)
+	}
+}
+
+// TestUploadFileRejectsTerminal asserts a terminal task never accepts
+// uploads: the result report always follows the uploads in the normal
+// flow, so a terminal task means the staging area is no longer needed and
+// a token holder cannot keep writing into it.
+func TestUploadFileRejectsTerminal(t *testing.T) {
+	env := newTestEnv(t)
+	taskID := env.enqueue(t, "foo", "foo")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+	if claimed != taskID {
+		t.Fatalf("claimed %s", claimed)
+	}
+	if err := env.store.WithTx(ctx(), func(tx *db.Tx) error {
+		return tx.FinalizeTask(ctx(), claimed, "failed", "boom", env.now.UTC(), nil, nil)
+	}); err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	if _, err := env.o.UploadFile(ctx(), claimed, token, "x.pkg.tar.zst", strings.NewReader("x"), 1, 0); !errors.Is(err, ErrConflict) {
+		t.Errorf("UploadFile on terminal task = %v, want ErrConflict", err)
 	}
 }

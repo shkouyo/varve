@@ -140,7 +140,10 @@ func (b *LogBuffer) loop(interval time.Duration) {
 
 // flush sends one bounded log segment, or keeps the data for a later
 // retry when the append fails (resyncing the offset from a 409 conflict so
-// a gap can never wedge the stream). At most threshold bytes are sent per
+// a gap can never wedge the stream). A conflict whose resync offset does
+// not advance the stream ends it: the controller refuses the segment for
+// good (the task became terminal), so the buffered tail is dropped
+// instead of retried forever. At most threshold bytes are sent per
 // segment: the producer drains the whole pipe into the buffer while the
 // flush loop is busy with an in-flight append, and a single oversized
 // segment would exceed the controller's segment cap, stalling the stream
@@ -174,7 +177,16 @@ func (b *LogBuffer) flush() bool {
 		b.buf.WriteString(combined)
 		var apiErr *api.APIError
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict {
-			b.offset = apiErr.Offset
+			if apiErr.Offset > b.offset {
+				// Resumable conflict: the server holds more bytes than
+				// the client believes; resync and re-send from there.
+				b.offset = apiErr.Offset
+			} else {
+				// The conflict does not advance the stream: the server
+				// refuses the segment for good (the task became
+				// terminal). The log stream is over; drop the tail.
+				b.buf.Reset()
+			}
 		}
 	} else {
 		b.offset = ack.Offset
