@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -277,7 +278,25 @@ func TestMonitorDrainCapBoundsNoTimeoutTask(t *testing.T) {
 	withSlot(r)
 	r.drainCap = 30 * time.Second
 	clock := newFakeClock(time.Unix(1000, 0))
-	r.now = clock.now
+	// Gate the fake clock on the monitor's first read: that read is
+	// exactly the drain-deadline computation (the task has no build
+	// timeout, so the main loop's deadline check short-circuits before
+	// calling now). The monitor blocks inside now until the test has
+	// advanced the clock, so the advance can never land before the
+	// deadline is computed — a deadline computed from an already
+	// advanced clock would move the drain cap with it and the result
+	// wait below would misreport.
+	drainEntered := make(chan struct{})
+	release := make(chan struct{})
+	var gateOnce, releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	r.now = func() time.Time {
+		now := clock.now()
+		gateOnce.Do(func() { close(drainEntered) })
+		<-release
+		return now
+	}
 
 	task := testTask("t1") // Build zero: no per-task timeout
 
@@ -290,11 +309,13 @@ func TestMonitorDrainCapBoundsNoTimeoutTask(t *testing.T) {
 	waitFor(t, 2*time.Second, func() bool { return rt.waitCount() >= 1 })
 
 	cancel() // shutdown: the monitor enters the drain wait
-	// Let the monitor reach its drain select before advancing the
-	// clock: the drain deadline is computed on entry, so advancing too
-	// early would move the cap with it.
-	time.Sleep(3 * r.timeoutCheck)
+	select {
+	case <-drainEntered: // the monitor is computing the drain deadline now
+	case <-time.After(5 * time.Second):
+		t.Fatal("monitor never entered the drain wait")
+	}
 	clock.add(31 * time.Second)
+	unblock()
 	waitFor(t, 2*time.Second, func() bool { return c.resultCount() >= 1 })
 
 	if rt.killCount() != 1 || rt.killed(0) != "c1" {

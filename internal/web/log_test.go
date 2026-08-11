@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -361,13 +362,53 @@ func TestSSELogMissingWaits(t *testing.T) {
 	defer cancel()
 	req := newRequest(t, http.MethodGet, "/builds/"+itoa(build.ID)+"/log/stream")
 	req = req.WithContext(ctx)
-	time.AfterFunc(120*time.Millisecond, cancel)
-	rec := serve(t, s, req)
-	body := rec.Body.String()
-	mustContain(t, body, ": ping")
-	if strings.Contains(body, "event: done") {
+
+	// Poll the stream for the first keep-alive ping instead of racing a
+	// wall-clock cancel timer: on a slow machine the first TailLog and
+	// build-state lookups can take longer than a fixed window, and
+	// cancelling before the first ping would leave the body without
+	// one. The recorder body is safe to read while the handler is
+	// still writing.
+	rec := &syncRecorder{}
+	done := make(chan struct{})
+	go func() {
+		s.Handler().ServeHTTP(rec, req)
+		close(done)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(rec.bodyString(), ": ping") {
+		if time.Now().After(deadline) {
+			t.Fatalf("stream never wrote a keep-alive ping\nbody:\n%s", rec.bodyString())
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if strings.Contains(rec.bodyString(), "event: done") {
 		t.Error("active build with missing log must not close the stream")
 	}
+}
+
+// syncRecorder is a response recorder whose body stays readable while
+// the handler goroutine is still writing; the SSE wait tests poll for
+// the first ping instead of guessing a cancel window.
+type syncRecorder struct {
+	mu   sync.Mutex
+	body strings.Builder
+}
+
+func (r *syncRecorder) Header() http.Header { return http.Header{} }
+func (r *syncRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body.Write(p)
+}
+func (r *syncRecorder) WriteHeader(int) {}
+func (r *syncRecorder) Flush()          {}
+func (r *syncRecorder) bodyString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body.String()
 }
 
 // TestSSEConcurrencyLimit asserts the stream semaphore: once the cap is

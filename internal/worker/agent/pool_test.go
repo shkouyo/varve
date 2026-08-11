@@ -91,8 +91,13 @@ func TestPoolManualName(t *testing.T) {
 		t.Fatal("node never registered")
 	}
 	clock.advance(cfg.PoolIdleTimeout + time.Second)
-	if err := <-done; err != nil {
-		t.Fatalf("runPool: %v", err)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runPool: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pool never idled out")
 	}
 	if f.regReqs[0].Name != "manual-node" {
 		t.Errorf("register name = %q, want manual-node", f.regReqs[0].Name)
