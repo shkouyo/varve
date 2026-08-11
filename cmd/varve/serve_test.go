@@ -494,8 +494,19 @@ func TestRunServeServeErrorCarriesPort(t *testing.T) {
 	// error, so wait until the watcher has loaded the fake before
 	// t.Cleanup restores the variable.
 	waitSignalLoaded := make(chan struct{})
+	// The fake must not deliver a result while the serve error is in
+	// flight: with both channels ready, the select in runServe picks
+	// between the serve error and the signal result at random, and the
+	// signal branch would make runServe return nil. releaseSignal is
+	// closed only by t.Cleanup, strictly after runServe has returned,
+	// so the serveErr branch is the only ready one when the select
+	// runs. Closing it also wakes the watcher goroutine, which sends
+	// nil into the buffered signalErr channel and exits (no leak).
+	releaseSignal := make(chan struct{})
+	t.Cleanup(func() { close(releaseSignal) })
 	replaceVar(t, &waitSignal, func(<-chan os.Signal) error {
 		close(waitSignalLoaded)
+		<-releaseSignal
 		return nil
 	})
 
