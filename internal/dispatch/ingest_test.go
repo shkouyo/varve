@@ -566,3 +566,36 @@ func TestReportStaleSucceededConflictsAfterFinalize(t *testing.T) {
 		t.Errorf("state = %q, want failed (unchanged by the stale report)", got.State)
 	}
 }
+
+// TestFinalizeFailureNotifiesAfterClientDisconnect is the regression test
+// for the notification side of the disconnect failure mode: the build and
+// package reads behind a failure notification run on the settled context,
+// so a failure reported by a client that already disconnected still
+// reaches the maintainers. Before the fix the canceled request context
+// killed the build read and the notification was silently dropped.
+func TestFinalizeFailureNotifiesAfterClientDisconnect(t *testing.T) {
+	env := newTestEnv(t)
+	env.enqueue(t, "foo", "foo", "maint@example.org")
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, _ := env.claim(t, "w1")
+	task, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := env.o.finalizeFailure(ctx, task, "report", "boom", nil, nil); err != nil {
+		t.Fatalf("finalizeFailure: %v", err)
+	}
+	if len(env.not.calls) != 1 || env.not.calls[0].Stage != "report" {
+		t.Errorf("notifications = %+v, want one failure notification despite the canceled request context", env.not.calls)
+	}
+	got, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.State != "failed" {
+		t.Errorf("state = %q, want failed", got.State)
+	}
+}

@@ -456,9 +456,12 @@ func (o *OrchestratorImpl) finalizeFailure(ctx context.Context, task *db.Task, s
 	if err != nil {
 		return err
 	}
-	build, berr := o.store.GetBuild(ctx, task.BuildID)
+	// The notification reads (build + package rows) run on the settled
+	// context too: with the request context already canceled, they would
+	// fail and the maintainer notification would be silently dropped.
+	build, berr := o.store.GetBuild(stx, task.BuildID)
 	if berr == nil {
-		o.notifyFailure(ctx, task, build, stage, summary)
+		o.notifyFailure(stx, task, build, stage, summary)
 	} else {
 		log.Printf("dispatch: read build %s for notification: %v", task.BuildID, berr)
 	}
