@@ -94,6 +94,27 @@ func ingestCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), ingestTimeout)
 }
 
+// beginResult marks a task's succeeded result report as in flight. It
+// reports false when another report of the same task is already being
+// ingested; the caller turns that into ErrConflict (409), so a duplicate
+// report never queues a second ingest behind the first.
+func (o *OrchestratorImpl) beginResult(taskID string) bool {
+	o.resultMu.Lock()
+	defer o.resultMu.Unlock()
+	if _, ok := o.inFlightResults[taskID]; ok {
+		return false
+	}
+	o.inFlightResults[taskID] = struct{}{}
+	return true
+}
+
+// endResult releases the in-flight marker of a succeeded result report.
+func (o *OrchestratorImpl) endResult(taskID string) {
+	o.resultMu.Lock()
+	defer o.resultMu.Unlock()
+	delete(o.inFlightResults, taskID)
+}
+
 // handleSucceeded runs the ingest orchestration in order: manifest
 // verification → repo.Ingest → SQLite transaction (FinalizeTask +
 // UpdatePackageAfterBuild) → staging cleanup. The whole sequence holds
@@ -103,6 +124,11 @@ func ingestCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // cleanup; any failure in ingest finalizes failed(ingest) and preserves
 // the staging area for a retry.
 func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, res ResultReq) error {
+	if !o.beginResult(task.ID) {
+		return ErrConflict // another report is already ingesting this task
+	}
+	defer o.endResult(task.ID)
+
 	o.ingestMu.Lock()
 	defer o.ingestMu.Unlock()
 
@@ -115,6 +141,20 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// writes keep their dedicated settleCtx.
 	ictx, icancel := ingestCtx(ctx)
 	defer icancel()
+
+	// Re-admit the report under the ingest lock: the task snapshot taken
+	// in ReportResult may be stale, because a concurrent report (or a
+	// cancel) can finalize the task while this one waited for the ingest
+	// mutex. A terminal task is never ingested again; the stale report
+	// sees the same ErrConflict as a late report. The check runs on the
+	// detached context so a canceled request cannot abort it.
+	current, err := o.store.GetTask(ictx, task.ID)
+	if err != nil {
+		return err
+	}
+	if isTerminal(current.State) || current.CancelRequested {
+		return ErrConflict
+	}
 
 	// 1. Manifest verification: every entry exists and its sha256
 	// recomputation matches; with signing enabled, package signatures

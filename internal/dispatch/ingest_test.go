@@ -456,3 +456,113 @@ func TestReportSucceededDetachedFromRequestContext(t *testing.T) {
 		t.Errorf("state = %q, want succeeded (the chain must not inherit the canceled request context)", got.State)
 	}
 }
+
+// TestReportConcurrentDuplicates covers the per-task in-flight guard:
+// while one succeeded report is being ingested, a duplicate report of
+// the same task conflicts immediately (409) instead of queuing behind
+// the ingest mutex, and the ingest runs exactly once.
+func TestReportConcurrentDuplicates(t *testing.T) {
+	env := newTestEnv(t)
+	artifacts := testArtifacts("foo", "1.0-1")
+	taskID := env.enqueue(t, "foo", "foo")
+	for _, a := range artifacts {
+		env.stage(t, taskID, a.File)
+	}
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+
+	env.up.entered = make(chan struct{})
+	env.up.block = make(chan struct{})
+	firstDone := make(chan struct{})
+	var firstErr error
+	go func() {
+		firstErr = env.o.ReportResult(context.Background(), claimed, token,
+			ResultReq{Status: "succeeded", Artifacts: artifacts})
+		close(firstDone)
+	}()
+
+	select {
+	case <-env.up.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first ingest never started")
+	}
+	// The duplicate report conflicts while the first ingest is running.
+	err := env.o.ReportResult(context.Background(), claimed, token,
+		ResultReq{Status: "succeeded", Artifacts: artifacts})
+	if !errors.Is(err, ErrConflict) {
+		t.Errorf("duplicate report = %v, want ErrConflict", err)
+	}
+
+	close(env.up.block)
+	select {
+	case <-firstDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first report did not finish")
+	}
+	if firstErr != nil {
+		t.Fatalf("first report: %v", firstErr)
+	}
+	task, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.State != "succeeded" {
+		t.Errorf("state = %q, want succeeded", task.State)
+	}
+	// The ingest ran exactly once despite the duplicate report.
+	ingests := 0
+	for _, l := range env.log.read() {
+		if strings.HasPrefix(l, "ingest ") {
+			ingests++
+		}
+	}
+	if ingests != 1 {
+		t.Errorf("ingest count = %d, want exactly 1", ingests)
+	}
+}
+
+// TestReportStaleSucceededConflictsAfterFinalize covers the re-admission
+// check under the ingest lock: a succeeded report whose task snapshot was
+// taken while the task was still active must conflict once a concurrent
+// finalizer already won. Without the check the stale report would
+// re-verify and could re-ingest a terminal task (most visibly after an
+// ingest failure, where the staging area is deliberately preserved).
+func TestReportStaleSucceededConflictsAfterFinalize(t *testing.T) {
+	env := newTestEnv(t)
+	artifacts := testArtifacts("foo", "1.0-1")
+	taskID := env.enqueue(t, "foo", "foo")
+	for _, a := range artifacts {
+		env.stage(t, taskID, a.File)
+	}
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, token := env.claim(t, "w1")
+	task, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+
+	// A concurrent report finalizes the task first (no retry budget).
+	env.o.cfg.Worker.RetryMax = 0
+	if err := env.o.ReportResult(context.Background(), claimed, token,
+		ResultReq{Status: "failed", Error: &ResultError{Stage: "makepkg", Summary: "boom"}}); err != nil {
+		t.Fatalf("failed report: %v", err)
+	}
+
+	// The stale succeeded report must conflict instead of re-ingesting.
+	if err := env.o.handleSucceeded(context.Background(), task,
+		ResultReq{Status: "succeeded", Artifacts: artifacts}); !errors.Is(err, ErrConflict) {
+		t.Errorf("stale succeeded report = %v, want ErrConflict", err)
+	}
+	for _, l := range env.log.read() {
+		if strings.HasPrefix(l, "ingest ") {
+			t.Errorf("terminal task was ingested again: %s", l)
+		}
+	}
+	got, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.State != "failed" {
+		t.Errorf("state = %q, want failed (unchanged by the stale report)", got.State)
+	}
+}

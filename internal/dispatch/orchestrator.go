@@ -188,6 +188,12 @@ type OrchestratorImpl struct {
 	roundMu    sync.Mutex
 	roundSet   map[string]time.Time
 
+	// resultMu guards inFlightResults: task ids whose succeeded result
+	// report is currently being ingested. A duplicate report of the same
+	// task conflicts (409) while the first ingest is still running.
+	resultMu        sync.Mutex
+	inFlightResults map[string]struct{}
+
 	// terminalMu guards postTerminalLog: tasks that already received the
 	// one post-terminal log segment they are granted.
 	terminalMu      sync.Mutex
@@ -256,6 +262,7 @@ func NewOrchestrator(cfg *config.ControllerConfig, store *db.Store, backend stor
 		execCommand:     exec.CommandContext,
 		tokenCache:      make(map[string]string),
 		roundSet:        make(map[string]time.Time),
+		inFlightResults: make(map[string]struct{}),
 		postTerminalLog: make(map[string]struct{}),
 		dispatchMap:     make(map[string]dispatchEntry),
 		stallInterval:   30 * time.Second,
