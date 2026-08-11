@@ -115,6 +115,9 @@ func (f *fakeStorage) Put(ctx context.Context, name string, r io.Reader, size in
 }
 
 func (f *fakeStorage) Get(ctx context.Context, name string, w io.Writer) error {
+	if err := ctx.Err(); err != nil {
+		return err // the fakes observe cancellation like the real backends
+	}
 	f.mu.Lock()
 	data, ok := f.files[name]
 	f.mu.Unlock()
@@ -127,6 +130,9 @@ func (f *fakeStorage) Get(ctx context.Context, name string, w io.Writer) error {
 }
 
 func (f *fakeStorage) Delete(ctx context.Context, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err // the fakes observe cancellation like the real backends
+	}
 	f.mu.Lock()
 	delete(f.files, name)
 	f.mu.Unlock()
@@ -147,6 +153,9 @@ func (f *fakeStorage) List(ctx context.Context, prefix string) ([]string, error)
 }
 
 func (f *fakeStorage) Stat(ctx context.Context, name string) (storage.FileInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return storage.FileInfo{}, err // the fakes observe cancellation like the real backends
+	}
 	f.mu.Lock()
 	data, ok := f.files[name]
 	f.mu.Unlock()
@@ -231,6 +240,9 @@ func (f *fakeUpdater) Ingest(ctx context.Context, task *db.Task, build *db.Build
 	f.lastTask = task
 	if f.block != nil {
 		<-f.block
+	}
+	if err := ctx.Err(); err != nil {
+		return err // a canceled request aborts the ingest like the real updater
 	}
 	if f.ingestErr != nil {
 		return f.ingestErr

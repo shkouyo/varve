@@ -422,3 +422,37 @@ func TestReportFinalizesAfterClientDisconnect(t *testing.T) {
 		run(t, nil, "succeeded")
 	})
 }
+
+// TestReportSucceededDetachedFromRequestContext is the regression test
+// for the ingest side of the disconnect failure mode: with the request
+// context already canceled before the chain starts, the verification +
+// ingest chain must still run to completion on its detached context.
+// Before the detach, the verification reads died on the canceled context
+// and the task landed failed(verify) with the staging area deleted.
+func TestReportSucceededDetachedFromRequestContext(t *testing.T) {
+	env := newTestEnv(t)
+	artifacts := testArtifacts("foo", "1.0-1")
+	taskID := env.enqueue(t, "foo", "foo")
+	for _, a := range artifacts {
+		env.stage(t, taskID, a.File)
+	}
+	env.registerWorker(t, "w1", "host", "host", 1)
+	claimed, _ := env.claim(t, "w1")
+	task, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := env.o.handleSucceeded(ctx, task, ResultReq{Status: "succeeded", Artifacts: artifacts}); err != nil {
+		t.Fatalf("handleSucceeded: %v", err)
+	}
+	got, err := env.store.GetTask(context.Background(), claimed)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.State != "succeeded" {
+		t.Errorf("state = %q, want succeeded (the chain must not inherit the canceled request context)", got.State)
+	}
+}

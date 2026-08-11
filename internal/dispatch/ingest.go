@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"git.0x0f.dev/varve/internal/db"
 	"git.0x0f.dev/varve/internal/detect/srcinfo"
@@ -72,30 +73,63 @@ func (o *OrchestratorImpl) ReportResult(ctx context.Context, taskID, token strin
 	}
 }
 
+// ingestTimeout bounds the verification + ingest chain of a succeeded
+// result report. The chain must complete even after the client already
+// disconnected (the worker's result POST can time out while a large
+// package is still being ingested), so it runs on a context detached
+// from the request's cancellation. It is deliberately much larger than
+// settleTimeout, which only covers quick terminal SQLite writes: moving
+// a large package (hundreds of MiB) into the repository takes minutes.
+// 15m sits at the same order of magnitude as the worker's build budget,
+// so a legitimate slow ingest is not cut short while a wedged store
+// still cannot block a report forever. It is a variable so tests can
+// shorten it.
+var ingestTimeout = 15 * time.Minute
+
+// ingestCtx returns the context the verification + ingest chain runs on:
+// the request's values are kept, its cancellation is dropped (the client
+// may have disconnected mid-ingest) and the chain is bounded by
+// ingestTimeout.
+func ingestCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), ingestTimeout)
+}
+
 // handleSucceeded runs the ingest orchestration in order: manifest
 // verification → repo.Ingest → SQLite transaction (FinalizeTask +
 // UpdatePackageAfterBuild) → staging cleanup. The whole sequence holds
-// the single-repo ingest mutex. Any failure in verification finalizes
-// failed(verify) with staging cleanup; any failure in ingest finalizes
-// failed(ingest) and preserves the staging area for a retry.
+// the single-repo ingest mutex and runs on a context detached from the
+// request (ingestCtx), so a client disconnect mid-ingest cannot abort
+// it. Any failure in verification finalizes failed(verify) with staging
+// cleanup; any failure in ingest finalizes failed(ingest) and preserves
+// the staging area for a retry.
 func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, res ResultReq) error {
 	o.ingestMu.Lock()
 	defer o.ingestMu.Unlock()
 
+	// The chain below must survive a client disconnect: the worker's
+	// result POST can time out (and the request context die) while a
+	// large package is still being verified and ingested, and a
+	// half-finished ingest would leave the repository inconsistent
+	// (database updated, sidecar missing). It therefore runs on a
+	// detached context with its own generous bound; the terminal SQLite
+	// writes keep their dedicated settleCtx.
+	ictx, icancel := ingestCtx(ctx)
+	defer icancel()
+
 	// 1. Manifest verification: every entry exists and its sha256
 	// recomputation matches; with signing enabled, package signatures
 	// are verified with gpg.
-	if err := o.verifyManifest(ctx, task.ID, res.Artifacts); err != nil {
-		o.failTask(ctx, task, "verify", err.Error(), toDBArtifacts(res.Artifacts))
-		o.cleanupStaging(ctx, task.ID, o.stagedFiles(res.Artifacts))
+	if err := o.verifyManifest(ictx, task.ID, res.Artifacts); err != nil {
+		o.failTask(ictx, task, "verify", err.Error(), toDBArtifacts(res.Artifacts))
+		o.cleanupStaging(ictx, task.ID, o.stagedFiles(res.Artifacts))
 		return nil // the result was processed: the task is now failed
 	}
 
-	build, err := o.store.GetBuild(ctx, task.BuildID)
+	build, err := o.store.GetBuild(ictx, task.BuildID)
 	if err != nil {
 		return err
 	}
-	pkg, err := o.store.GetPackageByID(ctx, task.PackageID)
+	pkg, err := o.store.GetPackageByID(ictx, task.PackageID)
 	if err != nil {
 		return err
 	}
@@ -105,7 +139,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	// branch commit (the build.Commit record) keeps tracking the branch
 	// trigger for last_commit.
 	if res.Commit != "" {
-		if o.pkgbuildTask(ctx, pkg) {
+		if o.pkgbuildTask(ictx, pkg) {
 			build.PkgbuildRef = res.Commit
 		} else {
 			build.Commit = res.Commit
@@ -114,14 +148,14 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 
 	// 2. Ingest into the repository (move, old-version cleanup, side file,
 	// repo-add). The worker display name resolves through the database.
-	workerName := o.workerName(ctx, task.WorkerID)
-	if err := o.updater.Ingest(ctx, task, build, workerName, res.Artifacts); err != nil {
+	workerName := o.workerName(ictx, task.WorkerID)
+	if err := o.updater.Ingest(ictx, task, build, workerName, res.Artifacts); err != nil {
 		// The failed build row records the reported artifacts, so the
 		// page matches the repository state even when the ingest could
 		// not finish. The staging area is preserved until the hourly
 		// sweep; recovery comes from the detect cooldown, which
 		// re-enqueues the package on a later round.
-		o.failTask(ctx, task, "ingest", err.Error(), toDBArtifacts(res.Artifacts))
+		o.failTask(ictx, task, "ingest", err.Error(), toDBArtifacts(res.Artifacts))
 		return nil
 	}
 
@@ -175,7 +209,7 @@ func (o *OrchestratorImpl) handleSucceeded(ctx context.Context, task *db.Task, r
 	}
 
 	// 4. Staging cleanup.
-	o.cleanupStaging(stx, task.ID, o.stagedFiles(res.Artifacts))
+	o.cleanupStaging(ictx, task.ID, o.stagedFiles(res.Artifacts))
 	o.clearSigner(task.ID)
 
 	// 5. AUR publishing: when the branch opted in and this change carried
