@@ -308,6 +308,40 @@ func TestClientAPIErrorMessages(t *testing.T) {
 	}
 }
 
+// TestClientReportResultDeadline verifies ReportResult runs with the
+// dedicated 10-minute result timeout instead of the ordinary 30s request
+// timeout: the controller-side ingest of a large package executes inside
+// the report request, so the per-request deadline must cover it.
+func TestClientReportResultDeadline(t *testing.T) {
+	rec := &roundTripRecorder{}
+	client := NewClient("http://controller", testToken)
+	client.http = &http.Client{Transport: rec}
+
+	if err := client.ReportResult(context.Background(), testTaskID, testClaimTok,
+		dispatch.ResultReq{Status: "succeeded"}); err != nil {
+		t.Fatalf("ReportResult: %v", err)
+	}
+	deadline, ok := rec.reqs[0].Context().Deadline()
+	if !ok {
+		t.Fatal("report request runs without a deadline")
+	}
+	if remain := time.Until(deadline); remain < resultTimeout-5*time.Second || remain > resultTimeout {
+		t.Errorf("report deadline in %v, want ~%v", remain, resultTimeout)
+	}
+
+	// Control: a heartbeat keeps the ordinary 30s request deadline.
+	if _, err := client.Heartbeat(context.Background(), HeartbeatReq{Name: "n1"}); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	deadline, ok = rec.reqs[1].Context().Deadline()
+	if !ok {
+		t.Fatal("heartbeat request runs without a deadline")
+	}
+	if remain := time.Until(deadline); remain < requestTimeout-5*time.Second || remain > requestTimeout {
+		t.Errorf("heartbeat deadline in %v, want ~%v", remain, requestTimeout)
+	}
+}
+
 // TestClientReportResultRetry verifies the result report is retried on a
 // transient 500: a lost report would otherwise leave the task "running"
 // forever with no way to finalize it.

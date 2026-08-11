@@ -30,9 +30,11 @@ import (
 	"time"
 )
 
-// Request policy: ordinary requests time out after 30s;
-// uploads and downloads carry no per-request timeout and stream for as long
-// as the caller's context allows. Retries apply to idempotent requests only
+// Request policy: ordinary requests time out after 30s; the result report
+// carries a dedicated 10-minute deadline because the controller-side
+// ingest of a large package executes inside the report request. Uploads
+// and downloads carry no per-request timeout and stream for as long as the
+// caller's context allows. Retries apply to idempotent requests only
 // (heartbeat / log append / upload / result report): up to 3 retries with
 // a fixed 1s interval, on network errors and 5xx responses. A timed-out
 // request is never retried (the server may have applied it), except for
@@ -50,6 +52,14 @@ const (
 	maxResponseBytes = 64 << 20
 	maxErrorBytes    = 1 << 20
 )
+
+// resultTimeout is the per-request deadline of the result report. The
+// ordinary 30s requestTimeout would abort a report whose server-side
+// ingest of a large package takes minutes, forcing the retry path to
+// repeat the whole report; 10m covers the ingest, and a genuinely wedged
+// upstream still fails over to the timeout retry. It is a variable so
+// tests can shorten it.
+var resultTimeout = 10 * time.Minute
 
 // retryInterval is the fixed backoff between retry attempts. It is a
 // variable so same-package tests can shorten it.
@@ -148,15 +158,18 @@ func (c *Client) AppendLog(ctx context.Context, taskID, token string, seg LogSeg
 }
 
 // ReportResult reports the final build outcome (POST
-// /api/v1/tasks/{id}/result). The report is retried on transient failures
-// (network errors and 5xx) because a lost report is unrecoverable: the
-// controller never learns the outcome, the task stays "running" and
-// cancellation (which needs the worker's acknowledgement) is ineffective.
-// Duplicate reports are safe: the controller returns 409 once the task is
-// terminal, and concurrent ingests serialize on the ingest mutex.
+// /api/v1/tasks/{id}/result). The request carries a dedicated 10-minute
+// deadline (resultTimeout): the controller-side ingest of a large package
+// executes inside this request, so the ordinary 30s timeout would abort
+// it mid-flight. The report is retried on transient failures (network
+// errors and 5xx) because a lost report is unrecoverable: the controller
+// never learns the outcome, the task stays "running" and cancellation
+// (which needs the worker's acknowledgement) is ineffective. Duplicate
+// reports are safe: the controller returns 409 once the task is terminal
+// or already being ingested.
 func (c *Client) ReportResult(ctx context.Context, taskID, token string, res ResultReq) error {
 	return c.taskRequest(ctx, http.MethodPost, "/api/v1/tasks/"+url.PathEscape(taskID)+"/result",
-		token, res, nil, requestTimeout, true, true)
+		token, res, nil, resultTimeout, true, true)
 }
 
 // GetSigningKey claims the one-shot signing key material of a task (POST
