@@ -134,6 +134,18 @@ var (
 	// forceExit replaces os.Exit so the second-signal force-exit path is
 	// testable without killing the test binary.
 	forceExit = os.Exit
+
+	// watchSecondSignal waits for a second signal during shutdown and
+	// forces an immediate exit. Tests replace it to drive the
+	// force-exit path deterministically: a real SIGTERM from a test
+	// would race the signal.Stop in runServe, and a post-Stop delivery
+	// restores the default disposition and kills the test binary.
+	watchSecondSignal = func(sig <-chan os.Signal) {
+		if s, ok := <-sig; ok {
+			log.Printf("varve: received second signal %v, forcing exit", s)
+			forceExit(1)
+		}
+	}
 )
 
 // shutdownTimeout is the whole graceful-shutdown budget: each HTTP
@@ -282,12 +294,7 @@ func runServe(args []string) error {
 	// A second signal during shutdown forces an immediate exit: the
 	// operator's second SIGTERM/SIGINT must always work, even when a
 	// shutdown step is stuck.
-	go func() {
-		if s, ok := <-sigCh; ok {
-			log.Printf("varve: received second signal %v, forcing exit", s)
-			forceExit(1)
-		}
-	}()
+	go watchSecondSignal(sigCh)
 
 	// Graceful shutdown order: stop the orchestrator (halts the
 	// scheduler, drains the ingest mutex), stop detection, then drain

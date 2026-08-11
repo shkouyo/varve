@@ -27,7 +27,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -326,7 +325,10 @@ func TestNewHTTPServerHardening(t *testing.T) {
 // once the first signal arrived, another signal makes the process exit
 // immediately (forceExit with code 1) instead of waiting for a stuck
 // shutdown. forceExit is injected so the test observes the exit without
-// killing the test binary.
+// killing the test binary, and watchSecondSignal is injected as well: a
+// real signal delivery would race runServe's signal.Stop and could kill
+// the test binary, so the watcher contract (second signal -> forceExit)
+// is driven directly.
 func TestRunServeSecondSignalForcesExit(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := writeControllerConfig(t, dir, "off", "")
@@ -344,18 +346,20 @@ func TestRunServeSecondSignalForcesExit(t *testing.T) {
 	replaceVar(t, &startServer, func(addr string, h http.Handler, errCh chan<- error) (httpServer, error) {
 		return &fakeServer{rec: rec, name: addr}, nil
 	})
-	replaceVar(t, &waitSignal, func(sig <-chan os.Signal) error {
+	replaceVar(t, &waitSignal, func(<-chan os.Signal) error {
 		rec.record("signal")
-		// A second signal arrives while the shutdown is still running.
-		// runServe owns the real signal.Notify registration, so the kill
-		// lands in its channel (buffer 2) instead of killing the test.
-		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-			t.Fatalf("kill self: %v", err)
-		}
 		return nil
 	})
 	exited := make(chan int, 1)
 	replaceVar(t, &forceExit, func(code int) { exited <- code })
+	// The second-signal watcher is driven directly: its contract is
+	// forceExit(1) once a second signal arrives during shutdown. No
+	// real SIGTERM is sent — the delivery would race runServe's
+	// signal.Stop, and a post-Stop delivery restores the default
+	// disposition and kills the test binary ("signal: terminated").
+	replaceVar(t, &watchSecondSignal, func(<-chan os.Signal) {
+		forceExit(1)
+	})
 
 	if err := runServe([]string{"--config", cfgPath}); err != nil {
 		t.Fatalf("runServe: %v", err)
