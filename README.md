@@ -27,6 +27,8 @@ loop with a controller that owns the whole pipeline:
 5. **Notify** - failed builds and AUR push failures are reported by email to
    the package maintainers.
 
+![Varve web UI](screenshot.png)
+
 ### Feature highlights
 
 - **Three worker shapes**: host mode (the worker process starts build
