@@ -7,6 +7,8 @@ PKGBUILD sources, schedules builds on isolated workers, and publishes the
 artifacts into a flat pacman repository backed by a local directory or any
 S3-compatible object store (MinIO, SeaweedFS, Ceph RGW, Cloudflare R2, ...).
 
+![Varve web UI](screenshot.png)
+
 ## Overview
 
 Varve replaces the manual "edit PKGBUILD, run makepkg, repo-add, upload"
@@ -26,8 +28,6 @@ loop with a controller that owns the whole pipeline:
    publishes the PKGBUILD to the AUR.
 5. **Notify** - failed builds and AUR push failures are reported by email to
    the package maintainers.
-
-![Varve web UI](screenshot.png)
 
 ### Feature highlights
 
