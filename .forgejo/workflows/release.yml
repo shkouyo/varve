@@ -27,6 +27,9 @@ name: release
 on:
   workflow_dispatch: {}
 
+  schedule:
+    - cron: "0 2 * * *"
+
 jobs:
   build-and-publish:
     name: Build and publish images
